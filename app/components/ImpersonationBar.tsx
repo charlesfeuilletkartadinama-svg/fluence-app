@@ -14,11 +14,11 @@ const PROFILS_SIMULABLES = [
 ]
 
 export default function ImpersonationBar() {
-  const { profil } = useProfil()
+  const { profil, profilReel } = useProfil()
   const { roleImpersonne, setRoleImpersonne, clearImpersonation } = useImpersonation()
 
   // Visible uniquement pour les admins
-  if (!profil || !['admin', 'ia_dasen', 'recteur'].includes(profil.role)) return null
+  if (!profilReel || !['admin', 'ia_dasen', 'recteur'].includes(profilReel.role)) return null
 
   return (
     <>

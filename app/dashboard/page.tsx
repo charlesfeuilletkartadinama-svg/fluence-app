@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
+import Sidebar from '@/app/components/Sidebar'
+import ImpersonationBar from '@/app/components/ImpersonationBar'
 
 type StatGlobale = {
   nbEleves: number
@@ -11,10 +13,9 @@ type StatGlobale = {
   nbPassations: number
   scoreMoyen: number | null
   txNE: number
-  derniereActivite: string | null
 }
 
-type ActiviteRecente = {
+type Activite = {
   eleve_nom: string
   eleve_prenom: string
   classe: string
@@ -26,10 +27,9 @@ type ActiviteRecente = {
 
 export default function Dashboard() {
   const [stats, setStats]       = useState<StatGlobale | null>(null)
-  const [activite, setActivite] = useState<ActiviteRecente[]>([])
+  const [activite, setActivite] = useState<Activite[]>([])
   const [loading, setLoading]   = useState(true)
   const { profil, loading: profilLoading } = useProfil()
-  const router   = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
@@ -37,56 +37,44 @@ export default function Dashboard() {
   }, [profil, profilLoading])
 
   async function chargerStats() {
-    // Charger les classes de l'établissement
     let classeQuery = supabase.from('classes').select('id, nom')
     if (profil && ['enseignant','directeur','principal'].includes(profil.role) && profil.etablissement_id) {
       classeQuery = classeQuery.eq('etablissement_id', profil.etablissement_id)
     }
     const { data: classes } = await classeQuery
-    const classeIds = (classes || []).map(c => c.id)
+    const classeIds = (classes || []).map((c: any) => c.id)
 
     if (classeIds.length === 0) {
-      setStats({ nbEleves: 0, nbClasses: 0, nbPassations: 0, scoreMoyen: null, txNE: 0, derniereActivite: null })
+      setStats({ nbEleves: 0, nbClasses: 0, nbPassations: 0, scoreMoyen: null, txNE: 0 })
       setLoading(false)
       return
     }
 
-    // Élèves
     const { count: nbEleves } = await supabase
       .from('eleves').select('*', { count: 'exact', head: true })
       .in('classe_id', classeIds).eq('actif', true)
 
-    // Passations
     const { data: passations } = await supabase
       .from('passations')
-      .select(`
-        score, non_evalue, created_at,
-        eleve:eleves(nom, prenom, classe:classes(nom)),
-        periode:periodes(code)
-      `)
-      .in('eleves.classe_id', classeIds)
+      .select('score, non_evalue, created_at, eleve:eleves(nom, prenom, classe:classes(nom)), periode:periodes(code)')
       .order('created_at', { ascending: false })
       .limit(200)
 
-    const pass = (passations || []).filter((p: any) => p.eleve)
+    const pass    = (passations || []).filter((p: any) => p.eleve)
     const evalues = pass.filter((p: any) => !p.non_evalue && p.score && p.score > 0)
     const ne      = pass.filter((p: any) => p.non_evalue)
     const scores  = evalues.map((p: any) => p.score as number)
-    const moyenne = scores.length > 0
-      ? Math.round(scores.reduce((a,b) => a+b, 0) / scores.length)
-      : null
+    const moyenne = scores.length > 0 ? Math.round(scores.reduce((a,b) => a+b,0)/scores.length) : null
 
     setStats({
-      nbEleves:        nbEleves || 0,
-      nbClasses:       classeIds.length,
-      nbPassations:    pass.length,
-      scoreMoyen:      moyenne,
-      txNE:            pass.length > 0 ? Math.round(ne.length / pass.length * 100) : 0,
-      derniereActivite: pass[0]?.created_at || null,
+      nbEleves:     nbEleves || 0,
+      nbClasses:    classeIds.length,
+      nbPassations: pass.length,
+      scoreMoyen:   moyenne,
+      txNE:         pass.length > 0 ? Math.round(ne.length/pass.length*100) : 0,
     })
 
-    // Activité récente (10 dernières)
-    const recent: ActiviteRecente[] = pass.slice(0, 10).map((p: any) => ({
+    setActivite(pass.slice(0,8).map((p: any) => ({
       eleve_nom:    p.eleve?.nom || '',
       eleve_prenom: p.eleve?.prenom || '',
       classe:       p.eleve?.classe?.nom || '',
@@ -94,178 +82,204 @@ export default function Dashboard() {
       non_evalue:   p.non_evalue,
       periode:      p.periode?.code || '',
       created_at:   p.created_at,
-    }))
-    setActivite(recent)
+    })))
+
     setLoading(false)
   }
 
-  const ROLE_LABELS: Record<string, string> = {
-    enseignant: 'Enseignant',
-    directeur:  'Directeur',
-    principal:  'Principal / Principal Adjoint',
-    coordo_rep: 'Coordonnateur REP+',
-    ien:        'IEN',
-    ia_dasen:   'IA-DASEN',
-    recteur:    'Recteur',
-    admin:      'Administrateur',
-  }
-
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Sidebar */}
-      <div className="fixed left-0 top-0 h-full w-64 bg-blue-900 text-white p-6">
-        <div className="mb-8">
-          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center mb-3">
-            <span className="text-blue-900 font-bold text-lg">F</span>
-          </div>
-          <h1 className="font-bold text-lg">Test de Fluence</h1>
-          <p className="text-blue-300 text-xs mt-1">Académie de Guyane</p>
-        </div>
-        <nav className="space-y-1">
-          <a href="/dashboard" className="flex items-center gap-3 px-3 py-2 rounded-lg bg-blue-800 text-white text-sm font-medium">
-            📊 Tableau de bord
-          </a>
-          <a href="/dashboard/eleves" className="flex items-center gap-3 px-3 py-2 rounded-lg text-blue-200 hover:bg-blue-800 text-sm font-medium transition">
-            👥 Mes élèves
-          </a>
-          <a href="/dashboard/saisie" className="flex items-center gap-3 px-3 py-2 rounded-lg text-blue-200 hover:bg-blue-800 text-sm font-medium transition">
-            ✏️ Saisie
-          </a>
-          <a href="/dashboard/statistiques" className="flex items-center gap-3 px-3 py-2 rounded-lg text-blue-200 hover:bg-blue-800 text-sm font-medium transition">
-            📈 Statistiques
-          </a>
-          {profil && ['admin','ia_dasen','recteur','principal'].includes(profil.role) && (
-            <a href="/dashboard/admin" className="flex items-center gap-3 px-3 py-2 rounded-lg text-blue-200 hover:bg-blue-800 text-sm font-medium transition">
-              ⚙️ Administration
-            </a>
-          )}
-        </nav>
-        {profil && (
-          <div className="absolute bottom-6 left-6 right-6">
-            <a href="/dashboard/profil" className="block bg-blue-800 rounded-xl p-3 hover:bg-blue-700 transition">
-              <p className="text-xs text-blue-300 mb-1">{ROLE_LABELS[profil.role] || profil.role}</p>
-              <p className="text-sm font-bold text-white">{profil.prenom} {profil.nom}</p>
-            </a>
-          </div>
-        )}
-      </div>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap');
+        body { background: #F4F2ED; font-family: 'DM Sans', sans-serif; }
 
-      {/* Main */}
-      <div className="ml-64 p-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-blue-900">
-            Bonjour {profil?.prenom} 👋
-          </h2>
-          <p className="text-slate-500 mt-1">
-            {ROLE_LABELS[profil?.role || ''] || ''} · Collège Westham
+        .dash-page { display: flex; min-height: 100vh; }
+
+        .dash-main {
+          margin-left: 260px; flex: 1;
+          padding: 48px;
+          background: #F4F2ED;
+        }
+
+        .dash-greeting {
+          font-family: 'DM Serif Display', serif;
+          font-size: 36px; font-weight: 400;
+          color: #001845; line-height: 1.2;
+          margin-bottom: 6px;
+        }
+        .dash-greeting em { font-style: italic; color: #C9A84C; }
+        .dash-date { font-size: 13px; color: #8A8680; margin-bottom: 40px; }
+
+        .stats-grid {
+          display: grid; grid-template-columns: repeat(4, 1fr);
+          gap: 16px; margin-bottom: 28px;
+        }
+
+        .stat-card {
+          background: #fff; border-radius: 16px; padding: 24px;
+          border: 1px solid rgba(0,0,0,0.06);
+          transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,24,69,0.08); }
+        .stat-card.featured { background: #001845; }
+        .stat-label { font-size: 11px; font-weight: 600; color: #A8A49D; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; }
+        .stat-card.featured .stat-label { color: rgba(255,255,255,0.4); }
+        .stat-num { font-family: 'DM Serif Display', serif; font-size: 42px; font-weight: 400; color: #001845; line-height: 1; }
+        .stat-card.featured .stat-num { color: #fff; }
+        .stat-unit { font-size: 13px; color: #A8A49D; margin-top: 6px; }
+        .stat-card.featured .stat-unit { color: rgba(255,255,255,0.35); }
+        .stat-gold { color: #C9A84C !important; }
+
+        .actions-grid {
+          display: grid; grid-template-columns: repeat(3, 1fr);
+          gap: 16px; margin-bottom: 32px;
+        }
+        .action-card {
+          background: #fff; border-radius: 16px; padding: 20px 24px;
+          border: 1px solid rgba(0,0,0,0.06); cursor: pointer;
+          transition: all 0.15s; text-align: left;
+          display: flex; align-items: center; gap: 16px; text-decoration: none;
+        }
+        .action-card:hover { border-color: #C9A84C; box-shadow: 0 4px 16px rgba(201,168,76,0.12); transform: translateY(-1px); }
+        .action-icon { width: 44px; height: 44px; background: #F4F2ED; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .action-card:hover .action-icon { background: rgba(201,168,76,0.12); }
+        .action-title { font-size: 14px; font-weight: 500; color: #001845; margin-bottom: 2px; }
+        .action-sub { font-size: 12px; color: #A8A49D; }
+
+        .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .section-title { font-family: 'DM Serif Display', serif; font-size: 22px; font-weight: 400; color: #001845; }
+        .section-link { font-size: 13px; color: #C9A84C; text-decoration: none; font-weight: 500; }
+        .section-link:hover { text-decoration: underline; }
+
+        .activite-table { background: #fff; border-radius: 16px; border: 1px solid rgba(0,0,0,0.06); overflow: hidden; }
+        .activite-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .activite-table thead tr { background: #F9F7F4; border-bottom: 1px solid rgba(0,0,0,0.06); }
+        .activite-table th { padding: 12px 20px; font-size: 11px; font-weight: 600; color: #A8A49D; text-transform: uppercase; letter-spacing: 0.08em; text-align: left; }
+        .activite-table td { padding: 14px 20px; border-bottom: 1px solid rgba(0,0,0,0.04); color: #4A4540; }
+        .activite-table tr:last-child td { border-bottom: none; }
+        .activite-table tbody tr:hover { background: #FAFAF8; }
+        .td-nom { font-weight: 500; color: #001845; }
+        .badge-periode { background: rgba(0,24,69,0.08); color: #001845; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
+        .score-val { font-weight: 600; color: #001845; }
+        .score-ne { font-size: 11px; font-weight: 600; color: #D97706; }
+        .empty-state { padding: 48px; text-align: center; color: #A8A49D; font-size: 14px; }
+
+        @media (max-width: 768px) {
+          .dash-main { margin-left: 0; padding: 24px 20px; }
+          .stats-grid { grid-template-columns: 1fr 1fr; }
+          .actions-grid { grid-template-columns: 1fr; }
+          .dash-greeting { font-size: 28px; }
+        }
+      `}</style>
+
+      <div className="dash-page">
+        <Sidebar />
+        <ImpersonationBar />
+
+        <main className="dash-main">
+          <h1 className="dash-greeting">
+            Bonjour, <em>{profil?.prenom || '—'}</em>
+          </h1>
+          <p className="dash-date">
+            {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
-        </div>
 
-        {loading ? (
-          <div className="text-slate-400 text-sm">Chargement...</div>
-        ) : (
-          <>
-            {/* Cartes stats */}
-            <div className="grid grid-cols-4 gap-4 mb-8">
-              <div className="bg-blue-900 rounded-2xl p-6 text-white">
-                <p className="text-blue-300 text-xs font-semibold uppercase tracking-wide mb-3">Score moyen</p>
-                <p className="text-5xl font-black">
-                  {stats?.scoreMoyen ?? '—'}
-                </p>
-                <p className="text-blue-300 text-sm mt-1">mots / minute</p>
-              </div>
-              <div className="bg-white rounded-2xl p-6 border border-slate-100">
-                <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-3">Élèves</p>
-                <p className="text-5xl font-black text-blue-900">{stats?.nbEleves ?? '—'}</p>
-                <p className="text-slate-400 text-sm mt-1">{stats?.nbClasses} classes</p>
-              </div>
-              <div className="bg-white rounded-2xl p-6 border border-slate-100">
-                <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-3">Passations</p>
-                <p className="text-5xl font-black text-blue-900">{stats?.nbPassations ?? '—'}</p>
-                <p className="text-slate-400 text-sm mt-1">scores enregistrés</p>
-              </div>
-              <div className="bg-white rounded-2xl p-6 border border-slate-100">
-                <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-3">Non évalués</p>
-                <p className="text-5xl font-black text-orange-500">{stats?.txNE ?? 0}%</p>
-                <p className="text-slate-400 text-sm mt-1">des élèves</p>
-              </div>
-            </div>
-
-            {/* Actions rapides */}
-            <div className="grid grid-cols-3 gap-4 mb-8">
-              <button onClick={() => router.push('/dashboard/eleves')}
-                className="bg-white rounded-2xl p-5 border border-slate-100 hover:border-blue-200 text-left transition group">
-                <div className="text-2xl mb-3">👥</div>
-                <h3 className="font-bold text-blue-900 group-hover:text-blue-700">Mes classes</h3>
-                <p className="text-slate-400 text-sm mt-1">Gérer les élèves</p>
-              </button>
-              <button onClick={() => router.push('/dashboard/saisie')}
-                className="bg-white rounded-2xl p-5 border border-slate-100 hover:border-blue-200 text-left transition group">
-                <div className="text-2xl mb-3">✏️</div>
-                <h3 className="font-bold text-blue-900 group-hover:text-blue-700">Saisie manuelle</h3>
-                <p className="text-slate-400 text-sm mt-1">Entrer les scores</p>
-              </button>
-              <button onClick={() => router.push('/dashboard/statistiques')}
-                className="bg-white rounded-2xl p-5 border border-slate-100 hover:border-blue-200 text-left transition group">
-                <div className="text-2xl mb-3">📈</div>
-                <h3 className="font-bold text-blue-900 group-hover:text-blue-700">Statistiques</h3>
-                <p className="text-slate-400 text-sm mt-1">Analyser les résultats</p>
-              </button>
-            </div>
-
-            {/* Activité récente */}
-            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-bold text-blue-900">Activité récente</h3>
-                <span className="text-xs text-slate-400">10 dernières saisies</span>
-              </div>
-              {activite.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-sm">
-                  Aucune saisie pour le moment
+          {loading ? (
+            <div style={{ color: '#A8A49D', fontSize: 14 }}>Chargement...</div>
+          ) : (
+            <>
+              <div className="stats-grid">
+                <div className="stat-card featured">
+                  <div className="stat-label">Score moyen</div>
+                  <div className="stat-num">{stats?.scoreMoyen ?? '—'}</div>
+                  <div className="stat-unit">mots / minute</div>
                 </div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Élève</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Classe</th>
-                      <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Période</th>
-                      <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Score</th>
-                      <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {activite.map((a, i) => (
-                      <tr key={i} className="hover:bg-slate-50 transition">
-                        <td className="px-6 py-3 font-semibold text-blue-900">
-                          {a.eleve_nom} {a.eleve_prenom}
-                        </td>
-                        <td className="px-6 py-3 text-slate-500">{a.classe}</td>
-                        <td className="px-6 py-3 text-center">
-                          <span className="bg-blue-50 text-blue-700 text-xs font-bold px-2 py-1 rounded-full">
-                            {a.periode}
-                          </span>
-                        </td>
-                        <td className="px-6 py-3 text-center font-bold text-blue-900">
-                          {a.non_evalue ? (
-                            <span className="text-orange-500 text-xs font-bold">N.É.</span>
-                          ) : (
-                            `${a.score} m/min`
-                          )}
-                        </td>
-                        <td className="px-6 py-3 text-right text-slate-400 text-xs">
-                          {new Date(a.created_at).toLocaleDateString('fr-FR')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </>
-        )}
+                <div className="stat-card">
+                  <div className="stat-label">Élèves</div>
+                  <div className="stat-num">{stats?.nbEleves ?? '—'}</div>
+                  <div className="stat-unit">{stats?.nbClasses} classes</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">Passations</div>
+                  <div className="stat-num">{stats?.nbPassations ?? '—'}</div>
+                  <div className="stat-unit">scores enregistrés</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">Non évalués</div>
+                  <div className={`stat-num ${(stats?.txNE || 0) > 10 ? 'stat-gold' : ''}`}>
+                    {stats?.txNE ?? 0}%
+                  </div>
+                  <div className="stat-unit">des élèves</div>
+                </div>
+              </div>
+
+              <div className="actions-grid">
+                <a href="/dashboard/eleves" className="action-card">
+                  <div className="action-icon">👥</div>
+                  <div>
+                    <div className="action-title">Mes classes</div>
+                    <div className="action-sub">Gérer les élèves</div>
+                  </div>
+                </a>
+                <a href="/dashboard/saisie" className="action-card">
+                  <div className="action-icon">✏️</div>
+                  <div>
+                    <div className="action-title">Saisie manuelle</div>
+                    <div className="action-sub">Entrer les scores</div>
+                  </div>
+                </a>
+                <a href="/dashboard/statistiques" className="action-card">
+                  <div className="action-icon">📈</div>
+                  <div>
+                    <div className="action-title">Statistiques</div>
+                    <div className="action-sub">Analyser les résultats</div>
+                  </div>
+                </a>
+              </div>
+
+              <div>
+                <div className="section-header">
+                  <h2 className="section-title">Activité récente</h2>
+                  <a href="/dashboard/statistiques" className="section-link">Voir tout →</a>
+                </div>
+                <div className="activite-table">
+                  {activite.length === 0 ? (
+                    <div className="empty-state">Aucune saisie pour le moment</div>
+                  ) : (
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Élève</th>
+                          <th>Classe</th>
+                          <th>Période</th>
+                          <th>Score</th>
+                          <th>Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activite.map((a, i) => (
+                          <tr key={i}>
+                            <td className="td-nom">{a.eleve_nom} {a.eleve_prenom}</td>
+                            <td>{a.classe}</td>
+                            <td><span className="badge-periode">{a.periode}</span></td>
+                            <td>
+                              {a.non_evalue
+                                ? <span className="score-ne">N.É.</span>
+                                : <span className="score-val">{a.score} m/min</span>
+                              }
+                            </td>
+                            <td>{new Date(a.created_at).toLocaleDateString('fr-FR')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </main>
       </div>
-    </div>
+    </>
   )
 }

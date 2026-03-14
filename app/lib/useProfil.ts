@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from './supabase'
 import { useRouter } from 'next/navigation'
+import { useImpersonation } from './useImpersonation'
 
 export type Profil = {
   id: string
@@ -13,52 +14,38 @@ export type Profil = {
 }
 
 export function useProfil() {
-  const [profil, setProfil]   = useState<Profil | null>(null)
-  const [loading, setLoading] = useState(true)
-  const router  = useRouter()
+  const [profilReel, setProfilReel] = useState<Profil | null>(null)
+  const [loading, setLoading]       = useState(true)
+  const router   = useRouter()
   const supabase = createClient()
+  const { roleImpersonne } = useImpersonation()
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { router.push('/'); return }
 
       const { data } = await supabase
-        .from('profils')
-        .select('*')
-        .eq('id', user.id)
-        .single()
+        .from('profils').select('*').eq('id', user.id).single()
 
-      if (!data) {
-        // Pas de profil configuré → rediriger
-        router.push('/dashboard/profil')
-        return
-      }
+      if (!data) { router.push('/dashboard/profil'); return }
 
-      setProfil(data)
+      setProfilReel(data)
       setLoading(false)
     })
   }, [])
 
-  // Périmètre de visibilité selon le rôle
-  function getPerimintre() {
-    if (!profil) return null
-    switch (profil.role) {
-      case 'enseignant':
-      case 'directeur':
-      case 'principal':
-        return { type: 'etablissement', id: profil.etablissement_id }
-      case 'coordo_rep':
-        return { type: 'reseau', id: null } // à implémenter Phase 3
-      case 'ien':
-        return { type: 'circonscription', id: profil.circonscription_id }
-      case 'ia_dasen':
-      case 'recteur':
-      case 'admin':
-        return { type: 'academie', id: null } // accès total
-      default:
-        return null
-    }
-  }
+  // Si impersonation active, retourner le profil simulé
+  const profil: Profil | null = profilReel && roleImpersonne
+    ? {
+        ...profilReel,
+        role:              roleImpersonne.role,
+        etablissement_id:  roleImpersonne.etablissement_id ?? profilReel.etablissement_id,
+        circonscription_id: roleImpersonne.circonscription_id ?? profilReel.circonscription_id,
+      }
+    : profilReel
 
-  return { profil, loading, getPerimintre }
+  // Le vrai rôle (pas simulé) — pour savoir si on est admin
+  const roleReel = profilReel?.role || null
+
+  return { profil, profilReel, roleReel, loading }
 }

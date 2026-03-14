@@ -15,13 +15,22 @@ export default function Home() {
     e.preventDefault()
     setLoading(true)
     setError('')
+
     const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    console.log('URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+    console.log('Email:', email)
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+    console.log('Data:', JSON.stringify(data))
+    console.log('Error:', JSON.stringify(error))
+
     if (error) {
-      setError('Email ou mot de passe incorrect')
+      setError(error.message)
       setLoading(false)
       return
     }
+
     router.push('/dashboard')
   }
 

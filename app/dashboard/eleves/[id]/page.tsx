@@ -2,66 +2,67 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/app/lib/supabase'
-import { useRouter, useParams } from 'next/navigation'
-
-type Eleve = {
-  id: string
-  nom: string
-  prenom: string
-  ine: string | null
-  actif: boolean
-}
+import { useProfil } from '@/app/lib/useProfil'
+import { useRouter } from 'next/navigation'
 
 type Classe = {
   id: string
   nom: string
   niveau: string
   etablissement: { nom: string }
+  eleves: { count: number }[]
 }
 
-export default function DetailClasse() {
-  const [classe, setClasse]   = useState<Classe | null>(null)
-  const [eleves, setEleves]   = useState<Eleve[]>([])
+export default function Eleves() {
+  const [classes, setClasses] = useState<Classe[]>([])
   const [loading, setLoading] = useState(true)
-  const [recherche, setRecherche] = useState('')
-  const router = useRouter()
-  const params = useParams()
+  const { profil, loading: profilLoading } = useProfil()
+  const router   = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) { router.push('/'); return }
-      chargerDonnees()
-    })
-  }, [])
+    if (!profilLoading && profil) chargerClasses()
+  }, [profil, profilLoading])
 
-  async function chargerDonnees() {
-    const id = params.id as string
-
-    // Charger la classe
-    const { data: classeData } = await supabase
+  async function chargerClasses() {
+    let query = supabase
       .from('classes')
-      .select('id, nom, niveau, etablissement:etablissements(nom)')
-      .eq('id', id)
-      .single()
+      .select(`
+        id, nom, niveau,
+        etablissement:etablissements(nom),
+        eleves(count)
+      `)
+      .order('niveau')
 
-    // Charger les élèves
-    const { data: elevesData } = await supabase
-      .from('eleves')
-      .select('id, nom, prenom, ine, actif')
-      .eq('classe_id', id)
-      .eq('actif', true)
-      .order('nom')
+    // Filtrer selon le rôle
+    if (profil && ['enseignant','directeur','principal'].includes(profil.role)) {
+      if (profil.etablissement_id) {
+        query = query.eq('etablissement_id', profil.etablissement_id)
+      }
+    }
+    // IEN, IA-DASEN, recteur, admin → pas de filtre = tout voir
 
-    setClasse(classeData)
-    setEleves(elevesData || [])
+    const { data } = await query
+
+    // Dédoublonner par id
+    const seen = new Set<string>()
+    const uniques = (data || []).filter(c => {
+      if (seen.has(c.id)) return false
+      seen.add(c.id)
+      return true
+    })
+
+    setClasses(uniques)
     setLoading(false)
   }
 
-  const elevesFiltres = eleves.filter(e =>
-    e.nom.toLowerCase().includes(recherche.toLowerCase()) ||
-    e.prenom.toLowerCase().includes(recherche.toLowerCase())
-  )
+  if (profilLoading || loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 ml-64 p-8">
+        <div className="text-slate-400 text-sm">Chargement...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -88,84 +89,79 @@ export default function DetailClasse() {
             📈 Statistiques
           </a>
         </nav>
+
+        {/* Profil en bas */}
+        {profil && (
+          <div className="absolute bottom-6 left-6 right-6">
+            <a href="/dashboard/profil" className="block bg-blue-800 rounded-xl p-3 hover:bg-blue-700 transition">
+              <p className="text-xs text-blue-300 mb-1">{profil.role}</p>
+              <p className="text-sm font-bold text-white">{profil.prenom} {profil.nom}</p>
+            </a>
+          </div>
+        )}
       </div>
 
       {/* Main */}
       <div className="ml-64 p-8">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-2">
-          <button onClick={() => router.push('/dashboard/eleves')}
-            className="text-slate-400 hover:text-blue-900 transition text-sm">
-            ← Mes élèves
-          </button>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h2 className="text-2xl font-bold text-blue-900">Mes élèves</h2>
+            <p className="text-slate-500 mt-1">
+              {profil?.role === 'enseignant' ? 'Mes classes' : 'Toutes les classes'}
+              {' · '}{classes.length} classe{classes.length > 1 ? 's' : ''}
+            </p>
+          </div>
+          {['admin','ia_dasen','recteur','directeur','principal'].includes(profil?.role || '') && (
+            <button onClick={() => router.push('/dashboard/import')}
+              className="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800 transition">
+              + Importer des élèves
+            </button>
+          )}
         </div>
 
-        {loading ? (
-          <div className="text-slate-400 text-sm">Chargement...</div>
-        ) : !classe ? (
-          <div className="text-red-500">Classe introuvable</div>
+        {classes.length === 0 ? (
+          <div className="bg-white rounded-2xl p-12 text-center border border-slate-100">
+            <div className="text-4xl mb-4">👥</div>
+            <h3 className="font-bold text-blue-900 mb-2">Aucune classe</h3>
+            <p className="text-slate-400 text-sm">
+              {profil?.etablissement_id
+                ? 'Aucune classe dans votre établissement'
+                : 'Configurez votre profil avec un établissement'}
+            </p>
+            <button onClick={() => router.push('/dashboard/profil')}
+              className="mt-4 bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800 transition">
+              Configurer mon profil
+            </button>
+          </div>
         ) : (
-          <>
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h2 className="text-2xl font-bold text-blue-900">{classe.nom}</h2>
-                <p className="text-slate-500 mt-1">
-                  {classe.niveau} · {classe.etablissement?.nom} · {eleves.length} élève{eleves.length > 1 ? 's' : ''}
-                </p>
+          <div className="grid grid-cols-3 gap-6">
+            {classes.map(c => (
+              <div key={c.id} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:border-blue-200 transition">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="font-bold text-blue-900 text-lg">{c.nom}</h3>
+                    <p className="text-slate-400 text-sm">{c.niveau}</p>
+                  </div>
+                  <span className="bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-1 rounded-full">
+                    {c.eleves?.[0]?.count || 0} élèves
+                  </span>
+                </div>
+                <p className="text-slate-500 text-xs">{c.etablissement?.nom}</p>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() => router.push(`/dashboard/eleves/${c.id}`)}
+                    className="flex-1 bg-blue-900 text-white text-xs font-semibold py-2 rounded-lg hover:bg-blue-800 transition">
+                    Voir les élèves
+                  </button>
+                  <button
+                    onClick={() => router.push(`/dashboard/saisie?classe=${c.id}`)}
+                    className="flex-1 border border-blue-200 text-blue-700 text-xs font-semibold py-2 rounded-lg hover:bg-blue-50 transition">
+                    Saisir scores
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => router.push(`/dashboard/saisie?classe=${classe.id}`)}
-                className="bg-blue-900 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-800 transition flex items-center gap-2">
-                ✏️ Saisir les scores
-              </button>
-            </div>
-
-            {/* Barre de recherche */}
-            <div className="mb-6">
-              <input
-                type="text"
-                placeholder="Rechercher un élève..."
-                value={recherche}
-                onChange={e => setRecherche(e.target.value)}
-                className="w-full max-w-sm border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-600 transition bg-white"
-              />
-            </div>
-
-            {/* Liste élèves */}
-            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                <span className="font-semibold text-blue-900 text-sm">
-                  {elevesFiltres.length} élève{elevesFiltres.length > 1 ? 's' : ''}
-                </span>
-              </div>
-              <table className="w-full">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Nom</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Prénom</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">INE</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Dernier score</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Évolution</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {elevesFiltres.map(e => (
-                    <tr key={e.id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4 font-semibold text-blue-900">{e.nom}</td>
-                      <td className="px-6 py-4 text-slate-600">{e.prenom}</td>
-                      <td className="px-6 py-4 text-slate-400 text-sm font-mono">{e.ine || '—'}</td>
-                      <td className="px-6 py-4">
-                        <span className="text-slate-400 text-sm">—</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-slate-400 text-sm">—</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
+            ))}
+          </div>
         )}
       </div>
     </div>

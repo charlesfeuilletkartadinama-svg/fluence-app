@@ -12,10 +12,7 @@ const PDFDownloadLink = dynamic(
   { ssr: false, loading: () => <span>Préparation...</span> }
 )
 
-const RapportPDF = dynamic(
-  () => import('./RapportPDF').then(mod => mod.RapportPDF),
-  { ssr: false }
-)
+import { RapportPDF } from './RapportPDF'
 
 type DonneesRapport = {
   classe: string

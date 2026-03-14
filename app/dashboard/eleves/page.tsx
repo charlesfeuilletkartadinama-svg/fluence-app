@@ -101,9 +101,11 @@ export default function Eleves() {
                 </div>
                 <p className="text-slate-500 text-xs">{c.etablissement?.nom}</p>
                 <div className="mt-4 flex gap-2">
-                  <button className="flex-1 bg-blue-900 text-white text-xs font-semibold py-2 rounded-lg hover:bg-blue-800 transition">
-                    Voir les élèves
-                  </button>
+                  <button
+                    onClick={() => router.push(`/dashboard/eleves/${c.id}`)}
+                    className="flex-1 bg-blue-900 text-white text-xs font-semibold py-2 rounded-lg hover:bg-blue-800 transition">
+                     Voir les élèves
+                </button>
                   <button className="flex-1 border border-blue-200 text-blue-700 text-xs font-semibold py-2 rounded-lg hover:bg-blue-50 transition">
                     Saisir scores
                   </button>

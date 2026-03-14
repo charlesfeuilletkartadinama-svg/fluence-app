@@ -10,7 +10,7 @@ type Etablissement = {
   nom: string
   type: string
   type_reseau: string
-  circonscription: { nom: string } | null
+  circonscription: { nom: string }[] | null
 }
 
 type Periode = {
@@ -169,7 +169,7 @@ export default function Admin() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-slate-500">
-                        {e.circonscription?.nom || '—'}
+                        {(e.circonscription as any)?.[0]?.nom || '—'}
                       </td>
                     </tr>
                   ))}

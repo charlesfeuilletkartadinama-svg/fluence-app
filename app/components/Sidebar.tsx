@@ -31,9 +31,16 @@ export default function Sidebar() {
   const isReseau    = profil?.role === 'coordo_rep' || profil?.role === 'ien'
   const isGlobal    = profil?.role === 'ia_dasen' || profil?.role === 'recteur'
 
+  const isEnseignant = profil?.role === 'enseignant'
+
   const NAV = [
     { href: '/dashboard',              icon: '📊', label: 'Tableau de bord' },
-    { href: '/dashboard/eleves',       icon: '👥', label: (isReseau || isGlobal) ? "Réseau d'élèves" : isDirection ? 'Détail élève' : 'Mes élèves' },
+    ...(isEnseignant ? [
+      { href: '/dashboard/eleves',     icon: '🏫', label: 'Mes classes'      },
+      { href: '/dashboard/mes-eleves', icon: '👥', label: 'Mes élèves'       },
+    ] : [
+      { href: '/dashboard/eleves',     icon: '👥', label: (isReseau || isGlobal) ? "Réseau d'élèves" : isDirection ? 'Détail élève' : 'Mes élèves' },
+    ]),
     { href: '/dashboard/saisie',       icon: '✏️', label: 'Saisie'           },
     { href: '/dashboard/statistiques', icon: '📈', label: 'Statistiques'     },
     { href: '/dashboard/groupes',      icon: '🎯', label: 'Groupes & Remédiation' },

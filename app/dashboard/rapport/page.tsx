@@ -212,7 +212,7 @@ function RapportContent() {
     <>
       <Sidebar />
       <ImpersonationBar />
-      <div className="ml-[260px] p-8 max-w-2xl min-h-screen bg-slate-50 relative z-0">
+      <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, maxWidth: 720, minHeight: '100vh', background: 'var(--bg-gray)' }}>
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-blue-900">Générer un rapport</h2>
           <p className="text-slate-500 mt-1">Rapport PDF par classe et par période</p>

@@ -247,21 +247,32 @@ function Saisie() {
 
       <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, maxWidth: 900, minHeight: '100vh', background: 'var(--bg-light)' }}>
 
-        {/* ÉTAPE 0 : Choix de la classe (direction uniquement) */}
+        {/* ÉTAPE 0 : Choix de la classe */}
         {etape === 'classe' && (
           <>
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-blue-900">Saisie des scores</h2>
-              <p className="text-slate-500 mt-1">Choisissez la classe pour laquelle vous souhaitez saisir des scores</p>
+            <div style={{ marginBottom: 32 }}>
+              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode Saisie</h2>
+              <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez la classe</p>
             </div>
-            <div className="bg-white rounded-2xl p-6 border border-slate-100">
-              <h3 className="font-bold text-blue-900 mb-4">Quelle classe ?</h3>
-              <div className="grid grid-cols-2 gap-3">
+            <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>Choisir une classe</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {classesEtab.map(c => (
                   <button key={c.id} onClick={() => selectionnerClasse(c)}
-                    className="border-2 border-slate-200 hover:border-blue-600 rounded-xl p-4 text-left transition">
-                    <div className="font-bold text-blue-900 text-base">{c.nom}</div>
-                    <div className="text-slate-500 text-sm">{c.niveau}</div>
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      border: '1.5px solid var(--border-light)', borderRadius: 12, padding: '16px 20px',
+                      background: 'var(--bg-gray)', cursor: 'pointer', transition: 'all 0.15s', textAlign: 'left',
+                      fontFamily: 'var(--font-sans)',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary-dark)'; (e.currentTarget as HTMLElement).style.background = 'white' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-gray)' }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--primary-dark)' }}>{c.nom}</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>{c.niveau}</div>
+                    </div>
+                    <span style={{ color: 'var(--text-tertiary)', fontSize: 18 }}>→</span>
                   </button>
                 ))}
               </div>

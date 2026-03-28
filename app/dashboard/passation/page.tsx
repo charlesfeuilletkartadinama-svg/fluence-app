@@ -64,12 +64,29 @@ function PassationContent() {
   useEffect(() => {
     if (!profil || classeId) return
     if (profil.role === 'enseignant') chargerClassesEnseignant()
+    else if (['directeur', 'principal'].includes(profil.role)) chargerClassesDirection()
   }, [profil])
 
   // Nettoyage chrono
   useEffect(() => {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [])
+
+  async function chargerClassesDirection() {
+    if (!profil?.etablissement_id) { setLoading(false); return }
+    const { data } = await supabase
+      .from('classes').select('id, nom, niveau, etablissement_id')
+      .eq('etablissement_id', profil.etablissement_id).order('niveau')
+    const classes = (data || []) as Classe[]
+    if (classes.length === 0) { setLoading(false); return }
+    if (classes.length === 1) {
+      await selectionnerClasse(classes[0])
+    } else {
+      setClassesEtab(classes)
+      setEtape('classe')
+      setLoading(false)
+    }
+  }
 
   async function chargerClassesEnseignant() {
     if (!profil) return

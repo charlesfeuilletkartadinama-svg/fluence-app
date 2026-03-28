@@ -211,14 +211,14 @@ function Saisie() {
     setEtape('done')
   }
 
-  if (loading) return <div className="ml-[260px] p-8 text-slate-400">Chargement...</div>
+  if (loading) return <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32 }} className="text-slate-400">Chargement...</div>
 
   return (
     <>
       <Sidebar />
       <ImpersonationBar />
 
-      <div className="ml-[260px] p-8 max-w-4xl min-h-screen bg-slate-50">
+      <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, maxWidth: 900, minHeight: '100vh', background: 'var(--bg-light)' }}>
 
         {/* ÉTAPE 0 : Choix de la classe (direction uniquement) */}
         {etape === 'classe' && (

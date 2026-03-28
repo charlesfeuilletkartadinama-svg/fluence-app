@@ -371,6 +371,24 @@ export default function Admin() {
   )
 }
 
+// ── Styles partagés ──────────────────────────────────────────────────────
+const A = {
+  card:       { background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden' as const },
+  th:         { padding: '12px 20px', textAlign: 'left' as const, fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase' as const, background: 'var(--bg-gray)', fontFamily: 'var(--font-sans)', borderBottom: '1.5px solid var(--border-light)' },
+  thC:        { padding: '12px 20px', textAlign: 'center' as const, fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase' as const, background: 'var(--bg-gray)', fontFamily: 'var(--font-sans)', borderBottom: '1.5px solid var(--border-light)' },
+  td:         { padding: '14px 20px', fontSize: 14, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', borderBottom: '1px solid var(--border-light)' },
+  tdBold:     { padding: '14px 20px', fontSize: 14, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', borderBottom: '1px solid var(--border-light)' },
+  tdC:        { padding: '14px 20px', fontSize: 14, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', textAlign: 'center' as const, borderBottom: '1px solid var(--border-light)' },
+  btnPrimary: { background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '9px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' as const },
+  btnGhost:   { background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)', padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' as const },
+  btnDanger:  { background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' as const },
+  input:      { border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '8px 12px', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none', background: 'white' },
+  select:     { width: '100%', border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '8px 12px', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none', background: 'white' },
+  label:      { fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.2, textTransform: 'uppercase' as const, fontFamily: 'var(--font-sans)', display: 'block' as const, marginBottom: 6 },
+  sectionTitle: { fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: '0 0 16px 0' },
+  emptyState: { background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 40, textAlign: 'center' as const, fontSize: 14, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' },
+}
+
 function AffectationsTab({ supabase, etablissements, coordoEtabs, ienEtabs, onSupprimerCoordo, onSupprimerIen, onRefresh }: {
   supabase: any
   etablissements: Etablissement[]
@@ -417,61 +435,47 @@ function AffectationsTab({ supabase, etablissements, coordoEtabs, ienEtabs, onSu
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
 
       {/* ── Section IEN ── */}
       <div>
-        <h3 className="font-bold text-blue-900 mb-4">Affectations IEN → Établissements</h3>
-
-        {/* Formulaire ajout IEN */}
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-4 flex gap-3 items-end flex-wrap">
+        <h3 style={A.sectionTitle}>Affectations IEN → Établissements</h3>
+        <div style={{ ...A.card, padding: 20, marginBottom: 12, display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' as const }}>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">IEN</label>
-            <select value={newIenId} onChange={e => setNewIenId(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            <label style={A.label}>IEN</label>
+            <select value={newIenId} onChange={e => setNewIenId(e.target.value)} style={A.select}>
               <option value="">Choisir un IEN…</option>
               {iens.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
             </select>
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Établissement</label>
-            <select value={newIenEtab} onChange={e => setNewIenEtab(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            <label style={A.label}>Établissement</label>
+            <select value={newIenEtab} onChange={e => setNewIenEtab(e.target.value)} style={A.select}>
               <option value="">Choisir un établissement…</option>
               {etablissements.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
             </select>
           </div>
           <button onClick={ajouterIen} disabled={!newIenId || !newIenEtab || saving}
-            className="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800 transition disabled:opacity-40">
+            style={{ ...A.btnPrimary, opacity: (!newIenId || !newIenEtab || saving) ? 0.4 : 1 }}>
             + Rattacher
           </button>
         </div>
-
         {ienEtabs.length === 0 ? (
-          <p className="text-sm text-slate-400 bg-white rounded-xl p-6 text-center border border-slate-100">
-            Aucune affectation IEN pour l'instant.
-          </p>
+          <div style={A.emptyState}>Aucune affectation IEN pour l'instant.</div>
         ) : (
-          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">IEN</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Établissement</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
+          <div style={A.card}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                <th style={A.th}>IEN</th>
+                <th style={A.th}>Établissement</th>
+                <th style={A.thC}>Action</th>
+              </tr></thead>
+              <tbody>
                 {ienEtabs.map(ie => (
-                  <tr key={ie.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-semibold text-blue-900">{ie.ien?.prenom} {ie.ien?.nom}</td>
-                    <td className="px-6 py-4 text-slate-600">{ie.etablissement?.nom || '—'}</td>
-                    <td className="px-6 py-4 text-center">
-                      <button onClick={() => onSupprimerIen(ie.id)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition">
-                        Retirer
-                      </button>
-                    </td>
+                  <tr key={ie.id}>
+                    <td style={A.tdBold}>{ie.ien?.prenom} {ie.ien?.nom}</td>
+                    <td style={A.td}>{ie.etablissement?.nom || '—'}</td>
+                    <td style={A.tdC}><button onClick={() => onSupprimerIen(ie.id)} style={A.btnDanger}>Retirer</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -482,57 +486,43 @@ function AffectationsTab({ supabase, etablissements, coordoEtabs, ienEtabs, onSu
 
       {/* ── Section Coordo ── */}
       <div>
-        <h3 className="font-bold text-blue-900 mb-4">Affectations Coordo REP/REP+ → Établissements</h3>
-
-        {/* Formulaire ajout Coordo */}
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-4 flex gap-3 items-end flex-wrap">
+        <h3 style={A.sectionTitle}>Affectations Coordo REP/REP+ → Établissements</h3>
+        <div style={{ ...A.card, padding: 20, marginBottom: 12, display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' as const }}>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Coordonnateur</label>
-            <select value={newCoordoId} onChange={e => setNewCoordoId(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            <label style={A.label}>Coordonnateur</label>
+            <select value={newCoordoId} onChange={e => setNewCoordoId(e.target.value)} style={A.select}>
               <option value="">Choisir un coordo…</option>
               {coordos.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
             </select>
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Établissement</label>
-            <select value={newCoordoEtab} onChange={e => setNewCoordoEtab(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            <label style={A.label}>Établissement</label>
+            <select value={newCoordoEtab} onChange={e => setNewCoordoEtab(e.target.value)} style={A.select}>
               <option value="">Choisir un établissement…</option>
               {etablissements.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
             </select>
           </div>
           <button onClick={ajouterCoordo} disabled={!newCoordoId || !newCoordoEtab || saving}
-            className="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800 transition disabled:opacity-40">
+            style={{ ...A.btnPrimary, opacity: (!newCoordoId || !newCoordoEtab || saving) ? 0.4 : 1 }}>
             + Rattacher
           </button>
         </div>
-
         {coordoEtabs.length === 0 ? (
-          <p className="text-sm text-slate-400 bg-white rounded-xl p-6 text-center border border-slate-100">
-            Aucune affectation coordo pour l'instant.
-          </p>
+          <div style={A.emptyState}>Aucune affectation coordo pour l'instant.</div>
         ) : (
-          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Coordonnateur</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Établissement</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
+          <div style={A.card}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                <th style={A.th}>Coordonnateur</th>
+                <th style={A.th}>Établissement</th>
+                <th style={A.thC}>Action</th>
+              </tr></thead>
+              <tbody>
                 {coordoEtabs.map(ce => (
-                  <tr key={ce.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-semibold text-blue-900">{ce.coordo?.prenom} {ce.coordo?.nom}</td>
-                    <td className="px-6 py-4 text-slate-600">{ce.etablissement?.nom || '—'}</td>
-                    <td className="px-6 py-4 text-center">
-                      <button onClick={() => onSupprimerCoordo(ce.id)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition">
-                        Retirer
-                      </button>
-                    </td>
+                  <tr key={ce.id}>
+                    <td style={A.tdBold}>{ce.coordo?.prenom} {ce.coordo?.nom}</td>
+                    <td style={A.td}>{ce.etablissement?.nom || '—'}</td>
+                    <td style={A.tdC}><button onClick={() => onSupprimerCoordo(ce.id)} style={A.btnDanger}>Retirer</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -554,36 +544,38 @@ function PeriodeRow({ periode, onToggleActif, onToggleSaisie, onUpdateDates }: {
   const [fin,   setFin]   = useState(periode.date_fin   || '')
 
   return (
-    <tr className="hover:bg-slate-50 transition">
-      <td className="px-5 py-3 font-bold text-blue-900 text-lg">{periode.code}</td>
-      <td className="px-5 py-3 text-slate-600">{periode.label}</td>
-      <td className="px-5 py-3">
+    <tr>
+      <td style={{ ...A.tdBold, fontSize: 16 }}>{periode.code}</td>
+      <td style={A.td}>{periode.label}</td>
+      <td style={A.td}>
         <input type="date" value={debut}
           onChange={e => setDebut(e.target.value)}
           onBlur={() => onUpdateDates(debut || null, fin || null)}
-          className="border border-slate-200 rounded-lg px-2 py-1 text-sm w-36" />
+          style={{ ...A.input, padding: '6px 10px', fontSize: 13, width: 140 }} />
       </td>
-      <td className="px-5 py-3">
+      <td style={A.td}>
         <input type="date" value={fin}
           onChange={e => setFin(e.target.value)}
           onBlur={() => onUpdateDates(debut || null, fin || null)}
-          className="border border-slate-200 rounded-lg px-2 py-1 text-sm w-36" />
+          style={{ ...A.input, padding: '6px 10px', fontSize: 13, width: 140 }} />
       </td>
-      <td className="px-5 py-3 text-center">
-        <button onClick={onToggleSaisie}
-          className={`text-xs font-bold px-3 py-1 rounded-full transition
-            ${periode.saisie_ouverte
-              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-              : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+      <td style={A.tdC}>
+        <button onClick={onToggleSaisie} style={{
+          fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
+          background: periode.saisie_ouverte ? '#dcfce7' : 'var(--bg-gray)',
+          color: periode.saisie_ouverte ? '#16a34a' : 'var(--text-tertiary)',
+          fontFamily: 'var(--font-sans)',
+        }}>
           {periode.saisie_ouverte ? 'Ouverte' : 'Fermée'}
         </button>
       </td>
-      <td className="px-5 py-3 text-center">
-        <button onClick={onToggleActif}
-          className={`text-xs font-bold px-3 py-1 rounded-full transition
-            ${periode.actif
-              ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-              : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
+      <td style={A.tdC}>
+        <button onClick={onToggleActif} style={{
+          fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
+          background: periode.actif ? '#dbeafe' : 'var(--bg-gray)',
+          color: periode.actif ? '#1d4ed8' : 'var(--text-tertiary)',
+          fontFamily: 'var(--font-sans)',
+        }}>
           {periode.actif ? 'Active' : 'Inactive'}
         </button>
       </td>
@@ -592,6 +584,11 @@ function PeriodeRow({ periode, onToggleActif, onToggleSaisie, onUpdateDates }: {
 }
 
 type UserRow = { id: string; nom: string; prenom: string; role: string; etablissement: { nom: string } | null }
+
+const ROLE_LABELS: Record<string, string> = {
+  enseignant: 'Enseignant', directeur: 'Directeur', principal: 'Principal',
+  coordo_rep: 'Coordo REP+', ien: 'IEN', ia_dasen: 'IA-DASEN', recteur: 'Recteur', admin: 'Admin',
+}
 
 function UtilisateursTab({ supabase }: { supabase: any }) {
   const [users, setUsers]         = useState<UserRow[]>([])
@@ -605,17 +602,6 @@ function UtilisateursTab({ supabase }: { supabase: any }) {
       .then(({ data }: any) => setUsers(data || []))
   }, [])
 
-  const ROLE_LABELS: Record<string, string> = {
-    enseignant: 'Enseignant',
-    directeur:  'Directeur',
-    principal:  'Principal',
-    coordo_rep: 'Coordo REP+',
-    ien:        'IEN',
-    ia_dasen:   'IA-DASEN',
-    recteur:    'Recteur',
-    admin:      'Admin',
-  }
-
   const roleCounts: Record<string, number> = {}
   users.forEach(u => { roleCounts[u.role] = (roleCounts[u.role] || 0) + 1 })
 
@@ -628,59 +614,58 @@ function UtilisateursTab({ supabase }: { supabase: any }) {
   return (
     <div>
       {/* Chips par rôle */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8, marginBottom: 16 }}>
         {Object.entries(roleCounts).sort().map(([role, count]) => (
           <button key={role}
             onClick={() => setRoleFilter(roleFilter === role ? '' : role)}
-            className={`text-xs font-bold px-3 py-1.5 rounded-full border transition
-              ${roleFilter === role
-                ? 'bg-blue-900 text-white border-blue-900'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'}`}>
+            style={{
+              fontSize: 12, fontWeight: 700, padding: '6px 14px', borderRadius: 20, cursor: 'pointer',
+              fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
+              background: roleFilter === role ? 'var(--primary-dark)' : 'white',
+              color: roleFilter === role ? 'white' : 'var(--text-secondary)',
+              border: `1.5px solid ${roleFilter === role ? 'var(--primary-dark)' : 'var(--border-light)'}`,
+            }}>
             {ROLE_LABELS[role] || role} · {count}
           </button>
         ))}
       </div>
 
       {/* Barre de recherche */}
-      <div className="relative mb-4">
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
         <input type="text" placeholder="Rechercher un utilisateur…"
           value={search} onChange={e => setSearch(e.target.value)}
-          className="w-full border border-slate-200 rounded-xl px-4 py-2.5 pl-10 text-sm outline-none focus:border-blue-600 bg-white" />
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base pointer-events-none">🔍</span>
+          style={{ ...A.input, width: '100%', paddingLeft: 36, boxSizing: 'border-box' as const }} />
         {search && (
           <button onClick={() => setSearch('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">✕</button>
+            style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: 14 }}>✕</button>
         )}
       </div>
 
-      <h3 className="font-bold text-blue-900 mb-3">
+      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 12 }}>
         {filtered.length} utilisateur{filtered.length > 1 ? 's' : ''}
         {(search || roleFilter) ? ` (filtrés sur ${users.length})` : ''}
-      </h3>
+      </p>
 
-      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Nom</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Rôle</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Établissement</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
+      <div style={A.card}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>
+            <th style={A.th}>Nom</th>
+            <th style={A.th}>Rôle</th>
+            <th style={A.th}>Établissement</th>
+          </tr></thead>
+          <tbody>
             {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-6 py-8 text-center text-slate-400 text-sm">Aucun utilisateur trouvé</td>
-              </tr>
+              <tr><td colSpan={3} style={{ ...A.tdC, padding: 40, color: 'var(--text-tertiary)' }}>Aucun utilisateur trouvé</td></tr>
             ) : filtered.map(u => (
-              <tr key={u.id} className="hover:bg-slate-50">
-                <td className="px-6 py-4 font-semibold text-blue-900">{u.prenom} {u.nom}</td>
-                <td className="px-6 py-4">
-                  <span className="text-xs font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-600">
+              <tr key={u.id}>
+                <td style={A.tdBold}>{u.prenom} {u.nom}</td>
+                <td style={A.td}>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'var(--bg-gray)', color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
                     {ROLE_LABELS[u.role] || u.role}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-slate-500">{u.etablissement?.nom || '—'}</td>
+                <td style={A.td}>{u.etablissement?.nom || '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -705,21 +690,21 @@ function NormeRow({ norme, onSave }: { norme: Norme; onSave: (n: Norme) => void 
   }
 
   return (
-    <tr className="hover:bg-slate-50">
-      <td className="px-6 py-3 font-bold text-blue-900">{norme.niveau}</td>
-      <td className="px-6 py-3 text-center">
+    <tr>
+      <td style={A.tdBold}>{norme.niveau}</td>
+      <td style={A.tdC}>
         <input type="number" value={min}
           onChange={e => setMin(e.target.value)}
           onBlur={handleBlur}
-          className="w-20 border border-slate-200 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:border-blue-500" />
-        <span className="text-xs text-slate-400 ml-1">m/min</span>
+          style={{ ...A.input, width: 80, textAlign: 'center' as const, padding: '6px 8px' }} />
+        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 4, fontFamily: 'var(--font-sans)' }}>m/min</span>
       </td>
-      <td className="px-6 py-3 text-center">
+      <td style={A.tdC}>
         <input type="number" value={attendu}
           onChange={e => setAttendu(e.target.value)}
           onBlur={handleBlur}
-          className="w-20 border border-slate-200 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:border-blue-500" />
-        <span className="text-xs text-slate-400 ml-1">m/min</span>
+          style={{ ...A.input, width: 80, textAlign: 'center' as const, padding: '6px 8px' }} />
+        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 4, fontFamily: 'var(--font-sans)' }}>m/min</span>
       </td>
     </tr>
   )
@@ -787,50 +772,51 @@ function NormesTab({ supabase, periodes, profil }: { supabase: any; periodes: Pe
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <span className="text-sm font-semibold text-slate-500">Période :</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' as const }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>Période :</span>
         {periodes.map(p => (
           <button key={p.id}
             onClick={() => setPeriodeId(p.id)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition border
-              ${periodeId === p.id
-                ? 'bg-blue-900 text-white border-blue-900'
-                : 'border-slate-200 text-slate-600 hover:border-blue-400'}`}>
+            style={{
+              padding: '6px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
+              background: periodeId === p.id ? 'var(--primary-dark)' : 'white',
+              color: periodeId === p.id ? 'white' : 'var(--text-secondary)',
+              border: `1.5px solid ${periodeId === p.id ? 'var(--primary-dark)' : 'var(--border-light)'}`,
+            }}>
             {p.code}
           </button>
         ))}
         <button onClick={chargerDefaut} disabled={saving}
-          className="ml-auto bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800 transition disabled:opacity-50">
+          style={{ ...A.btnPrimary, marginLeft: 'auto', opacity: saving ? 0.5 : 1 }}>
           {saving ? 'Enregistrement...' : 'Charger normes par défaut'}
         </button>
       </div>
 
       {normes.length === 0 ? (
-        <div className="bg-white rounded-2xl p-8 text-center border border-slate-100">
-          <p className="text-slate-400 text-sm">
-            {periodeId ? 'Aucune norme configurée pour cette période.' : 'Sélectionnez une période ci-dessus.'}
-            {' '}Cliquez sur "Charger normes par défaut" pour initialiser.
-          </p>
+        <div style={A.emptyState}>
+          {periodeId ? 'Aucune norme configurée pour cette période.' : 'Sélectionnez une période ci-dessus.'}
+          {' '}Cliquez sur "Charger normes par défaut" pour initialiser.
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50">
+        <div style={A.card}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Niveau</th>
-                <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Seuil minimum</th>
-                <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Score attendu</th>
+                <th style={A.th}>Niveau</th>
+                <th style={A.thC}>Seuil minimum</th>
+                <th style={A.thC}>Score attendu</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody>
               {normes.map(n => (
                 <NormeRow key={n.id} norme={n} onSave={sauvegarderNorme} />
               ))}
             </tbody>
           </table>
-          <p className="text-xs text-slate-400 px-6 py-3 bg-slate-50 border-t border-slate-100">
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', padding: '10px 20px', background: 'var(--bg-gray)', borderTop: '1px solid var(--border-light)', fontFamily: 'var(--font-sans)' }}>
             Cliquez sur une valeur pour la modifier · Tab ou clic ailleurs pour enregistrer
-          </p>
+          </div>
         </div>
       )}
     </div>

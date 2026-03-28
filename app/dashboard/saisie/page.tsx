@@ -290,18 +290,20 @@ function Saisie() {
             <div className="space-y-3">
               {eleves.map((eleve, idx) => (
                 <div key={eleve.id}
-                  className={`bg-white rounded-2xl border p-5 transition
-                    ${eleve.ne ? 'border-orange-200 bg-orange-50' :
-                      eleve.score !== '' ? 'border-green-200' : 'border-slate-100'}`}>
-                  <div className="flex items-center gap-4">
+                  style={{
+                    background: eleve.ne ? '#fff7ed' : eleve.score !== '' ? '#f0fdf4' : 'white',
+                    border: `1.5px solid ${eleve.ne ? '#fed7aa' : eleve.score !== '' ? '#bbf7d0' : 'var(--border-light)'}`,
+                    borderRadius: 16, padding: '18px 24px', transition: 'all 0.15s',
+                  }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, minHeight: 48 }}>
                     {/* Nom */}
-                    <div className="flex-1">
-                      <span className="font-bold text-blue-900">{eleve.nom}</span>
-                      <span className="text-slate-500 ml-2">{eleve.prenom}</span>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{eleve.nom}</span>
+                      <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 15 }}>{eleve.prenom}</span>
                     </div>
 
                     {/* Score */}
-                    <div className="flex items-center gap-3">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <input
                         type="number"
                         value={eleve.score}
@@ -309,16 +311,26 @@ function Saisie() {
                         disabled={eleve.ne}
                         placeholder="—"
                         min={0} max={500}
-                        className="w-24 text-center border border-slate-200 rounded-xl px-3 py-2 text-lg font-bold text-blue-900 outline-none focus:border-blue-600 transition disabled:opacity-30 disabled:bg-slate-50"
+                        style={{
+                          width: 88, textAlign: 'center', border: '1.5px solid var(--border-main)',
+                          borderRadius: 12, padding: '10px 12px', fontSize: 18, fontWeight: 700,
+                          color: 'var(--primary-dark)', outline: 'none', fontFamily: 'var(--font-sans)',
+                          background: eleve.ne ? 'var(--bg-gray)' : 'white', opacity: eleve.ne ? 0.4 : 1,
+                        }}
                       />
-                      <span className="text-slate-400 text-xs">mots/min</span>
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>mots/min</span>
                     </div>
 
                     {/* N.É. */}
                     <button
                       onClick={() => updateEleve(idx, 'ne', !eleve.ne)}
-                      className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition
-                        ${eleve.ne ? 'border-orange-400 bg-orange-100 text-orange-700' : 'border-slate-200 text-slate-400 hover:border-orange-300'}`}>
+                      style={{
+                        padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
+                        border: eleve.ne ? '2px solid #fb923c' : '2px solid var(--border-main)',
+                        background: eleve.ne ? '#fff7ed' : 'transparent',
+                        color: eleve.ne ? '#c2410c' : 'var(--text-tertiary)',
+                        cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
+                      }}>
                       N.É.
                     </button>
                   </div>

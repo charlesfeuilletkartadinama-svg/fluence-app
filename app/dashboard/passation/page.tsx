@@ -291,97 +291,97 @@ function PassationContent() {
 
         {/* ── Écran passation élève ── */}
         {etape === 'eleve' && eleve && (
-          <div className="min-h-screen bg-blue-900 flex flex-col">
+          <div style={{ minHeight: '100vh', background: 'var(--primary-dark)', display: 'flex', flexDirection: 'column' }}>
+
             {/* Top bar */}
-            <div className="flex items-center justify-between px-6 py-4 bg-black/20">
-              <span className="text-blue-300 text-sm font-semibold">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <button onClick={() => setEtape('liste')}
+                style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '8px 16px', borderRadius: 10, fontSize: 13, fontFamily: 'var(--font-sans)', cursor: 'pointer', fontWeight: 600 }}>
+                ← Retour à la liste
+              </button>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
                 Élève {eleveIdx + 1} / {eleves.length}
               </span>
-              <button onClick={() => setEtape('liste')}
-                className="bg-white/20 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-white/30 transition">
-                ✕ Fermer
-              </button>
             </div>
 
             {/* Nom élève */}
-            <div className="text-center pt-8 pb-4 px-6">
-              <h2 className="text-4xl font-black text-white tracking-wide">{eleve.nom}</h2>
-              <p className="text-blue-300 text-xl mt-1">{eleve.prenom}</p>
+            <div style={{ textAlign: 'center', padding: '32px 24px 16px' }}>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 8 }}>Lecture en cours</div>
+              <h2 style={{ fontSize: 40, fontWeight: 900, color: 'white', margin: 0, fontFamily: 'var(--font-sans)', letterSpacing: -1 }}>{eleve.nom}</h2>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 20, marginTop: 4, fontFamily: 'var(--font-sans)' }}>{eleve.prenom}</p>
             </div>
 
             {/* Chrono */}
-            <div className="text-center py-4">
-              <div className="text-8xl font-black transition-colors duration-300"
-                style={{ color: chronoCouleur, fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ textAlign: 'center', padding: '8px 24px 16px' }}>
+              <div style={{ fontSize: 96, fontWeight: 900, color: chronoCouleur, fontVariantNumeric: 'tabular-nums', lineHeight: 1, transition: 'color 0.3s', fontFamily: 'var(--font-sans)' }}>
                 {Math.floor(secondes/60)}:{String(secondes%60).padStart(2,'0')}
               </div>
-              <p className="text-blue-400 text-sm mt-2">
-                {chronoActif ? 'En cours...' : chronoTermine ? 'Temps écoulé !' : 'Prêt'}
+              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 8, fontFamily: 'var(--font-sans)' }}>
+                {chronoActif ? 'Chronomètre en cours' : chronoTermine ? 'Temps écoulé' : 'Prêt à démarrer'}
               </p>
             </div>
 
             {/* Boutons chrono */}
-            <div className="flex gap-3 px-6 justify-center mb-4">
+            <div style={{ display: 'flex', gap: 12, padding: '0 28px 16px', justifyContent: 'center' }}>
               {!chronoActif && !chronoTermine && (
                 <button onClick={demarrerChrono}
-                  className="flex-1 max-w-xs bg-green-500 text-white py-4 rounded-2xl text-lg font-bold hover:bg-green-400 transition">
-                  ▶ Démarrer
+                  style={{ flex: 1, maxWidth: 320, background: '#22c55e', color: 'white', border: 'none', padding: '16px', borderRadius: 16, fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer', letterSpacing: 0.5 }}>
+                  ▶ Démarrer les 60 secondes
                 </button>
               )}
               {chronoActif && (
                 <button onClick={arreterChrono}
-                  className="flex-1 max-w-xs bg-orange-500 text-white py-4 rounded-2xl text-lg font-bold hover:bg-orange-400 transition">
+                  style={{ flex: 1, maxWidth: 320, background: '#f97316', color: 'white', border: 'none', padding: '16px', borderRadius: 16, fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
                   ⏹ Arrêter
                 </button>
               )}
               {(chronoActif || chronoTermine) && (
                 <button onClick={resetChrono}
-                  className="bg-white/20 text-white px-6 py-4 rounded-2xl text-lg font-bold hover:bg-white/30 transition">
+                  style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', border: 'none', padding: '16px 20px', borderRadius: 16, fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
                   ↺
                 </button>
               )}
             </div>
 
-            {/* Bouton erreur */}
+            {/* Bouton erreur — grand bouton tactile */}
             {chronoActif && (
-              <div className="px-6 mb-4">
+              <div style={{ padding: '0 28px 16px' }}>
                 <button onClick={() => setNbErreurs(n => n+1)}
-                  className="w-full bg-red-500 text-white py-5 rounded-2xl text-xl font-black hover:bg-red-400 active:scale-95 transition shadow-lg shadow-red-900/40">
-                  ✗ Erreur de lecture
-                  {nbErreurs > 0 && <span className="ml-3 text-base">({nbErreurs})</span>}
+                  style={{ width: '100%', background: 'rgba(239,68,68,0.15)', border: '2px solid rgba(239,68,68,0.4)', color: '#fca5a5', padding: '20px', borderRadius: 16, fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-sans)', cursor: 'pointer', letterSpacing: 0.3 }}>
+                  ✗ Erreur de lecture {nbErreurs > 0 && <span style={{ fontSize: 15, opacity: 0.8 }}>({nbErreurs})</span>}
                 </button>
               </div>
             )}
 
             {/* Saisie après chrono */}
             {chronoTermine && (
-              <div className="px-6 mb-4 space-y-3">
-                <div className="bg-white/10 rounded-2xl p-4">
-                  <label className="text-blue-300 text-sm font-semibold block mb-2">
-                    N° du dernier mot lu :
+              <div style={{ padding: '0 28px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 16, padding: 20 }}>
+                  <label style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 10, fontFamily: 'var(--font-sans)' }}>
+                    N° du dernier mot lu
                   </label>
                   <input
                     type="number"
                     value={dernierMot}
                     onChange={e => setDernierMot(e.target.value)}
                     placeholder="ex: 87"
-                    className="w-full bg-white/20 text-white text-3xl font-bold text-center rounded-xl py-3 outline-none placeholder:text-blue-400 border border-white/20 focus:border-white/60"
                     autoFocus
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.1)', border: '1.5px solid rgba(255,255,255,0.2)', color: 'white', fontSize: 32, fontWeight: 700, textAlign: 'center', borderRadius: 12, padding: '12px', outline: 'none', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' }}
                   />
                   {nbErreurs > 0 && (
-                    <p className="text-blue-300 text-xs mt-2 text-center">
+                    <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 8, textAlign: 'center', fontFamily: 'var(--font-sans)' }}>
                       {nbErreurs} erreur{nbErreurs > 1 ? 's' : ''} comptabilisée{nbErreurs > 1 ? 's' : ''}
                     </p>
                   )}
                 </div>
 
                 {scoreCalc !== null && (
-                  <div className="bg-green-500/20 border border-green-400/30 rounded-2xl p-4 text-center">
-                    <p className="text-green-300 text-sm font-semibold mb-1">Score calculé</p>
-                    <p className="text-white text-5xl font-black">{scoreCalc}</p>
-                    <p className="text-green-300 text-sm mt-1">mots / minute</p>
-                    <p className="text-blue-400 text-xs mt-1">
-                      {parseInt(dernierMot)} mots − {nbErreurs} erreurs = {parseInt(dernierMot)-nbErreurs} corrects / {tempsEcoule}s
+                  <div style={{ background: 'rgba(34,197,94,0.12)', border: '1.5px solid rgba(34,197,94,0.25)', borderRadius: 16, padding: 20, textAlign: 'center' }}>
+                    <p style={{ color: '#86efac', fontSize: 13, fontWeight: 600, marginBottom: 4, fontFamily: 'var(--font-sans)' }}>Score calculé</p>
+                    <p style={{ color: 'white', fontSize: 52, fontWeight: 900, lineHeight: 1, fontFamily: 'var(--font-sans)' }}>{scoreCalc}</p>
+                    <p style={{ color: '#86efac', fontSize: 14, marginTop: 4, fontFamily: 'var(--font-sans)' }}>mots / minute</p>
+                    <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 6, fontFamily: 'var(--font-sans)' }}>
+                      {parseInt(dernierMot)} mots − {nbErreurs} erreurs = {parseInt(dernierMot)-nbErreurs} corrects · {tempsEcoule}s
                     </p>
                   </div>
                 )}
@@ -390,17 +390,18 @@ function PassationContent() {
 
             {/* Questions compréhension */}
             {chronoTermine && scoreCalc !== null && (
-              <div className="px-6 mb-4">
-                <p className="text-blue-300 text-sm font-semibold mb-3">Questions de compréhension :</p>
-                <div className="grid grid-cols-6 gap-2">
+              <div style={{ padding: '0 28px 16px' }}>
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: 600, marginBottom: 10, fontFamily: 'var(--font-sans)' }}>Questions de compréhension</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 }}>
                   {qs.map((q, i) => (
                     <button key={i} onClick={() => toggleQ(i)}
-                      className={`py-3 rounded-xl font-bold text-sm transition
-                        ${q === true  ? 'bg-green-500 text-white' :
-                          q === false ? 'bg-red-500 text-white' :
-                          'bg-white/20 text-white hover:bg-white/30'}`}>
-                      Q{i+1}<br/>
-                      <span className="text-lg">{q === true ? '✅' : q === false ? '❌' : '○'}</span>
+                      style={{
+                        padding: '12px 4px', borderRadius: 12, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                        background: q === true ? '#22c55e' : q === false ? '#ef4444' : 'rgba(255,255,255,0.1)',
+                        color: q === null ? 'rgba(255,255,255,0.6)' : 'white',
+                      }}>
+                      Q{i+1}
+                      <div style={{ fontSize: 16, marginTop: 2 }}>{q === true ? '✓' : q === false ? '✗' : '·'}</div>
                     </button>
                   ))}
                 </div>
@@ -408,15 +409,15 @@ function PassationContent() {
             )}
 
             {/* Boutons valider */}
-            <div className="px-6 pb-6 mt-auto flex gap-3">
+            <div style={{ padding: '16px 28px 28px', marginTop: 'auto', display: 'flex', gap: 12 }}>
               <button onClick={() => validerEleve(true)}
-                className="flex-1 border-2 border-orange-400 text-orange-300 py-4 rounded-2xl font-bold hover:bg-orange-400/20 transition">
+                style={{ flex: 1, border: '2px solid rgba(251,146,60,0.5)', background: 'rgba(251,146,60,0.08)', color: '#fdba74', padding: '16px', borderRadius: 16, fontWeight: 700, fontSize: 15, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
                 Non évalué
               </button>
               {scoreCalc !== null && (
                 <button onClick={() => validerEleve(false)}
-                  className="flex-2 bg-white text-blue-900 py-4 px-8 rounded-2xl font-black text-lg hover:bg-blue-50 transition">
-                  Valider → Suivant
+                  style={{ flex: 2, background: 'white', color: 'var(--primary-dark)', border: 'none', padding: '16px 24px', borderRadius: 16, fontWeight: 800, fontSize: 17, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+                  Valider · Élève suivant →
                 </button>
               )}
             </div>

@@ -190,6 +190,7 @@ export default function MesClasses() {
     if (delError) { console.error('Delete error:', delError); setSaving(false); alert('Erreur suppression: ' + delError.message); return }
 
     // Insérer les nouvelles (upsert pour éviter les conflits)
+    console.log('[sauvegarderSelections] profil.id =', profil.id, 'selections =', selections)
     const { error: insError } = await supabase.from('enseignant_classes').upsert(
       selections.map(s => ({
         enseignant_id:  profil.id,

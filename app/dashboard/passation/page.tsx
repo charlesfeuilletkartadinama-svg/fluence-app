@@ -218,18 +218,31 @@ function PassationContent() {
 
         {/* ── Choix période ── */}
         {etape === 'periode' && (
-          <div className="p-8 max-w-2xl">
-            <h2 className="text-2xl font-bold text-blue-900 mb-2">Mode passation</h2>
-            <p className="text-slate-500 mb-8">Classe : {classe?.nom}</p>
-            <div className="bg-white rounded-2xl p-6 border border-slate-100">
-              <h3 className="font-bold text-blue-900 mb-4">Quelle période ?</h3>
-              <div className="grid grid-cols-2 gap-3">
+          <div style={{ padding: 32, maxWidth: 640 }}>
+            <div style={{ marginBottom: 32 }}>
+              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode passation</h2>
+              <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Classe · {classe?.nom}</p>
+            </div>
+            <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>Choisir une période</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {periodes.map(p => (
                   <button key={p.id}
                     onClick={() => { setPeriode(p); setEtape('liste') }}
-                    className="border-2 border-slate-200 hover:border-blue-600 rounded-xl p-4 text-left transition">
-                    <div className="font-bold text-blue-900 text-lg">{p.code}</div>
-                    <div className="text-slate-500 text-sm">{p.label}</div>
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      border: '1.5px solid var(--border-light)', borderRadius: 12, padding: '16px 20px',
+                      background: 'var(--bg-gray)', cursor: 'pointer', transition: 'all 0.15s', textAlign: 'left',
+                      fontFamily: 'var(--font-sans)',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary-dark)'; (e.currentTarget as HTMLElement).style.background = 'white' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-gray)' }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--primary-dark)' }}>{p.code}</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>{p.label}</div>
+                    </div>
+                    <span style={{ color: 'var(--text-tertiary)', fontSize: 18 }}>→</span>
                   </button>
                 ))}
               </div>
@@ -239,37 +252,40 @@ function PassationContent() {
 
         {/* ── Liste élèves ── */}
         {etape === 'liste' && (
-          <div className="p-8 max-w-2xl">
-            <div className="flex items-center justify-between mb-6">
+          <div style={{ padding: 32, maxWidth: 640 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
               <div>
-                <h2 className="text-2xl font-bold text-blue-900">{classe?.nom} · {periode?.code}</h2>
-                <p className="text-slate-500 mt-1">{nbFaits} / {eleves.length} élèves passés</p>
+                <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>{classe?.nom}</h2>
+                <p style={{ color: 'var(--text-secondary)', marginTop: 4, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
+                  {periode?.code} · {nbFaits} / {eleves.length} élèves passés
+                </p>
               </div>
               {nbFaits > 0 && (
                 <button onClick={enregistrerTout} disabled={saving}
-                  className="bg-green-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50">
-                  {saving ? 'Enregistrement...' : '✅ Enregistrer tout'}
+                  style={{ background: '#16a34a', color: 'white', border: 'none', padding: '10px 18px', borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+                  {saving ? 'Enregistrement...' : '✓ Enregistrer tout'}
                 </button>
               )}
             </div>
 
             {/* Barre de progression */}
-            <div className="w-full bg-slate-100 rounded-full h-2 mb-6">
-              <div className="bg-blue-900 h-2 rounded-full transition-all"
-                style={{ width: `${eleves.length > 0 ? nbFaits/eleves.length*100 : 0}%` }}/>
+            <div style={{ background: 'var(--border-light)', borderRadius: 99, height: 6, marginBottom: 24 }}>
+              <div style={{ background: 'var(--primary-dark)', height: 6, borderRadius: 99, transition: 'width 0.3s', width: `${eleves.length > 0 ? nbFaits/eleves.length*100 : 0}%` }}/>
             </div>
 
-            <div className="space-y-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {eleves.map((e, i) => (
-                <div key={e.id}
-                  className={`bg-white rounded-xl p-4 border flex items-center justify-between transition
-                    ${e.fait ? 'border-green-200 bg-green-50' : 
-                      i === eleveIdx ? 'border-blue-400 shadow-md' : 'border-slate-100'}`}>
+                <div key={e.id} style={{
+                  background: e.fait ? '#f0fdf4' : 'white',
+                  border: `1.5px solid ${e.fait ? '#bbf7d0' : 'var(--border-light)'}`,
+                  borderRadius: 14, padding: '16px 20px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
                   <div>
-                    <span className="font-bold text-blue-900">{e.nom}</span>
-                    <span className="text-slate-500 ml-2">{e.prenom}</span>
+                    <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{e.nom}</span>
+                    <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 14, fontFamily: 'var(--font-sans)' }}>{e.prenom}</span>
                     {e.fait && (
-                      <span className="ml-3 text-xs font-bold text-green-700">
+                      <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: 6, fontFamily: 'var(--font-sans)' }}>
                         {e.ne ? 'N.É.' : `${e.scoreActuel} m/min`}
                       </span>
                     )}
@@ -277,11 +293,11 @@ function PassationContent() {
                   {!e.fait ? (
                     <button
                       onClick={() => { setEleveIdx(i); setEtape('eleve') }}
-                      className="bg-blue-900 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-800 transition">
+                      style={{ background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
                       Commencer →
                     </button>
                   ) : (
-                    <span className="text-green-600 text-lg">✅</span>
+                    <span style={{ color: '#16a34a', fontSize: 18 }}>✓</span>
                   )}
                 </div>
               ))}

@@ -214,9 +214,9 @@ export default function ImportCSV() {
   function telechargerModele() {
     const lignes = [
       'nom;prenom;date_naissance;sexe;classe;numero_ine',
-      'DUPONT;Marie;2016-09-15;F;CP A;1234567890A',
-      'MARTIN;Paul;2016-11-03;M;CP A;0987654321B',
-      'BERNARD;Léa;2015-04-22;F;CE1 B;1122334455C',
+      'DUPONT;Marie;2016-09-15;F;CPA;1234567890A',
+      'MARTIN;Paul;2016-11-03;M;CPA;0987654321B',
+      'BERNARD;Léa;2015-04-22;F;CE1B;1122334455C',
     ]
     const blob = new Blob([lignes.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url  = URL.createObjectURL(blob)

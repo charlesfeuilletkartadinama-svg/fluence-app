@@ -35,6 +35,9 @@ export default function Sidebar() {
 
   const NAV = [
     { href: '/dashboard',              icon: '📊', label: 'Tableau de bord' },
+    ...(isDirection
+      ? [{ href: '/dashboard/onboarding', icon: '⚙️', label: 'Configuration' }]
+      : []),
     ...(isEnseignant ? [
       { href: '/dashboard/eleves',     icon: '🏫', label: 'Mes classes'      },
       { href: '/dashboard/mes-eleves', icon: '👥', label: 'Mes élèves'       },
@@ -46,12 +49,6 @@ export default function Sidebar() {
     { href: '/dashboard/statistiques', icon: '📈', label: 'Statistiques'     },
     { href: '/dashboard/groupes',      icon: '🎯', label: 'Groupes & Remédiation' },
     { href: '/dashboard/rapport',      icon: '📄', label: 'Rapports PDF'     },
-    ...(isDirection
-      ? [{ href: '/dashboard/onboarding', icon: '⚙️', label: 'Configuration' }]
-      : []),
-    ...(isDirection
-      ? [{ href: '/dashboard/import', icon: '📥', label: 'Importation élèves' }]
-      : []),
     ...(profil && ['admin','ia_dasen','recteur','coordo_rep','ien'].includes(profil.role)
       ? [{ href: '/dashboard/admin', icon: '⚙️', label: 'Administration' }]
       : []),

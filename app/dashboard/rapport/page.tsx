@@ -66,7 +66,7 @@ function computeFragiles(scores: number[], seuil_min: number): number {
 // ── Composant principal ────────────────────────────────────────────────────
 
 function RapportContent() {
-  const [mode, setMode]               = useState<ModeRapport>('classe')
+  const [mode, setMode]               = useState<ModeRapport>('complet')
   const [classes, setClasses]         = useState<ClasseOption[]>([])
   const [periodes, setPeriodes]       = useState<PeriodeOption[]>([])
   const [classeId, setClasseId]       = useState('')
@@ -368,9 +368,9 @@ function RapportContent() {
             {isDirection && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
                 {[
-                  { id: 'classe'       as ModeRapport, icon: '📋', titre: 'Par classe',        desc: 'Rapport détaillé d\'une classe pour une période avec liste des élèves' },
-                  { id: 'etablissement'as ModeRapport, icon: '🏫', titre: 'Par établissement', desc: 'Vue globale de toutes les classes pour une période donnée' },
                   { id: 'complet'      as ModeRapport, icon: '📊', titre: 'Rapport complet',   desc: 'Toutes les classes sur toutes les périodes avec progression T1→T2→T3' },
+                  { id: 'etablissement'as ModeRapport, icon: '🏫', titre: 'Par établissement', desc: 'Vue globale de toutes les classes pour une période donnée' },
+                  { id: 'classe'       as ModeRapport, icon: '📋', titre: 'Par classe',        desc: 'Rapport détaillé d\'une classe pour une période avec liste des élèves' },
                 ].map(m => (
                   <button key={m.id} onClick={() => onModeChange(m.id)} style={{
                     background: 'white',

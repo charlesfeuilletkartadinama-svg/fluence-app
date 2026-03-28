@@ -26,16 +26,17 @@ type Eleve = {
   fait: boolean
 }
 
-type Periode = { id: string; code: string; label: string; date_fin: string | null }
+type Periode = { id: string; code: string; label: string; date_fin: string | null; type: string | null }
 
 function periodeVerrouillee(p: Periode | null): boolean {
   if (!p?.date_fin) return false
   return p.date_fin < new Date().toISOString().split('T')[0]
 }
-type Classe  = { id: string; nom: string; niveau: string; etablissement_id: string }
+
+type Classe = { id: string; nom: string; niveau: string; etablissement_id: string }
 
 function PassationContent() {
-  const [etape, setEtape]           = useState<'classe'|'periode'|'liste'|'eleve'|'done'>('periode')
+  const [etape, setEtape]           = useState<'periode'|'classe'|'liste'|'eleve'|'done'>('periode')
   const [periodes, setPeriodes]     = useState<Periode[]>([])
   const [periode, setPeriode]       = useState<Periode | null>(null)
   const [classe, setClasse]         = useState<Classe | null>(null)
@@ -62,14 +63,9 @@ function PassationContent() {
   const supabase     = createClient()
 
   useEffect(() => {
-    if (classeId) chargerDonnees().catch(() => setLoading(false))
-    else setLoading(false)
-  }, [classeId])
-
-  useEffect(() => {
-    if (!profil || classeId) return
-    if (profil.role === 'enseignant') chargerClassesEnseignant()
-    else if (['directeur', 'principal'].includes(profil.role)) chargerClassesDirection()
+    if (!profil) return
+    if (profil.role === 'enseignant') chargerDonneesEnseignant()
+    else if (['directeur', 'principal'].includes(profil.role)) chargerDonneesDirection()
   }, [profil])
 
   // Nettoyage chrono
@@ -77,80 +73,84 @@ function PassationContent() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [])
 
-  async function chargerClassesDirection() {
+  async function chargerDonneesDirection() {
     if (!profil?.etablissement_id) { setLoading(false); return }
-    const { data } = await supabase
-      .from('classes').select('id, nom, niveau, etablissement_id')
-      .eq('etablissement_id', profil.etablissement_id).order('niveau')
-    const classes = (data || []) as Classe[]
-    if (classes.length === 0) { setLoading(false); return }
-    if (classes.length === 1) {
-      await selectionnerClasse(classes[0])
-    } else {
-      setClassesEtab(classes)
-      setEtape('classe')
-      setLoading(false)
+    const [{ data: periodesData }, { data: classesData }] = await Promise.all([
+      supabase.from('periodes').select('id, code, label, date_fin, type')
+        .eq('etablissement_id', profil.etablissement_id).eq('actif', true).order('code'),
+      supabase.from('classes').select('id, nom, niveau, etablissement_id')
+        .eq('etablissement_id', profil.etablissement_id).order('niveau'),
+    ])
+    setPeriodes(periodesData || [])
+    setClassesEtab(classesData || [])
+    if (classeId) {
+      const c = (classesData || []).find((c: Classe) => c.id === classeId)
+      if (c) setClasse(c)
     }
+    setLoading(false)
   }
 
-  async function chargerClassesEnseignant() {
-    if (!profil) return
+  async function chargerDonneesEnseignant() {
+    if (!profil) { setLoading(false); return }
     const { data } = await supabase
       .from('enseignant_classes')
       .select('classe:classes(id, nom, niveau, etablissement_id)')
       .eq('enseignant_id', profil.id)
     const classes = (data || []).map((r: any) => r.classe).filter(Boolean) as Classe[]
     if (classes.length === 0) { setLoading(false); return }
+
+    const etabId = classes[0].etablissement_id
+    const { data: periodesData } = await supabase
+      .from('periodes').select('id, code, label, date_fin, type')
+      .eq('etablissement_id', etabId).eq('actif', true).order('code')
+    setPeriodes(periodesData || [])
+
     if (classes.length === 1) {
-      await selectionnerClasse(classes[0])
+      setClasse(classes[0])  // une seule classe : pré-sélectionner
     } else {
       setClassesEtab(classes)
-      setEtape('classe')
+      if (classeId) {
+        const c = classes.find(c => c.id === classeId)
+        if (c) setClasse(c)
+      }
+    }
+    setLoading(false)
+  }
+
+  async function selectionnerPeriode(p: Periode) {
+    if (profil?.role === 'enseignant' && periodeVerrouillee(p)) return
+    setPeriode(p)
+    if (classe) {
+      // Classe déjà connue : charger les élèves et aller à la liste
+      setLoading(true)
+      const { data } = await supabase
+        .from('eleves').select('id, nom, prenom')
+        .eq('classe_id', classe.id).eq('actif', true).order('nom')
+      setEleves((data || []).map(e => ({
+        ...e, scoreActuel: null, ne: false, absent: false, nbErreurs: 0,
+        dernierMot: null, fait: false,
+        q1: null, q2: null, q3: null, q4: null, q5: null, q6: null,
+      })))
       setLoading(false)
+      setEtape('liste')
+    } else {
+      setEtape('classe')
     }
   }
 
   async function selectionnerClasse(c: Classe) {
     setClasse(c)
     setLoading(true)
-    const { data: periodesData } = await supabase
-      .from('periodes').select('id, code, label, date_fin')
-      .eq('etablissement_id', c.etablissement_id).eq('actif', true).order('code')
-    setPeriodes(periodesData || [])
-    const { data: elevesData } = await supabase
+    const { data } = await supabase
       .from('eleves').select('id, nom, prenom')
       .eq('classe_id', c.id).eq('actif', true).order('nom')
-    setEleves((elevesData || []).map(e => ({
+    setEleves((data || []).map(e => ({
       ...e, scoreActuel: null, ne: false, absent: false, nbErreurs: 0,
       dernierMot: null, fait: false,
       q1: null, q2: null, q3: null, q4: null, q5: null, q6: null,
     })))
     setLoading(false)
-    setEtape('periode')
-  }
-
-  async function chargerDonnees() {
-    const { data: classeData } = await supabase
-      .from('classes').select('id, nom, niveau, etablissement_id')
-      .eq('id', classeId!).single()
-    setClasse(classeData)
-
-    const { data: periodesData } = await supabase
-      .from('periodes').select('id, code, label, date_fin')
-      .eq('etablissement_id', (classeData as any).etablissement_id)
-      .eq('actif', true).order('code')
-    setPeriodes(periodesData || [])
-
-    const { data: elevesData } = await supabase
-      .from('eleves').select('id, nom, prenom')
-      .eq('classe_id', classeId!).eq('actif', true).order('nom')
-
-    setEleves((elevesData || []).map(e => ({
-      ...e, scoreActuel: null, ne: false, absent: false, nbErreurs: 0,
-      dernierMot: null, fait: false,
-      q1:null, q2:null, q3:null, q4:null, q5:null, q6:null
-    })))
-    setLoading(false)
+    setEtape('liste')
   }
 
   function demarrerChrono() {
@@ -265,9 +265,6 @@ function PassationContent() {
   const nbFaits = eleves.filter(e => e.fait).length
   const scoreCalc = calculerScore()
 
-  const chronoCouleur = secondes <= 10 ? '#ef4444'
-    : secondes <= 20 ? '#f97316' : '#ffffff'
-
   if (loading) return (
     <>
       <Sidebar />
@@ -282,12 +279,56 @@ function PassationContent() {
 
       <div style={{ marginLeft: 'var(--sidebar-width)' }}>
 
+        {/* ── Choix période ── */}
+        {etape === 'periode' && (
+          <div style={{ padding: 32, maxWidth: 640 }}>
+            <div style={{ marginBottom: 32 }}>
+              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode passation</h2>
+              <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez une période</p>
+            </div>
+            <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>Choisir une période</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {periodes.map(p => {
+                  const locked = profil?.role === 'enseignant' && periodeVerrouillee(p)
+                  return (
+                    <button key={p.id}
+                      onClick={() => selectionnerPeriode(p)}
+                      disabled={locked}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        border: '1.5px solid var(--border-light)', borderRadius: 12, padding: '16px 20px',
+                        background: 'var(--bg-gray)', cursor: locked ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.15s', textAlign: 'left', fontFamily: 'var(--font-sans)',
+                        opacity: locked ? 0.55 : 1,
+                      }}
+                      onMouseEnter={e => { if (!locked) { (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary-dark)'; (e.currentTarget as HTMLElement).style.background = 'white' } }}
+                      onMouseLeave={e => { if (!locked) { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-gray)' } }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--primary-dark)' }}>{p.code}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>{p.label}</div>
+                        {locked && <div style={{ fontSize: 11, color: '#DC2626', fontWeight: 600, marginTop: 4 }}>Période clôturée — passation réservée au directeur</div>}
+                      </div>
+                      <span style={{ color: locked ? '#DC2626' : 'var(--text-tertiary)', fontSize: 18 }}>{locked ? '🔒' : '→'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Choix classe ── */}
         {etape === 'classe' && (
           <div style={{ padding: 32, maxWidth: 640 }}>
             <div style={{ marginBottom: 32 }}>
+              <button onClick={() => setEtape('periode')}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14, fontFamily: 'var(--font-sans)', marginBottom: 12, padding: 0, display: 'block' }}>
+                ← Retour
+              </button>
               <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode passation</h2>
-              <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez une classe</p>
+              <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Période · {periode?.code} — Choisissez une classe</p>
             </div>
             <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -309,46 +350,6 @@ function PassationContent() {
                     <span style={{ color: 'var(--text-tertiary)', fontSize: 18 }}>→</span>
                   </button>
                 ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Choix période ── */}
-        {etape === 'periode' && (
-          <div style={{ padding: 32, maxWidth: 640 }}>
-            <div style={{ marginBottom: 32 }}>
-              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode passation</h2>
-              <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Classe · {classe?.nom}</p>
-            </div>
-            <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>Choisir une période</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {periodes.map(p => {
-                  const locked = profil?.role === 'enseignant' && periodeVerrouillee(p)
-                  return (
-                    <button key={p.id}
-                      onClick={() => { if (!locked) { setPeriode(p); setEtape('liste') } }}
-                      disabled={locked}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        border: '1.5px solid var(--border-light)', borderRadius: 12, padding: '16px 20px',
-                        background: 'var(--bg-gray)', cursor: locked ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.15s', textAlign: 'left', fontFamily: 'var(--font-sans)',
-                        opacity: locked ? 0.55 : 1,
-                      }}
-                      onMouseEnter={e => { if (!locked) { (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary-dark)'; (e.currentTarget as HTMLElement).style.background = 'white' } }}
-                      onMouseLeave={e => { if (!locked) { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-gray)' } }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--primary-dark)' }}>{p.code}</div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>{p.label}</div>
-                        {locked && <div style={{ fontSize: 11, color: '#DC2626', fontWeight: 600, marginTop: 4 }}>Période clôturée — passation réservée au directeur</div>}
-                      </div>
-                      <span style={{ color: locked ? '#DC2626' : 'var(--text-tertiary)', fontSize: 18 }}>{locked ? '🔒' : '→'}</span>
-                    </button>
-                  )
-                })}
               </div>
             </div>
           </div>
@@ -512,7 +513,7 @@ function PassationContent() {
             )}
 
             {/* Questions compréhension */}
-            {chronoTermine && scoreCalc !== null && (
+            {chronoTermine && scoreCalc !== null && periode?.type !== 'evaluation_nationale' && (
               <div style={{ padding: '0 28px 16px' }}>
                 <p style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, marginBottom: 10, fontFamily: 'var(--font-sans)' }}>Questions de compréhension</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 }}>

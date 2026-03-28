@@ -14,6 +14,7 @@ type Eleve = {
   prenom: string
   score: string
   ne: boolean
+  absent: boolean
   q1: boolean | null
   q2: boolean | null
   q3: boolean | null
@@ -58,8 +59,11 @@ function Saisie() {
 
   // Déclencher charger quand profil est disponible et pas de classeId en URL
   useEffect(() => {
-    if (profil && isDirection && !classeId && classesEtab.length === 0) {
+    if (!profil || classeId) return
+    if (isDirection && classesEtab.length === 0) {
       chargerClassesEtablissement()
+    } else if (profil.role === 'enseignant') {
+      chargerClassesEnseignant()
     }
   }, [profil])
 
@@ -90,6 +94,27 @@ function Saisie() {
     setLoading(false)
   }
 
+  async function chargerClassesEnseignant() {
+    if (!profil) return
+    const { data } = await supabase
+      .from('enseignant_classes')
+      .select('classe:classes(id, nom, niveau, etablissement_id)')
+      .eq('enseignant_id', profil.id)
+    const classes = (data || []).map((r: any) => r.classe).filter(Boolean) as (Classe & { etablissement_id: string })[]
+
+    if (classes.length === 0) {
+      setLoading(false)
+      return
+    }
+    if (classes.length === 1) {
+      await selectionnerClasse(classes[0])
+    } else {
+      setClassesEtab(classes)
+      setEtape('classe')
+      setLoading(false)
+    }
+  }
+
   async function selectionnerClasse(c: Classe) {
     setClasse(c)
     setLoading(true)
@@ -103,7 +128,7 @@ function Saisie() {
       setPeriodes(periodesData || [])
       const { data: elevesData } = await supabase
         .from('eleves').select('id, nom, prenom').eq('classe_id', c.id).eq('actif', true).order('nom')
-      setEleves((elevesData || []).map(e => ({ ...e, score: '', ne: false, q1: null, q2: null, q3: null, q4: null, q5: null, q6: null })))
+      setEleves((elevesData || []).map(e => ({ ...e, score: '', ne: false, absent: false, q1: null, q2: null, q3: null, q4: null, q5: null, q6: null })))
     }
     setLoading(false)
     setEtape('periode')
@@ -169,7 +194,7 @@ function Saisie() {
     updateEleve(idx, q, cur === null ? true : cur === true ? false : null)
   }
 
-  const nbSaisis = eleves.filter(e => e.ne || (e.score !== '' && !isNaN(Number(e.score)))).length
+  const nbSaisis = eleves.filter(e => e.ne || e.absent || (e.score !== '' && !isNaN(Number(e.score)))).length
   const scoreMoyen = (() => {
     const scores = eleves.filter(e => !e.ne && e.score !== '' && !isNaN(Number(e.score))).map(e => Number(e.score))
     return scores.length > 0 ? Math.round(scores.reduce((a,b) => a+b, 0) / scores.length) : null
@@ -182,14 +207,15 @@ function Saisie() {
     let ok = 0, err = 0
 
     for (const eleve of eleves) {
-      if (!eleve.ne && eleve.score === '') continue
+      if (!eleve.ne && !eleve.absent && eleve.score === '') continue
       if (!periode) continue
 
       const { error } = await supabase.from('passations').upsert({
         eleve_id:      eleve.id,
         periode_id:    periode.id,
-        score:         eleve.ne ? null : Number(eleve.score),
-        non_evalue:    eleve.ne,
+        score:         (eleve.ne || eleve.absent) ? null : Number(eleve.score),
+        non_evalue:    eleve.ne || eleve.absent,
+        absent:        eleve.absent,
         mode:          'saisie',
         enseignant_id: profil.id,
         q1: eleve.q1 === true ? 'Correct' : eleve.q1 === false ? 'Incorrect' : null,
@@ -302,8 +328,8 @@ function Saisie() {
               {eleves.map((eleve, idx) => (
                 <div key={eleve.id}
                   style={{
-                    background: eleve.ne ? '#fff7ed' : eleve.score !== '' ? '#f0fdf4' : 'white',
-                    border: `1.5px solid ${eleve.ne ? '#fed7aa' : eleve.score !== '' ? '#bbf7d0' : 'var(--border-light)'}`,
+                    background: eleve.absent ? '#fef2f2' : eleve.ne ? '#fff7ed' : eleve.score !== '' ? '#f0fdf4' : 'white',
+                    border: `1.5px solid ${eleve.absent ? '#fca5a5' : eleve.ne ? '#fed7aa' : eleve.score !== '' ? '#bbf7d0' : 'var(--border-light)'}`,
                     borderRadius: 16, padding: '18px 24px', transition: 'all 0.15s',
                   }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16, minHeight: 48 }}>
@@ -319,14 +345,14 @@ function Saisie() {
                         type="number"
                         value={eleve.score}
                         onChange={e => updateEleve(idx, 'score', e.target.value)}
-                        disabled={eleve.ne}
+                        disabled={eleve.ne || eleve.absent}
                         placeholder="—"
                         min={0} max={500}
                         style={{
                           width: 88, textAlign: 'center', border: '1.5px solid var(--border-main)',
                           borderRadius: 12, padding: '10px 12px', fontSize: 18, fontWeight: 700,
                           color: 'var(--primary-dark)', outline: 'none', fontFamily: 'var(--font-sans)',
-                          background: eleve.ne ? 'var(--bg-gray)' : 'white', opacity: eleve.ne ? 0.4 : 1,
+                          background: (eleve.ne || eleve.absent) ? 'var(--bg-gray)' : 'white', opacity: (eleve.ne || eleve.absent) ? 0.4 : 1,
                         }}
                       />
                       <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>mots/min</span>
@@ -334,7 +360,7 @@ function Saisie() {
 
                     {/* N.É. */}
                     <button
-                      onClick={() => updateEleve(idx, 'ne', !eleve.ne)}
+                      onClick={() => setEleves(prev => prev.map((e, i) => i === idx ? { ...e, ne: !e.ne, absent: false, score: '' } : e))}
                       style={{
                         padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
                         border: eleve.ne ? '2px solid #fb923c' : '2px solid var(--border-main)',
@@ -344,10 +370,23 @@ function Saisie() {
                       }}>
                       N.É.
                     </button>
+
+                    {/* Absent */}
+                    <button
+                      onClick={() => setEleves(prev => prev.map((e, i) => i === idx ? { ...e, absent: !e.absent, ne: false, score: '' } : e))}
+                      style={{
+                        padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
+                        border: eleve.absent ? '2px solid #f87171' : '2px solid var(--border-main)',
+                        background: eleve.absent ? '#fef2f2' : 'transparent',
+                        color: eleve.absent ? '#dc2626' : 'var(--text-tertiary)',
+                        cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
+                      }}>
+                      Absent
+                    </button>
                   </div>
 
                   {/* Questions compréhension */}
-                  {!eleve.ne && eleve.score !== '' && (
+                  {!eleve.ne && !eleve.absent && eleve.score !== '' && (
                     <div className="mt-4 flex items-center gap-2 flex-wrap">
                       <span className="text-xs text-slate-400 font-medium mr-1">Compréhension :</span>
                       {(['q1','q2','q3','q4','q5','q6'] as const).map(q => (
@@ -384,7 +423,7 @@ function Saisie() {
               <p className="text-slate-500 mt-1">{classe?.nom} · {periode?.code}</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-4 gap-4 mb-6">
               <div className="bg-white rounded-2xl p-5 border border-slate-100 text-center">
                 <p className="text-3xl font-bold text-blue-900">{nbSaisis}</p>
                 <p className="text-sm text-slate-400 mt-1">Élèves saisis</p>
@@ -401,6 +440,12 @@ function Saisie() {
                 </p>
                 <p className="text-sm text-slate-400 mt-1">Non évalués</p>
               </div>
+              <div className="bg-white rounded-2xl p-5 border border-slate-100 text-center">
+                <p className="text-3xl font-bold text-red-500">
+                  {eleves.filter(e => e.absent).length}
+                </p>
+                <p className="text-sm text-slate-400 mt-1">Absents</p>
+              </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden mb-6">
@@ -413,16 +458,18 @@ function Saisie() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {eleves.filter(e => e.ne || e.score !== '').map(e => (
+                  {eleves.filter(e => e.ne || e.absent || e.score !== '').map(e => (
                     <tr key={e.id}>
                       <td className="px-5 py-3 font-semibold text-blue-900">
                         {e.nom} {e.prenom}
                       </td>
                       <td className="px-5 py-3 text-center font-bold text-blue-900">
-                        {e.ne ? '—' : `${e.score} m/min`}
+                        {(e.ne || e.absent) ? '—' : `${e.score} m/min`}
                       </td>
                       <td className="px-5 py-3 text-center">
-                        {e.ne ? (
+                        {e.absent ? (
+                          <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full">Absent</span>
+                        ) : e.ne ? (
                           <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded-full">N.É.</span>
                         ) : (
                           <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full">✓</span>
@@ -467,7 +514,7 @@ function Saisie() {
                 className="border border-slate-200 text-slate-600 px-6 py-3 rounded-xl font-semibold text-sm hover:bg-slate-50 transition">
                 Voir mes classes
               </button>
-              <button onClick={() => { setEtape('periode'); setEleves(prev => prev.map(e => ({ ...e, score: '', ne: false, q1: null, q2: null, q3: null, q4: null, q5: null, q6: null }))) }}
+              <button onClick={() => { setEtape('periode'); setEleves(prev => prev.map(e => ({ ...e, score: '', ne: false, absent: false, q1: null, q2: null, q3: null, q4: null, q5: null, q6: null }))) }}
                 className="bg-blue-900 text-white px-6 py-3 rounded-xl font-semibold text-sm hover:bg-blue-800 transition">
                 Nouvelle saisie
               </button>

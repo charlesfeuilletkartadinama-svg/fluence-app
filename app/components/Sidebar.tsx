@@ -41,7 +41,8 @@ export default function Sidebar() {
     ] : [
       { href: '/dashboard/eleves',     icon: '👥', label: (isReseau || isGlobal) ? "Réseau d'élèves" : isDirection ? 'Détail élève' : 'Mes élèves' },
     ]),
-    { href: '/dashboard/saisie',       icon: '✏️', label: 'Saisie'           },
+    { href: '/dashboard/saisie',       icon: '✏️', label: 'Mode Saisie'     },
+    { href: '/dashboard/passation',    icon: '⏱️', label: 'Mode passation'   },
     { href: '/dashboard/statistiques', icon: '📈', label: 'Statistiques'     },
     { href: '/dashboard/groupes',      icon: '🎯', label: 'Groupes & Remédiation' },
     { href: '/dashboard/rapport',      icon: '📄', label: 'Rapports PDF'     },

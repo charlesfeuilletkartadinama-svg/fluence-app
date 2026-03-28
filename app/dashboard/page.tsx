@@ -132,7 +132,7 @@ export default function Dashboard() {
 
     // 2. Toutes les périodes actives pour ces établissements (dédupliquées par code)
     let perQ = supabase.from('periodes').select('id, code, label')
-      .eq('actif', true).order('code', { ascending: false })
+      .eq('actif', true).order('code', { ascending: true })
     if (etabIds.length > 0) perQ = perQ.in('etablissement_id', etabIds as string[])
     const { data: periodesBrutes } = await perQ
     const seen = new Set<string>()

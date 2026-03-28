@@ -26,7 +26,12 @@ type Eleve = {
   fait: boolean
 }
 
-type Periode = { id: string; code: string; label: string }
+type Periode = { id: string; code: string; label: string; date_fin: string | null }
+
+function periodeVerrouillee(p: Periode | null): boolean {
+  if (!p?.date_fin) return false
+  return p.date_fin < new Date().toISOString().split('T')[0]
+}
 type Classe  = { id: string; nom: string; niveau: string; etablissement_id: string }
 
 function PassationContent() {
@@ -109,7 +114,7 @@ function PassationContent() {
     setClasse(c)
     setLoading(true)
     const { data: periodesData } = await supabase
-      .from('periodes').select('id, code, label')
+      .from('periodes').select('id, code, label, date_fin')
       .eq('etablissement_id', c.etablissement_id).eq('actif', true).order('code')
     setPeriodes(periodesData || [])
     const { data: elevesData } = await supabase
@@ -131,7 +136,7 @@ function PassationContent() {
     setClasse(classeData)
 
     const { data: periodesData } = await supabase
-      .from('periodes').select('id, code, label')
+      .from('periodes').select('id, code, label, date_fin')
       .eq('etablissement_id', (classeData as any).etablissement_id)
       .eq('actif', true).order('code')
     setPeriodes(periodesData || [])
@@ -230,8 +235,9 @@ function PassationContent() {
   }
 
   async function enregistrerTout() {
+    if (!profil || !periode) return
+    if (profil.role === 'enseignant' && periodeVerrouillee(periode)) return
     setSaving(true)
-    if (!profil || !periode) { setSaving(false); return }
 
     for (const eleve of eleves) {
       if (!eleve.fait) continue
@@ -318,25 +324,31 @@ function PassationContent() {
             <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>Choisir une période</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {periodes.map(p => (
-                  <button key={p.id}
-                    onClick={() => { setPeriode(p); setEtape('liste') }}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      border: '1.5px solid var(--border-light)', borderRadius: 12, padding: '16px 20px',
-                      background: 'var(--bg-gray)', cursor: 'pointer', transition: 'all 0.15s', textAlign: 'left',
-                      fontFamily: 'var(--font-sans)',
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary-dark)'; (e.currentTarget as HTMLElement).style.background = 'white' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-gray)' }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--primary-dark)' }}>{p.code}</div>
-                      <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>{p.label}</div>
-                    </div>
-                    <span style={{ color: 'var(--text-tertiary)', fontSize: 18 }}>→</span>
-                  </button>
-                ))}
+                {periodes.map(p => {
+                  const locked = profil?.role === 'enseignant' && periodeVerrouillee(p)
+                  return (
+                    <button key={p.id}
+                      onClick={() => { if (!locked) { setPeriode(p); setEtape('liste') } }}
+                      disabled={locked}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        border: '1.5px solid var(--border-light)', borderRadius: 12, padding: '16px 20px',
+                        background: 'var(--bg-gray)', cursor: locked ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.15s', textAlign: 'left', fontFamily: 'var(--font-sans)',
+                        opacity: locked ? 0.55 : 1,
+                      }}
+                      onMouseEnter={e => { if (!locked) { (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary-dark)'; (e.currentTarget as HTMLElement).style.background = 'white' } }}
+                      onMouseLeave={e => { if (!locked) { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-gray)' } }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--primary-dark)' }}>{p.code}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>{p.label}</div>
+                        {locked && <div style={{ fontSize: 11, color: '#DC2626', fontWeight: 600, marginTop: 4 }}>Période clôturée — passation réservée au directeur</div>}
+                      </div>
+                      <span style={{ color: locked ? '#DC2626' : 'var(--text-tertiary)', fontSize: 18 }}>{locked ? '🔒' : '→'}</span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           </div>

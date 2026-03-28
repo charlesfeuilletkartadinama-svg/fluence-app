@@ -42,11 +42,22 @@ type CoorDoEtab = {
   etablissement: { nom: string } | null
 }
 
+type IenEtab = {
+  id: string
+  ien_id: string
+  etablissement_id: string
+  ien: { nom: string; prenom: string } | null
+  etablissement: { nom: string } | null
+}
+
+type ProfilOption = { id: string; nom: string; prenom: string; role: string }
+
 export default function Admin() {
   const [onglet, setOnglet]               = useState(0)
   const [etablissements, setEtablissements] = useState<Etablissement[]>([])
   const [periodes, setPeriodes]           = useState<Periode[]>([])
   const [coordoEtabs, setCoordoEtabs]     = useState<CoorDoEtab[]>([])
+  const [ienEtabs, setIenEtabs]           = useState<IenEtab[]>([])
   const [monReseau, setMonReseau]         = useState<Etablissement[]>([])
   const [loading, setLoading]             = useState(true)
   const [newPeriodeCode, setNewPeriodeCode] = useState('')
@@ -99,7 +110,7 @@ export default function Admin() {
       return
     }
 
-    const [etabRes, periRes, ceRes] = await Promise.all([
+    const [etabRes, periRes, ceRes, ienRes] = await Promise.all([
       supabase.from('etablissements')
         .select('id, nom, type, type_reseau, circonscription:circonscriptions(nom)')
         .order('nom'),
@@ -109,10 +120,14 @@ export default function Admin() {
       supabase.from('coordo_etablissements')
         .select('id, coordo_id, etablissement_id, coordo:profils(nom, prenom), etablissement:etablissements(nom)')
         .order('coordo_id'),
+      supabase.from('ien_etablissements')
+        .select('id, ien_id, etablissement_id, ien:profils(nom, prenom), etablissement:etablissements(nom)')
+        .order('ien_id'),
     ])
     setEtablissements(etabRes.data || [])
     setPeriodes(periRes.data || [])
     setCoordoEtabs((ceRes.data || []) as unknown as CoorDoEtab[])
+    setIenEtabs((ienRes.data || []) as unknown as IenEtab[])
     setLoading(false)
   }
 
@@ -148,6 +163,12 @@ export default function Admin() {
     if (!window.confirm('Supprimer cette affectation ?')) return
     await supabase.from('coordo_etablissements').delete().eq('id', id)
     setCoordoEtabs(prev => prev.filter(c => c.id !== id))
+  }
+
+  async function supprimerAffectationIen(id: string) {
+    if (!window.confirm('Supprimer cette affectation IEN ?')) return
+    await supabase.from('ien_etablissements').delete().eq('id', id)
+    setIenEtabs(prev => prev.filter(c => c.id !== id))
   }
 
   if (profilLoading || loading) {
@@ -323,47 +344,187 @@ export default function Admin() {
 
         {/* ── Onglet Affectations (admin) ── */}
         {!isReseau && onglet === 4 && (
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-blue-900">
-                Affectations réseau (Coordo REP/REP+ et IEN) → Établissements
-              </h3>
-            </div>
-            {coordoEtabs.length === 0 ? (
-              <p className="text-sm text-slate-400 bg-white rounded-xl p-6 text-center border border-slate-100">
-                Aucune affectation. Ajoutez des coordonnateurs via Supabase ou l'API.
-              </p>
-            ) : (
-              <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Coordonnateur</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Établissement</th>
-                      <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {coordoEtabs.map(ce => (
-                      <tr key={ce.id} className="hover:bg-slate-50">
-                        <td className="px-6 py-4 font-semibold text-blue-900">
-                          {ce.coordo?.prenom} {ce.coordo?.nom}
-                        </td>
-                        <td className="px-6 py-4 text-slate-600">
-                          {ce.etablissement?.nom || '—'}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <button onClick={() => supprimerAffectation(ce.id)}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition">
-                            Supprimer
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <AffectationsTab
+            supabase={supabase}
+            etablissements={etablissements}
+            coordoEtabs={coordoEtabs}
+            ienEtabs={ienEtabs}
+            onSupprimerCoordo={supprimerAffectation}
+            onSupprimerIen={supprimerAffectationIen}
+            onRefresh={chargerDonnees}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AffectationsTab({ supabase, etablissements, coordoEtabs, ienEtabs, onSupprimerCoordo, onSupprimerIen, onRefresh }: {
+  supabase: any
+  etablissements: Etablissement[]
+  coordoEtabs: CoorDoEtab[]
+  ienEtabs: IenEtab[]
+  onSupprimerCoordo: (id: string) => void
+  onSupprimerIen: (id: string) => void
+  onRefresh: () => void
+}) {
+  const [iens, setIens]               = useState<ProfilOption[]>([])
+  const [coordos, setCoordo]          = useState<ProfilOption[]>([])
+  const [newIenId, setNewIenId]       = useState('')
+  const [newIenEtab, setNewIenEtab]   = useState('')
+  const [newCoordoId, setNewCoordoId] = useState('')
+  const [newCoordoEtab, setNewCoordoEtab] = useState('')
+  const [saving, setSaving]           = useState(false)
+
+  useEffect(() => {
+    supabase.from('profils').select('id, nom, prenom, role')
+      .in('role', ['ien', 'coordo_rep']).order('nom')
+      .then(({ data }: any) => {
+        const all = data || []
+        setIens(all.filter((p: ProfilOption) => p.role === 'ien'))
+        setCoordo(all.filter((p: ProfilOption) => p.role === 'coordo_rep'))
+      })
+  }, [])
+
+  async function ajouterIen() {
+    if (!newIenId || !newIenEtab) return
+    setSaving(true)
+    await supabase.from('ien_etablissements').insert({ ien_id: newIenId, etablissement_id: newIenEtab })
+    setNewIenId(''); setNewIenEtab('')
+    setSaving(false)
+    onRefresh()
+  }
+
+  async function ajouterCoordo() {
+    if (!newCoordoId || !newCoordoEtab) return
+    setSaving(true)
+    await supabase.from('coordo_etablissements').insert({ coordo_id: newCoordoId, etablissement_id: newCoordoEtab })
+    setNewCoordoId(''); setNewCoordoEtab('')
+    setSaving(false)
+    onRefresh()
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+
+      {/* ── Section IEN ── */}
+      <div>
+        <h3 className="font-bold text-blue-900 mb-4">Affectations IEN → Établissements</h3>
+
+        {/* Formulaire ajout IEN */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-4 flex gap-3 items-end flex-wrap">
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">IEN</label>
+            <select value={newIenId} onChange={e => setNewIenId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+              <option value="">Choisir un IEN…</option>
+              {iens.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Établissement</label>
+            <select value={newIenEtab} onChange={e => setNewIenEtab(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+              <option value="">Choisir un établissement…</option>
+              {etablissements.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
+            </select>
+          </div>
+          <button onClick={ajouterIen} disabled={!newIenId || !newIenEtab || saving}
+            className="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800 transition disabled:opacity-40">
+            + Rattacher
+          </button>
+        </div>
+
+        {ienEtabs.length === 0 ? (
+          <p className="text-sm text-slate-400 bg-white rounded-xl p-6 text-center border border-slate-100">
+            Aucune affectation IEN pour l'instant.
+          </p>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">IEN</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Établissement</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {ienEtabs.map(ie => (
+                  <tr key={ie.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-4 font-semibold text-blue-900">{ie.ien?.prenom} {ie.ien?.nom}</td>
+                    <td className="px-6 py-4 text-slate-600">{ie.etablissement?.nom || '—'}</td>
+                    <td className="px-6 py-4 text-center">
+                      <button onClick={() => onSupprimerIen(ie.id)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition">
+                        Retirer
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Section Coordo ── */}
+      <div>
+        <h3 className="font-bold text-blue-900 mb-4">Affectations Coordo REP/REP+ → Établissements</h3>
+
+        {/* Formulaire ajout Coordo */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-4 flex gap-3 items-end flex-wrap">
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Coordonnateur</label>
+            <select value={newCoordoId} onChange={e => setNewCoordoId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+              <option value="">Choisir un coordo…</option>
+              {coordos.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Établissement</label>
+            <select value={newCoordoEtab} onChange={e => setNewCoordoEtab(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+              <option value="">Choisir un établissement…</option>
+              {etablissements.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
+            </select>
+          </div>
+          <button onClick={ajouterCoordo} disabled={!newCoordoId || !newCoordoEtab || saving}
+            className="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800 transition disabled:opacity-40">
+            + Rattacher
+          </button>
+        </div>
+
+        {coordoEtabs.length === 0 ? (
+          <p className="text-sm text-slate-400 bg-white rounded-xl p-6 text-center border border-slate-100">
+            Aucune affectation coordo pour l'instant.
+          </p>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Coordonnateur</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Établissement</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {coordoEtabs.map(ce => (
+                  <tr key={ce.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-4 font-semibold text-blue-900">{ce.coordo?.prenom} {ce.coordo?.nom}</td>
+                    <td className="px-6 py-4 text-slate-600">{ce.etablissement?.nom || '—'}</td>
+                    <td className="px-6 py-4 text-center">
+                      <button onClick={() => onSupprimerCoordo(ce.id)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition">
+                        Retirer
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

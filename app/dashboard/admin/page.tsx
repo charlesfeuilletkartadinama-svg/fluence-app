@@ -11,6 +11,7 @@ import ImpersonationBar from '@/app/components/ImpersonationBar'
 
 type Etablissement = {
   id: string; nom: string; type: string; type_reseau: string
+  ville: string | null; departement: string | null; circonscription: string | null
 }
 type Periode = {
   id: string; code: string; label: string; actif: boolean
@@ -104,7 +105,7 @@ export default function Admin() {
 
     const [etabRes, periRes, ceRes, ienRes, invRes] = await Promise.all([
       supabase.from('etablissements')
-        .select('id, nom, type, type_reseau').order('nom'),
+        .select('id, nom, type, type_reseau, ville, departement, circonscription').order('nom'),
       supabase.from('periodes')
         .select('id, code, label, actif, etablissement_id, date_debut, date_fin, saisie_ouverte, type').order('code'),
       supabase.from('coordo_etablissements')
@@ -294,6 +295,8 @@ export default function Admin() {
                   <th style={S.th}>Nom</th>
                   <th style={S.th}>Type</th>
                   <th style={S.th}>Réseau</th>
+                  <th style={S.th}>Ville</th>
+                  <th style={S.th}>Circonscription</th>
                 </tr></thead>
                 <tbody>
                   {etablissements.map(e => (
@@ -301,6 +304,8 @@ export default function Admin() {
                       <td style={S.tdBold}>{e.nom}</td>
                       <td style={S.td}>{e.type}</td>
                       <td style={S.td}><span style={S.badge(e.type_reseau)}>{e.type_reseau || '—'}</span></td>
+                      <td style={S.td}>{e.ville || '—'}</td>
+                      <td style={S.td}>{e.circonscription || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

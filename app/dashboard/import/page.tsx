@@ -211,6 +211,24 @@ export default function ImportCSV() {
     setEtape('done')
   }
 
+  function telechargerModele() {
+    const lignes = [
+      'nom;prenom;date_naissance;sexe;classe;numero_ine',
+      'DUPONT;Marie;2016-09-15;F;CP A;1234567890A',
+      'MARTIN;Paul;2016-11-03;M;CP A;0987654321B',
+      'BERNARD;Léa;2015-04-22;F;CE1 B;1122334455C',
+    ]
+    const blob = new Blob([lignes.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = 'modele_import_eleves.csv'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   const elevesValides   = eleves.filter(e => e._valid)
   const elevesInvalides = eleves.filter(e => !e._valid)
   const classesCSV      = [...new Set(eleves.map(e => e.classe).filter(Boolean))]
@@ -254,9 +272,14 @@ export default function ImportCSV() {
               Colonnes attendues (séparateur ; ou ,) :<br />
               <strong>Nom · Prénom · Date de naissance · Sexe · Classe · Numéro INE</strong>
             </p>
-            <p className={styles.uploadDesc} style={{ color: '#D97706', marginTop: 8 }}>
-              ⚠️ La colonne <code>numero_ine</code> nécessite d'avoir été ajoutée à la table <code>eleves</code> dans Supabase.
-            </p>
+            <button onClick={telechargerModele} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 12, marginBottom: 4,
+              background: 'rgba(0,24,69,0.08)', border: '1.5px solid var(--border-light)',
+              borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'var(--font-sans)', color: 'var(--primary-dark)',
+            }}>
+              ⬇ Télécharger le modèle CSV
+            </button>
             {erreur && (
               <div className={styles.erreurBanner}>{erreur}</div>
             )}

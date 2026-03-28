@@ -1,0 +1,60 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap");
+@import "tailwindcss";
+
+:root {
+  /* Sidebar */
+  --sidebar-width: 260px;
+
+  /* Colors - Brand */
+  --primary-dark: #001845;
+  --primary-light: #002D72;
+  --accent-gold: #C9A84C;
+
+  /* Colors - Backgrounds */
+  --bg-gray: #F4F2ED;
+  --bg-darker: #F8FAFB;
+  --bg-light: #F7F5F0;
+
+  /* Colors - Borders */
+  --border-main: #E8EBF0;
+  --border-light: #F1F3F5;
+
+  /* Colors - Text */
+  --text-secondary: #7A8A9A;
+  --text-tertiary: #A8AEB8;
+
+  /* Colors - Status */
+  --success: #16A34A;
+  --warning: #D97706;
+  --error: #DC2626;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  font-family: "DM Sans", sans-serif;
+  background: var(--bg-gray);
+  color: #1E293B;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "DM Serif Display", serif;
+  font-weight: 400;
+  color: var(--primary-dark);
+}

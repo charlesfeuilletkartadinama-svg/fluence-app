@@ -1,0 +1,380 @@
+/* Saisie Page Styles */
+
+.container {
+  min-height: 100vh;
+  background: var(--bg-light);
+}
+
+.mainLayout {
+  margin-left: var(--sidebar-width);
+  padding: 32px;
+  max-width: 900px;
+}
+
+.header {
+  margin-bottom: 32px;
+}
+
+.title {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--primary-dark);
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+/* Stepper */
+.stepper {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 32px;
+  position: relative;
+}
+
+.stepItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  flex: 1;
+}
+
+.stepNumber {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-darker);
+  border: 2px solid var(--border-main);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.stepItem.active .stepNumber {
+  background: var(--primary-dark);
+  color: white;
+  border-color: var(--primary-dark);
+}
+
+.stepItem.completed .stepNumber {
+  background: var(--success);
+  color: white;
+  border-color: var(--success);
+}
+
+.stepLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.stepItem.active .stepLabel {
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+/* Cards */
+.card {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  border: 1.5px solid var(--border-main);
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.cardTitle {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--primary-dark);
+  margin-bottom: 20px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.gridFull {
+  grid-column: 1 / -1;
+}
+
+/* Form Groups */
+.formGroup {
+  margin-bottom: 20px;
+}
+
+.label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1.5px solid var(--border-main);
+  border-radius: 10px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: white;
+  transition: all var(--transition-fast);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.1);
+}
+
+.select {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1.5px solid var(--border-main);
+  border-radius: 10px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  background: white;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.1);
+}
+
+/* Buttons */
+.btnGroup {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+  justify-content: flex-end;
+}
+
+.button {
+  padding: 12px 24px;
+  border-radius: 10px;
+  border: none;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.buttonPrimary {
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-light) 100%);
+  color: white;
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.buttonSecondary {
+  background: var(--bg-darker);
+  color: var(--text-primary);
+  border: 1px solid var(--border-main);
+}
+
+.buttonSecondary:hover:not(:disabled) {
+  background: var(--bg-light);
+  border-color: var(--accent-gold);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Student List */
+.studentList {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.studentItem {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-light);
+  transition: background var(--transition-fast);
+}
+
+.studentItem:last-child {
+  border-bottom: none;
+}
+
+.studentItem:hover {
+  background: var(--bg-darker);
+}
+
+.studentName {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--primary-dark);
+}
+
+.scoreInput {
+  width: 100px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--border-main);
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.scoreInput:focus {
+  outline: none;
+  border-color: var(--accent-gold);
+}
+
+.questionButtons {
+  display: flex;
+  gap: 6px;
+}
+
+.qBtn {
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--border-main);
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.qBtn:hover {
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+}
+
+.qBtn.correct {
+  background: rgba(22, 163, 74, 0.1);
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.qBtn.incorrect {
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.qBtn.null {
+  background: var(--bg-darker);
+  color: var(--text-secondary);
+}
+
+/* Summary */
+.summary {
+  background: var(--bg-darker);
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 14px;
+}
+
+.summaryLabel {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.summaryValue {
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+/* Success State */
+.successCard {
+  background: white;
+  border-radius: 16px;
+  padding: 48px;
+  text-align: center;
+  border: 1.5px solid var(--border-main);
+}
+
+.successIcon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.successTitle {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--primary-dark);
+  margin-bottom: 8px;
+}
+
+.successMessage {
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .mainLayout {
+    margin-left: 0;
+    padding: 20px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stepper {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .studentItem {
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+  }
+
+  .scoreInput {
+    width: 80px;
+  }
+
+  .questionButtons {
+    display: none;
+  }
+}

@@ -1,0 +1,307 @@
+/* Import CSV Page */
+
+.page {
+  display: flex;
+  min-height: 100vh;
+}
+
+.main {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  padding: 48px;
+  background: var(--bg-gray);
+  max-width: calc(var(--sidebar-width) + 800px);
+}
+
+.header {
+  margin-bottom: 32px;
+}
+
+.title {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 400;
+  color: var(--primary-dark);
+  margin-bottom: 6px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* Stepper */
+.stepper {
+  display: flex;
+  align-items: center;
+  margin-bottom: 36px;
+  gap: 0;
+}
+
+.stepItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepCircle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-darker);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.stepActive {
+  background: var(--primary-dark);
+  color: white;
+}
+
+.stepDone {
+  background: #16A34A;
+  color: white;
+}
+
+.stepLabel {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.stepLabelActive {
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.stepLine {
+  width: 32px;
+  height: 1px;
+  background: var(--border-main);
+  margin: 0 4px;
+}
+
+/* Upload zone */
+.uploadZone {
+  background: white;
+  border: 2px dashed var(--border-main);
+  border-radius: 16px;
+  padding: 64px 32px;
+  text-align: center;
+}
+
+.uploadTitle {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--primary-dark);
+  margin-bottom: 12px;
+}
+
+.uploadDesc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 4px;
+}
+
+.uploadDesc code {
+  background: var(--bg-gray);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.uploadHint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 10px;
+}
+
+.btnUpload {
+  display: inline-block;
+  margin-top: 24px;
+  background: var(--primary-dark);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.btnUpload:hover {
+  opacity: 0.85;
+}
+
+/* Resume grid */
+.resumeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.resumeCard {
+  background: white;
+  border-radius: 12px;
+  padding: 18px 16px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  text-align: center;
+}
+
+.resumeNum {
+  font-family: var(--font-serif);
+  font-size: 36px;
+  font-weight: 400;
+  color: var(--primary-dark);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.resumeLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Cards */
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px 22px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.cardTitle {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--primary-dark);
+  margin-bottom: 14px;
+}
+
+/* Table */
+.tableContainer {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.tableHeader {
+  padding: 14px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-dark);
+  border-bottom: 1px solid var(--border-main);
+  background: var(--bg-gray);
+}
+
+/* Error banner */
+.erreurBanner {
+  background: #FEF2F2;
+  border: 1.5px solid #FECACA;
+  color: #DC2626;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+}
+
+/* Actions */
+.actionRow {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.btnPrimary {
+  background: var(--primary-dark);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btnPrimary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btnOutline {
+  background: white;
+  color: var(--primary-dark);
+  border: 1.5px solid var(--border-main);
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btnOutline:hover {
+  border-color: var(--primary-dark);
+}
+
+/* Progress card */
+.progressCard {
+  background: white;
+  border-radius: 16px;
+  padding: 48px 32px;
+  text-align: center;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-gray);
+  border-radius: 4px;
+  overflow: hidden;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--primary-dark);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .main {
+    margin-left: 0;
+    padding: 24px 16px;
+  }
+
+  .stepper {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .stepLine {
+    display: none;
+  }
+}

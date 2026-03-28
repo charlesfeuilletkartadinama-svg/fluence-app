@@ -1,0 +1,524 @@
+/* Statistiques Page Styles */
+
+.page {
+  display: flex;
+  min-height: 100vh;
+}
+
+.main {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  padding: 48px;
+  background: var(--bg-gray);
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+
+.title {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 400;
+  color: var(--primary-dark);
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* Filters */
+.filters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1.5px solid var(--border-main);
+  margin-bottom: 32px;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.select {
+  padding: 10px 12px;
+  border: 1.5px solid var(--border-main);
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  background: white;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.1);
+}
+
+/* Stats Cards */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.statCard {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1.5px solid var(--border-main);
+  transition: all var(--transition-normal);
+}
+
+.statCard:hover {
+  border-color: var(--accent-gold);
+  box-shadow: var(--shadow-md);
+}
+
+.statLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+}
+
+.statValue {
+  font-family: var(--font-serif);
+  font-size: 36px;
+  font-weight: 400;
+  color: var(--primary-dark);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.statUnit {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Charts */
+.chartContainer {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  border: 1.5px solid var(--border-main);
+  margin-bottom: 32px;
+}
+
+.chartTitle {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--primary-dark);
+  margin-bottom: 20px;
+}
+
+.chart {
+  width: 100%;
+  height: 300px;
+  position: relative;
+}
+
+/* Table */
+.table {
+  background: white;
+  border-radius: 12px;
+  border: 1.5px solid var(--border-main);
+  overflow: hidden;
+}
+
+.tableHead {
+  background: var(--bg-darker);
+  border-bottom: 1px solid var(--border-main);
+}
+
+.tableHeaderCell {
+  padding: 14px 16px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.tableRow {
+  border-bottom: 1px solid var(--border-light);
+  transition: background var(--transition-fast);
+}
+
+.tableRow:hover {
+  background: var(--bg-darker);
+}
+
+.tableRow:last-child {
+  border-bottom: none;
+}
+
+.tableCell {
+  padding: 14px 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.tableCellSmall {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badgeSuccess {
+  background: rgba(22, 163, 74, 0.1);
+  color: var(--success);
+}
+
+.badgeWarning {
+  background: rgba(217, 119, 6, 0.1);
+  color: var(--warning);
+}
+
+.badgeError {
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--error);
+}
+
+/* Empty State */
+.emptyState {
+  background: white;
+  border-radius: 12px;
+  padding: 64px 24px;
+  text-align: center;
+  border: 1.5px dashed var(--border-main);
+  color: var(--text-secondary);
+}
+
+.emptyStateIcon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.emptyStateText {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Distribution Chart */
+.distributionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.distributionCard {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1.5px solid var(--border-main);
+}
+
+.distributionLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.distributionBar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-darker);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.distributionFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-dark) 0%, var(--accent-gold) 100%);
+  border-radius: 4px;
+  transition: width var(--transition-normal);
+}
+
+.distributionValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+
+/* ── Mode bar ── */
+.modeBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.modeTabs {
+  display: flex;
+  background: white;
+  border-radius: 10px;
+  padding: 3px;
+  border: 1.5px solid var(--border-main);
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.modeTab {
+  padding: 8px 18px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.modeTab:hover {
+  color: var(--primary-dark);
+}
+
+.modeTabActive {
+  background: var(--primary-dark);
+  color: white;
+}
+
+/* ── Period tabs ── */
+.periodeTabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.periodeTab {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-main);
+  background: white;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.periodeTab:hover {
+  border-color: var(--accent-gold);
+  color: var(--primary-dark);
+}
+
+.periodeTabActive {
+  background: var(--accent-gold);
+  border-color: var(--accent-gold);
+  color: white;
+}
+
+/* ── Comparison grid ── */
+.comparisonGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.compCard {
+  background: white;
+  border-radius: 12px;
+  padding: 18px 20px;
+  border: 1.5px solid var(--border-main);
+}
+
+/* ── Clickable table rows ── */
+.tableRowClickable {
+  cursor: pointer;
+}
+
+.tableRowClickable:hover {
+  background: rgba(201, 168, 76, 0.06) !important;
+}
+
+/* ── Modal / Fiche élève ── */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.modalSheet {
+  background: white;
+  width: 480px;
+  max-width: 100vw;
+  height: 100%;
+  overflow-y: auto;
+  box-shadow: -6px 0 40px rgba(0, 0, 0, 0.14);
+  animation: slideIn 0.22s ease;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 28px 20px;
+  border-bottom: 1px solid var(--border-light);
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
+}
+
+.modalName {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--primary-dark);
+}
+
+.modalClose {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-main);
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.modalClose:hover {
+  background: var(--bg-gray);
+  color: var(--primary-dark);
+}
+
+.modalSection {
+  padding: 20px 28px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.modalSection:last-child {
+  border-bottom: none;
+}
+
+.modalSectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 14px;
+}
+
+.modalPeriodeRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.modalPeriodeRow:last-child {
+  border-bottom: none;
+}
+
+.modalPeriodeBadge {
+  background: var(--primary-dark);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.modalPeriodeCard {
+  background: var(--bg-gray);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+
+.modalPeriodeCard:last-child {
+  margin-bottom: 0;
+}
+
+.modalPeriodeCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .main {
+    margin-left: 0;
+    padding: 24px 16px;
+  }
+
+  .title {
+    font-size: 24px;
+  }
+
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .chart {
+    height: 400px;
+  }
+
+  .distributionGrid {
+    grid-template-columns: 1fr;
+  }
+}

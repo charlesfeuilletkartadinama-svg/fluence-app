@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Suspense } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
@@ -286,6 +286,12 @@ function Statistiques() {
   const [coordoEtabs,    setCoordoEtabs]    = useState<{id: string; nom: string}[]>([])
   const [reseauLoading,  setReseauLoading]  = useState(false)
 
+  // Recherche élève globale
+  const [rechercheQuery,     setRechercheQuery]     = useState('')
+  const [rechercheResultats, setRechercheResultats] = useState<{id: string; nom: string; prenom: string; classeNom: string; niveauClasse: string}[]>([])
+  const [rechercheLoading,   setRechercheLoading]   = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const { profil, loading: profilLoading } = useProfil()
   const supabase = createClient()
 
@@ -554,6 +560,54 @@ function Statistiques() {
     setReseauLoading(false)
   }
 
+  // ── Recherche élève ────────────────────────────────────────────────────
+
+  function rechercherEleve(query: string) {
+    setRechercheQuery(query)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (query.trim().length < 2) { setRechercheResultats([]); return }
+    debounceRef.current = setTimeout(async () => {
+      setRechercheLoading(true)
+      const classeIds = classes.map(c => c.id)
+      let q = supabase.from('eleves')
+        .select('id, nom, prenom, classe:classes(id, nom, niveau)')
+        .or(`nom.ilike.%${query}%,prenom.ilike.%${query}%`)
+        .eq('actif', true).limit(15)
+      if (classeIds.length > 0) q = q.in('classe_id', classeIds)
+      const { data } = await q
+      setRechercheResultats((data || []).map((e: any) => ({
+        id: e.id, nom: e.nom, prenom: e.prenom,
+        classeNom: e.classe?.nom || '—',
+        niveauClasse: e.classe?.niveau || '',
+      })))
+      setRechercheLoading(false)
+    }, 300)
+  }
+
+  async function ouvrirFicheEleve(r: { id: string; nom: string; prenom: string; niveauClasse: string }) {
+    setRechercheQuery(''); setRechercheResultats([])
+    const { data: passData } = await supabase
+      .from('passations')
+      .select('eleve_id, score, non_evalue, absent, q1, q2, q3, q4, q5, q6, mode, periode:periodes(id, code)')
+      .eq('eleve_id', r.id)
+    const pass = (passData || []) as any[]
+    const row: EleveRow = { id: r.id, nom: r.nom, prenom: r.prenom, data: {} }
+    pass.forEach((p: any) => {
+      const code = p.periode?.code; const pid = p.periode?.id
+      if (!code) return
+      const rawQs = [p.q1, p.q2, p.q3, p.q4, p.q5, p.q6]
+      const norme  = normes.find(n => n.niveau === r.niveauClasse && n.periode_id === pid)
+      const groupe: 1|2|3|4|null = (!p.non_evalue && p.score !== null) ? classerEleve(p.score, norme) : null
+      row.data[code] = {
+        score: p.non_evalue ? null : p.score, ne: !!p.non_evalue,
+        comp: calcCompPct(rawQs),
+        qs: rawQs.map((q: string|null) => q === null ? null : q === 'Correct'),
+        mode: p.mode || 'saisie', groupe,
+      }
+    })
+    setEleveModal(row)
+  }
+
   // ── Rendu ──────────────────────────────────────────────────────────────
 
   if (profilLoading || loading) {
@@ -639,6 +693,50 @@ function Statistiques() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* ── Recherche élève ── */}
+        <div style={{ position: 'relative', marginBottom: 24 }}>
+          <input
+            type="text"
+            placeholder="Rechercher un élève par nom ou prénom…"
+            value={rechercheQuery}
+            onChange={e => rechercherEleve(e.target.value)}
+            style={{
+              width: '100%', padding: '11px 16px 11px 42px',
+              border: '1.5px solid var(--border-main)', borderRadius: 12,
+              fontFamily: 'var(--font-sans)', fontSize: 14, background: 'white',
+              color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
+            }}
+          />
+          <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 17, pointerEvents: 'none' }}>🔍</span>
+          {rechercheQuery.length >= 2 && (
+            <div style={{
+              position: 'absolute', top: '110%', left: 0, right: 0, zIndex: 20,
+              background: 'white', border: '1.5px solid var(--border-main)',
+              borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', overflow: 'hidden',
+            }}>
+              {rechercheLoading ? (
+                <div style={{ padding: '14px 18px', fontSize: 13, color: 'var(--text-tertiary)' }}>Recherche…</div>
+              ) : rechercheResultats.length === 0 ? (
+                <div style={{ padding: '14px 18px', fontSize: 13, color: 'var(--text-tertiary)' }}>Aucun élève trouvé</div>
+              ) : rechercheResultats.map(e => (
+                <div key={e.id} onClick={() => ouvrirFicheEleve(e)} style={{
+                  padding: '12px 18px', cursor: 'pointer', fontSize: 13,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  borderBottom: '1px solid var(--border-light)', transition: 'background 0.1s',
+                }}
+                onMouseEnter={el => (el.currentTarget.style.background = 'var(--bg-gray)')}
+                onMouseLeave={el => (el.currentTarget.style.background = 'white')}>
+                  <span style={{ fontWeight: 600, color: 'var(--primary-dark)' }}>{e.prenom} {e.nom}</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-gray)', padding: '2px 8px', borderRadius: 6 }}>{e.classeNom}</span>
+                    {e.niveauClasse && <span style={{ fontSize: 12, color: 'var(--text-tertiary)', background: 'var(--bg-gray)', padding: '2px 8px', borderRadius: 6 }}>{e.niveauClasse}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ════ VUE RÉSEAU (coordo) ════ */}

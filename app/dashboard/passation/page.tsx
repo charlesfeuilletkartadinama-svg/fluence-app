@@ -5,6 +5,8 @@ import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
+import Sidebar from '@/app/components/Sidebar'
+import ImpersonationBar from '@/app/components/ImpersonationBar'
 
 type Eleve = {
   id: string
@@ -200,40 +202,19 @@ function PassationContent() {
   const chronoCouleur = secondes <= 10 ? '#ef4444'
     : secondes <= 20 ? '#f97316' : '#ffffff'
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen text-slate-400">Chargement...</div>
+  if (loading) return (
+    <>
+      <Sidebar />
+      <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32 }} className="text-slate-400">Chargement...</div>
+    </>
+  )
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Sidebar */}
-      <div className="fixed left-0 top-0 h-full w-64 bg-blue-900 text-white p-6">
-        <div className="mb-8">
-          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center mb-3">
-            <span className="text-blue-900 font-bold text-lg">F</span>
-          </div>
-          <h1 className="font-bold text-lg">Test de Fluence</h1>
-          <p className="text-blue-300 text-xs mt-1">Académie de Guyane</p>
-        </div>
-        <nav className="space-y-1">
-          <a href="/dashboard/eleves" className="flex items-center gap-3 px-3 py-2 rounded-lg text-blue-200 hover:bg-blue-800 text-sm font-medium transition">
-            👥 Mes élèves
-          </a>
-          <a href="/dashboard/passation" className="flex items-center gap-3 px-3 py-2 rounded-lg bg-blue-800 text-white text-sm font-medium">
-            ⏱️ Mode passation
-          </a>
-        </nav>
-        {classe && (
-          <div className="mt-6 bg-blue-800 rounded-xl p-4">
-            <p className="text-xs text-blue-300 mb-1">Classe</p>
-            <p className="font-bold text-white">{classe.nom}</p>
-            {periode && <p className="text-blue-300 text-xs mt-1">Période {periode.code}</p>}
-            {etape !== 'periode' && (
-              <p className="text-blue-300 text-xs mt-2">{nbFaits}/{eleves.length} élèves</p>
-            )}
-          </div>
-        )}
-      </div>
+      <Sidebar />
+      <ImpersonationBar />
 
-      <div className="ml-64">
+      <div style={{ marginLeft: 'var(--sidebar-width)' }}>
 
         {/* ── Choix période ── */}
         {etape === 'periode' && (

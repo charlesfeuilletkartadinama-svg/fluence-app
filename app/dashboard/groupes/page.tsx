@@ -106,6 +106,8 @@ const GROUPES_DEF: Omit<Groupe, 'eleves'>[] = [
 export default function Groupes() {
   const [classes, setClasses]       = useState<Classe[]>([])
   const [periodes, setPeriodes]     = useState<Periode[]>([])
+  const [niveauFilter, setNiveauFilter] = useState<string>('tous')
+  const [niveaux, setNiveaux]       = useState<string[]>([])
   const [classeId, setClasseId]     = useState('')
   const [periodeId, setPeriodeId]   = useState('')
   const [groupes, setGroupes]       = useState<Groupe[]>([])
@@ -148,6 +150,8 @@ export default function Groupes() {
       classesData = data || []
     }
     setClasses(classesData)
+    const niveauxUniq = [...new Set((classesData as any[]).map((c: any) => c.niveau).filter(Boolean))].sort()
+    setNiveaux(niveauxUniq)
     if (classesData.length > 0) setClasseId(classesData[0].id)
 
     // Périodes — filtrées par établissement pour éviter les doublons T1/T2/T3
@@ -314,9 +318,10 @@ export default function Groupes() {
                 fontFamily: 'var(--font-sans)', fontSize: 14,
                 background: 'white', color: 'var(--primary-dark)', cursor: 'pointer',
               }}>
-              {classes.map(c => (
-                <option key={c.id} value={c.id}>{c.nom} — {c.niveau}</option>
-              ))}
+              {(niveauFilter === 'tous' ? classes : classes.filter(c => c.niveau === niveauFilter))
+                .map(c => (
+                  <option key={c.id} value={c.id}>{c.nom} — {c.niveau}</option>
+                ))}
             </select>
           </div>
           <div>
@@ -338,6 +343,22 @@ export default function Groupes() {
             </select>
           </div>
         </div>
+
+        {niveaux.length > 1 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 16 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Filtrer par niveau :</span>
+            <button onClick={() => setNiveauFilter('tous')}
+              style={{ padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', borderColor: niveauFilter === 'tous' ? 'var(--primary-dark)' : 'var(--border-main)', background: niveauFilter === 'tous' ? 'var(--primary-dark)' : 'white', color: niveauFilter === 'tous' ? 'white' : 'var(--text-secondary)' }}>
+              Tous
+            </button>
+            {niveaux.map(niv => (
+              <button key={niv} onClick={() => { setNiveauFilter(niv); const first = classes.find(c => c.niveau === niv); if (first) setClasseId(first.id) }}
+                style={{ padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', borderColor: niveauFilter === niv ? 'var(--primary-dark)' : 'var(--border-main)', background: niveauFilter === niv ? 'var(--primary-dark)' : 'white', color: niveauFilter === niv ? 'white' : 'var(--text-secondary)' }}>
+                {niv}
+              </button>
+            ))}
+          </div>
+        )}
 
         {calcul ? (
           <p style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Calcul des groupes...</p>

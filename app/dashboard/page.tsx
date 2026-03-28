@@ -40,6 +40,7 @@ type StatClasse = {
   moyenne: number | null
   min: number | null
   max: number | null
+  nbFragiles?: number
 }
 
 type EleveAlert = {
@@ -54,6 +55,16 @@ type EnseignantSansSaisie = {
   nom: string
   prenom: string
   classes: string[]
+}
+
+type NiveauStat = {
+  niveau: string
+  nbEleves: number
+  nbEvalues: number
+  nbNE: number
+  nbNonRens: number
+  moyenne: number | null
+  nbFragiles: number
 }
 
 type EtabStat = {
@@ -77,6 +88,7 @@ export default function Dashboard() {
   const [alertes, setAlertes]                 = useState<EleveAlert[]>([])
   const [ensSansSaisie, setEnsSansSaisie]     = useState<EnseignantSansSaisie[]>([])
   const [periodeCode, setPeriodeCode]         = useState('—')
+  const [niveauxStats, setNiveauxStats]       = useState<NiveauStat[]>([])
   const [etabsStats, setEtabsStats]           = useState<EtabStat[]>([])
   const [coordoPeriodes, setCoordoPeriodes]   = useState<{code: string}[]>([])
   const [coordoPeriodeCode, setCoordoPeriodeCode] = useState('')
@@ -283,6 +295,9 @@ export default function Dashboard() {
       passData = data || []
     }
 
+    const { data: normesData } = await supabase
+      .from('config_normes').select('niveau, seuil_min')
+
     // Stats par classe
     const statsC: StatClasse[] = (classesData || []).map((c: any) => {
       const elevesClasse = (elevesData || []).filter((e: any) => e.classe_id === c.id)
@@ -296,6 +311,8 @@ export default function Dashboard() {
       const enseignant = assign
         ? `${assign.enseignant?.prenom || ''} ${assign.enseignant?.nom || ''}`.trim() || '—'
         : '—'
+      const norme = (normesData || []).find((n: any) => n.niveau === c.niveau)
+      const fragiles = evalues.filter((p: any) => norme && p.score < norme.seuil_min)
       return {
         classeId: c.id, classeNom: c.nom, niveau: c.niveau,
         periode: periodeActive?.code || '—',
@@ -306,9 +323,30 @@ export default function Dashboard() {
         min: scores.length > 0 ? Math.min(...scores) : null,
         max: scores.length > 0 ? Math.max(...scores) : null,
         enseignant, sansSaisie: passClasse.length === 0,
+        nbFragiles: fragiles.length,
       }
     })
     setStatsClasses(statsC)
+
+    // Agrégation par niveau
+    const niveauxMap: Record<string, NiveauStat> = {}
+    statsC.forEach(c => {
+      const niv = c.niveau || 'Autre'
+      if (!niveauxMap[niv]) niveauxMap[niv] = { niveau: niv, nbEleves: 0, nbEvalues: 0, nbNE: 0, nbNonRens: 0, moyenne: null, nbFragiles: 0 }
+      niveauxMap[niv].nbEleves    += c.nbEleves
+      niveauxMap[niv].nbEvalues   += c.nbEvalues
+      niveauxMap[niv].nbNE        += c.nbNE
+      niveauxMap[niv].nbNonRens   += c.nbNonRenseignes
+      niveauxMap[niv].nbFragiles  += (c.nbFragiles || 0)
+    })
+    // Moyenne pondérée par niveau
+    const niveauxScores: Record<string, number[]> = {}
+    statsC.forEach(c => { if (c.moyenne != null) { if (!niveauxScores[c.niveau]) niveauxScores[c.niveau] = []; niveauxScores[c.niveau].push(c.moyenne) }})
+    Object.keys(niveauxMap).forEach(niv => {
+      const sc = niveauxScores[niv] || []
+      niveauxMap[niv].moyenne = sc.length > 0 ? Math.round(sc.reduce((a, b) => a + b, 0) / sc.length) : null
+    })
+    setNiveauxStats(Object.values(niveauxMap).sort((a, b) => a.niveau.localeCompare(b.niveau)))
 
     // Enseignants sans saisie sur la période
     if (periodeActive) {
@@ -685,31 +723,33 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ── KPI globaux ── */}
-            <div className={styles.statsGrid}>
-              <div className={`${styles.statCard} ${styles.featured}`}>
-                <div className={styles.statLabel}>Score moyen</div>
-                <div className={styles.statNum}>{stats?.scoreMoyen ?? '—'}</div>
-                <div className={styles.statUnit}>mots / minute</div>
-              </div>
-              <div className={styles.statCard}>
-                <div className={styles.statLabel}>Élèves</div>
-                <div className={styles.statNum}>{stats?.nbEleves ?? '—'}</div>
-                <div className={styles.statUnit}>{stats?.nbClasses} classe{(stats?.nbClasses || 0) > 1 ? 's' : ''}</div>
-              </div>
-              <div className={styles.statCard}>
-                <div className={styles.statLabel}>Passations</div>
-                <div className={styles.statNum}>{stats?.nbPassations ?? '—'}</div>
-                <div className={styles.statUnit}>scores enregistrés</div>
-              </div>
-              <div className={styles.statCard}>
-                <div className={styles.statLabel}>Non évalués</div>
-                <div className={`${styles.statNum} ${(stats?.txNE || 0) > 10 ? styles.statGold : ''}`}>
-                  {stats?.txNE ?? 0}%
+            {/* ── KPI globaux (enseignant et réseau uniquement) ── */}
+            {!isDirection && (
+              <div className={styles.statsGrid}>
+                <div className={`${styles.statCard} ${styles.featured}`}>
+                  <div className={styles.statLabel}>Score moyen</div>
+                  <div className={styles.statNum}>{stats?.scoreMoyen ?? '—'}</div>
+                  <div className={styles.statUnit}>mots / minute</div>
                 </div>
-                <div className={styles.statUnit}>des passations</div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Élèves</div>
+                  <div className={styles.statNum}>{stats?.nbEleves ?? '—'}</div>
+                  <div className={styles.statUnit}>{stats?.nbClasses} classe{(stats?.nbClasses || 0) > 1 ? 's' : ''}</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Passations</div>
+                  <div className={styles.statNum}>{stats?.nbPassations ?? '—'}</div>
+                  <div className={styles.statUnit}>scores enregistrés</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Non évalués</div>
+                  <div className={`${styles.statNum} ${(stats?.txNE || 0) > 10 ? styles.statGold : ''}`}>
+                    {stats?.txNE ?? 0}%
+                  </div>
+                  <div className={styles.statUnit}>des passations</div>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* ── Stats par classe (enseignant uniquement) ── */}
             {isEnseignant && statsClasses.length > 0 && (
@@ -777,11 +817,96 @@ export default function Dashboard() {
               </>
             )}
 
-            {/* ── Tableau des classes (direction) ── */}
+            {/* ── Vue direction : KPIs + tableau par niveau + tableau classes ── */}
             {isDirection && statsClasses.length > 0 && (
               <>
+                {/* KPIs direction */}
+                {(() => {
+                  const totalEleves   = statsClasses.reduce((s, c) => s + c.nbEleves, 0)
+                  const totalEvalues  = statsClasses.reduce((s, c) => s + c.nbEvalues, 0)
+                  const totalFragiles = statsClasses.reduce((s, c) => s + (c.nbFragiles || 0), 0)
+                  const txCouverture  = totalEleves > 0 ? Math.round(totalEvalues / totalEleves * 100) : 0
+                  const txFragiles    = totalEvalues > 0 ? Math.round(totalFragiles / totalEvalues * 100) : 0
+                  return (
+                    <div className={styles.statsGrid} style={{ marginBottom: 28 }}>
+                      <div className={`${styles.statCard} ${styles.featured}`}>
+                        <div className={styles.statLabel}>Score moyen</div>
+                        <div className={styles.statNum}>{stats?.scoreMoyen ?? '—'}</div>
+                        <div className={styles.statUnit}>mots / minute</div>
+                      </div>
+                      <div className={styles.statCard}>
+                        <div className={styles.statLabel}>Couverture</div>
+                        <div className={`${styles.statNum} ${txCouverture < 50 ? styles.statGold : ''}`}>{txCouverture}%</div>
+                        <div className={styles.statUnit}>{totalEvalues} / {totalEleves} élèves évalués</div>
+                      </div>
+                      <div className={styles.statCard}>
+                        <div className={styles.statLabel}>Élèves fragiles</div>
+                        <div className={`${styles.statNum} ${txFragiles > 30 ? styles.statGold : ''}`} style={{ color: txFragiles > 30 ? '#DC2626' : undefined }}>{txFragiles}%</div>
+                        <div className={styles.statUnit}>{totalFragiles} élèves (groupes 1+2)</div>
+                      </div>
+                      <div className={styles.statCard}>
+                        <div className={styles.statLabel}>Sans saisie</div>
+                        <div className={`${styles.statNum} ${ensSansSaisie.length > 0 ? styles.statGold : ''}`}>{ensSansSaisie.length}</div>
+                        <div className={styles.statUnit}>enseignant{ensSansSaisie.length > 1 ? 's' : ''}</div>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Tableau par niveau */}
+                {niveauxStats.length > 0 && (
+                  <>
+                    <div className={styles.sectionHeader} style={{ marginBottom: 12 }}>
+                      <h2 className={styles.sectionTitle}>Par niveau · {periodeCode}</h2>
+                    </div>
+                    <div className={styles.activiteTable} style={{ marginBottom: 28 }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Niveau</th>
+                            <th style={{ textAlign: 'center' }}>Élèves</th>
+                            <th style={{ textAlign: 'center' }}>Évalués</th>
+                            <th style={{ textAlign: 'center' }}>Moyenne</th>
+                            <th style={{ textAlign: 'center' }}>Fragiles</th>
+                            <th style={{ textAlign: 'center' }}>En attente</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {niveauxStats.map(n => {
+                            const pctEval = n.nbEleves > 0 ? Math.round(n.nbEvalues / n.nbEleves * 100) : 0
+                            const pctFrag = n.nbEvalues > 0 ? Math.round(n.nbFragiles / n.nbEvalues * 100) : 0
+                            return (
+                              <tr key={n.niveau}>
+                                <td className={styles.tdNom} style={{ fontWeight: 800 }}>{n.niveau}</td>
+                                <td style={{ textAlign: 'center' }}>{n.nbEleves}</td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <span style={{ fontWeight: 600, color: pctEval >= 80 ? '#16A34A' : pctEval >= 50 ? '#D97706' : '#DC2626' }}>
+                                    {n.nbEvalues} <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-secondary)' }}>({pctEval}%)</span>
+                                  </span>
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  {n.moyenne != null ? <span className={styles.scoreVal}>{n.moyenne} m/min</span> : <span className={styles.scoreNe}>—</span>}
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  {n.nbFragiles > 0 ? (
+                                    <span style={{ fontWeight: 700, fontSize: 13, color: pctFrag > 40 ? '#DC2626' : '#D97706' }}>
+                                      {n.nbFragiles} <span style={{ fontWeight: 400, fontSize: 11 }}>({pctFrag}%)</span>
+                                    </span>
+                                  ) : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                                </td>
+                                <td style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>{n.nbNonRens}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+
+                {/* Tableau des classes */}
                 <div className={styles.sectionHeader} style={{ marginBottom: 16 }}>
-                  <h2 className={styles.sectionTitle}>Classes · période {periodeCode}</h2>
+                  <h2 className={styles.sectionTitle}>Classes · {periodeCode}</h2>
                   <a href="/dashboard/statistiques" className={styles.sectionLink}>Statistiques détaillées →</a>
                 </div>
                 <div className={styles.activiteTable} style={{ marginBottom: 28 }}>
@@ -793,6 +918,7 @@ export default function Dashboard() {
                         <th>Enseignant</th>
                         <th style={{ textAlign: 'center' }}>Élèves</th>
                         <th style={{ textAlign: 'center' }}>Évalués</th>
+                        <th style={{ textAlign: 'center' }}>Fragiles</th>
                         <th style={{ textAlign: 'center' }}>Moyenne</th>
                         <th style={{ textAlign: 'center' }}>Statut</th>
                       </tr>
@@ -800,12 +926,13 @@ export default function Dashboard() {
                     <tbody>
                       {statsClasses.map(c => {
                         const pctEval = c.nbEleves > 0 ? Math.round(c.nbEvalues / c.nbEleves * 100) : 0
+                        const pctFrag = c.nbEvalues > 0 ? Math.round((c.nbFragiles || 0) / c.nbEvalues * 100) : 0
                         return (
                           <tr key={c.classeId} style={{ cursor: 'pointer' }}
                             onClick={() => router.push(`/dashboard/eleves/${c.classeId}`)}>
                             <td className={styles.tdNom}>{c.classeNom}</td>
                             <td>{c.niveau}</td>
-                            <td style={{ color: '#4A4540' }}>{(c as any).enseignant || '—'}</td>
+                            <td style={{ color: '#4A4540' }}>{(c as any).enseignant || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Non assigné</span>}</td>
                             <td style={{ textAlign: 'center' }}>{c.nbEleves}</td>
                             <td style={{ textAlign: 'center' }}>
                               <span style={{ fontWeight: 600, color: pctEval >= 80 ? '#16A34A' : pctEval >= 50 ? '#D97706' : '#DC2626' }}>
@@ -813,9 +940,14 @@ export default function Dashboard() {
                               </span>
                             </td>
                             <td style={{ textAlign: 'center' }}>
-                              {c.moyenne != null
-                                ? <span className={styles.scoreVal}>{c.moyenne} m/min</span>
-                                : <span className={styles.scoreNe}>—</span>}
+                              {(c.nbFragiles || 0) > 0 ? (
+                                <span style={{ fontWeight: 700, color: pctFrag > 40 ? '#DC2626' : '#D97706', fontSize: 13 }}>
+                                  {c.nbFragiles} <span style={{ fontWeight: 400, fontSize: 11 }}>({pctFrag}%)</span>
+                                </span>
+                              ) : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {c.moyenne != null ? <span className={styles.scoreVal}>{c.moyenne} m/min</span> : <span className={styles.scoreNe}>—</span>}
                             </td>
                             <td style={{ textAlign: 'center' }}>
                               {(c as any).sansSaisie

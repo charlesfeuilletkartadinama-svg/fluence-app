@@ -272,6 +272,10 @@ function Statistiques() {
   const [compPer2,       setCompPer2]       = useState('')
   const [eleveModal,     setEleveModal]     = useState<EleveRow | null>(null)
 
+  // Filtre niveau (direction)
+  const [niveauFilter,   setNiveauFilter]   = useState<string>('tous')
+  const [niveaux,        setNiveaux]        = useState<string[]>([])
+
   // Coordo réseau
   const [vueReseau,      setVueReseau]      = useState(false)
   const [viewMode,       setViewMode]       = useState<'reseau' | 'classe'>('reseau')
@@ -313,6 +317,8 @@ function Statistiques() {
       classesData = data || []
     }
     setClasses(classesData)
+    const niveauxUniq = [...new Set((classesData as any[]).map((c: any) => c.niveau).filter(Boolean))].sort()
+    setNiveaux(niveauxUniq)
 
     // Périodes — déduplication par code
     const { data: perData } = await supabase.from('periodes').select('id, code, label').order('code')
@@ -605,11 +611,31 @@ function Statistiques() {
             )}
             {/* Sélecteur de classe (masqué en mode réseau) */}
             {(!vueReseau || viewMode === 'classe') && (
-              <div>
-                <label className={styles.label} style={{ display: 'block', marginBottom: 6 }}>Classe</label>
-                <select value={classeId} onChange={e => setClasseId(e.target.value)} className={styles.select}>
-                  {classes.map(c => <option key={c.id} value={c.id}>{c.nom} — {c.niveau}</option>)}
-                </select>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div>
+                  <label className={styles.label} style={{ display: 'block', marginBottom: 6 }}>Classe</label>
+                  <select value={classeId} onChange={e => setClasseId(e.target.value)} className={styles.select}>
+                    {(niveauFilter === 'tous' ? classes : classes.filter(c => c.niveau === niveauFilter))
+                      .map(c => <option key={c.id} value={c.id}>{c.nom} — {c.niveau}</option>)}
+                  </select>
+                </div>
+                {profil && ['directeur', 'principal'].includes(profil.role) && niveaux.length > 1 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>Niveau :</span>
+                    <button
+                      onClick={() => { setNiveauFilter('tous'); const first = classes[0]; if (first) setClasseId(first.id) }}
+                      style={{ padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', borderColor: niveauFilter === 'tous' ? 'var(--primary-dark)' : 'var(--border-main)', background: niveauFilter === 'tous' ? 'var(--primary-dark)' : 'white', color: niveauFilter === 'tous' ? 'white' : 'var(--text-secondary)' }}>
+                      Tous
+                    </button>
+                    {niveaux.map(niv => (
+                      <button key={niv}
+                        onClick={() => { setNiveauFilter(niv); const first = classes.find(c => c.niveau === niv); if (first) setClasseId(first.id) }}
+                        style={{ padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', borderColor: niveauFilter === niv ? 'var(--primary-dark)' : 'var(--border-main)', background: niveauFilter === niv ? 'var(--primary-dark)' : 'white', color: niveauFilter === niv ? 'white' : 'var(--text-secondary)' }}>
+                        {niv}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

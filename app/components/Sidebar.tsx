@@ -46,7 +46,10 @@ export default function Sidebar() {
     { href: '/dashboard/statistiques', icon: '📈', label: 'Statistiques'     },
     { href: '/dashboard/groupes',      icon: '🎯', label: 'Groupes & Remédiation' },
     { href: '/dashboard/rapport',      icon: '📄', label: 'Rapports PDF'     },
-    ...(isDirection || isReseau
+    ...(isDirection
+      ? [{ href: '/dashboard/onboarding', icon: '⚙️', label: 'Configuration' }]
+      : []),
+    ...(isDirection
       ? [{ href: '/dashboard/import', icon: '📥', label: 'Importation élèves' }]
       : []),
     ...(profil && ['admin','ia_dasen','recteur','coordo_rep','ien'].includes(profil.role)

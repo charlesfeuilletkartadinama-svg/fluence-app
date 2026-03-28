@@ -28,10 +28,9 @@ type IenEtab = {
 }
 type ProfilOption = { id: string; nom: string; prenom: string; role: string }
 type Invitation = {
-  id: string; code: string; role: string; etablissement_id: string | null
-  actif: boolean; etablissement: { nom: string } | null
+  id: string; code: string; role: string; etablissement_id: string | null; actif: boolean
 }
-type UserRow = { id: string; nom: string; prenom: string; role: string; etablissement: { nom: string } | null }
+type UserRow = { id: string; nom: string; prenom: string; role: string; etablissement_id: string | null }
 
 // ── Constantes ─────────────────────────────────────────────────────────────────
 
@@ -113,7 +112,7 @@ export default function Admin() {
       supabase.from('ien_etablissements')
         .select('id, ien_id, etablissement_id, ien:profils(nom, prenom), etablissement:etablissements(nom)').order('ien_id'),
       supabase.from('invitations')
-        .select('id, code, role, etablissement_id, actif, etablissement:etablissements(nom)').order('code'),
+        .select('id, code, role, etablissement_id, actif').order('code'),
     ])
     setEtablissements(etabRes.data || [])
     setPeriodes(periRes.data || [])
@@ -371,18 +370,18 @@ export default function Admin() {
 
         {/* ── Utilisateurs ── */}
         {!isReseau && onglet === 4 && (
-          <UtilisateursTab supabase={supabase} />
+          <UtilisateursTab supabase={supabase} etablissements={etablissements} />
         )}
 
         {/* ── Invitations ── */}
         {!isReseau && onglet === 5 && (
           <InvitationsTab
-            supabase={supabase}
             etablissements={etablissements}
             invitations={invitations}
             onToggle={toggleInvitation}
             onSupprimer={supprimerInvitation}
             onRefresh={chargerDonnees}
+            supabase={supabase}
           />
         )}
 
@@ -685,7 +684,7 @@ function InvitationsTab({ supabase, etablissements, invitations, onToggle, onSup
                     </span>
                   </td>
                   <td style={A.td}>
-                    {inv.etablissement?.nom || (
+                    {etablissements.find(e => e.id === inv.etablissement_id)?.nom || (
                       <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic', fontSize: 13 }}>Multi-établissement</span>
                     )}
                   </td>
@@ -935,16 +934,16 @@ function PeriodeRow({ periode, isReseau, onToggleActif, onToggleSaisie, onUpdate
 
 // ── UtilisateursTab ────────────────────────────────────────────────────────────
 
-function UtilisateursTab({ supabase }: { supabase: any }) {
-  const [users, setUsers]           = useState<UserRow[]>([])
-  const [search, setSearch]         = useState('')
-  const [roleFilter, setRoleFilter] = useState('')
-  const [editRoleId, setEditRoleId] = useState<string | null>(null)
+function UtilisateursTab({ supabase, etablissements }: { supabase: any; etablissements: Etablissement[] }) {
+  const [users, setUsers]             = useState<UserRow[]>([])
+  const [search, setSearch]           = useState('')
+  const [roleFilter, setRoleFilter]   = useState('')
+  const [editRoleId, setEditRoleId]   = useState<string | null>(null)
   const [editRoleVal, setEditRoleVal] = useState('')
 
   useEffect(() => {
     supabase.from('profils')
-      .select('id, nom, prenom, role, etablissement:etablissements(nom)')
+      .select('id, nom, prenom, role, etablissement_id')
       .order('nom')
       .then(({ data }: any) => setUsers(data || []))
   }, [])
@@ -1036,7 +1035,7 @@ function UtilisateursTab({ supabase }: { supabase: any }) {
                     </span>
                   )}
                 </td>
-                <td style={A.td}>{u.etablissement?.nom || '—'}</td>
+                <td style={A.td}>{etablissements.find(e => e.id === u.etablissement_id)?.nom || '—'}</td>
                 <td style={A.tdC}>
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                     <button onClick={() => { setEditRoleId(u.id); setEditRoleVal(u.role) }} style={{

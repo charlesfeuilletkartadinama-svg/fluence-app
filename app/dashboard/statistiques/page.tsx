@@ -39,6 +39,7 @@ type StatPeriode = {
   max:        number | null
   nbEvalues:  number
   nbNE:       number
+  nbAbsent:   number
   nbNR:       number
   g1: number; g2: number; g3: number; g4: number
   compQ: { pct: number; n: number; total: number }[]
@@ -377,7 +378,7 @@ function Statistiques() {
 
     const { data: passData } = await supabase
       .from('passations')
-      .select('eleve_id, score, non_evalue, q1, q2, q3, q4, q5, q6, mode, periode:periodes(id, code)')
+      .select('eleve_id, score, non_evalue, absent, q1, q2, q3, q4, q5, q6, mode, periode:periodes(id, code)')
       .in('eleve_id', eleveIds)
     const pass = (passData || []) as any[]
 
@@ -410,7 +411,8 @@ function Statistiques() {
       const passP       = pass.filter(p => p.periode?.code === per.code)
       const idsAvecPass = new Set(passP.map(p => p.eleve_id))
       const evalues     = passP.filter(p => !p.non_evalue && p.score !== null && p.score > 0)
-      const ne          = passP.filter(p => p.non_evalue)
+      const ne          = passP.filter(p => p.non_evalue && !p.absent)
+      const absents     = passP.filter(p => p.absent)
       const scores      = evalues.map(p => p.score as number)
 
       const norme = normes.find(n => n.niveau === classeActuelle?.niveau && n.periode_id === per.id)
@@ -431,11 +433,11 @@ function Statistiques() {
         moyenne: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
         min:     scores.length > 0 ? Math.min(...scores) : null,
         max:     scores.length > 0 ? Math.max(...scores) : null,
-        nbEvalues: evalues.length, nbNE: ne.length,
+        nbEvalues: evalues.length, nbNE: ne.length, nbAbsent: absents.length,
         nbNR: eleveIds.length - idsAvecPass.size,
         g1, g2, g3, g4, compQ,
       }
-    }).filter(s => s.nbEvalues + s.nbNE > 0)
+    }).filter(s => s.nbEvalues + s.nbNE + s.nbAbsent > 0)
 
     setStatsPer(statsP)
 
@@ -875,6 +877,11 @@ function Statistiques() {
                     <div className={styles.statLabel}>Non évalués</div>
                     <div className={styles.statValue} style={{ color: '#EA580C' }}>{spActive.nbNE}</div>
                     <div className={styles.statUnit}>{nbEleves > 0 ? `${Math.round(spActive.nbNE / nbEleves * 100)}%` : '—'} de la classe</div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <div className={styles.statLabel}>Absents</div>
+                    <div className={styles.statValue} style={{ color: '#DC2626' }}>{spActive.nbAbsent}</div>
+                    <div className={styles.statUnit}>{nbEleves > 0 ? `${Math.round(spActive.nbAbsent / nbEleves * 100)}%` : '—'} de la classe</div>
                   </div>
                   <div className={styles.statCard}>
                     <div className={styles.statLabel}>Non renseignés</div>

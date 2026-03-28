@@ -14,6 +14,7 @@ type Eleve = {
   prenom: string
   scoreActuel: number | null
   ne: boolean
+  absent: boolean
   nbErreurs: number
   dernierMot: number | null
   q1: boolean | null
@@ -81,7 +82,7 @@ function PassationContent() {
       .eq('classe_id', classeId!).eq('actif', true).order('nom')
 
     setEleves((elevesData || []).map(e => ({
-      ...e, scoreActuel: null, ne: false, nbErreurs: 0,
+      ...e, scoreActuel: null, ne: false, absent: false, nbErreurs: 0,
       dernierMot: null, fait: false,
       q1:null, q2:null, q3:null, q4:null, q5:null, q6:null
     })))
@@ -147,11 +148,11 @@ function PassationContent() {
     })
   }
 
-  function validerEleve(ne: boolean = false) {
+  function validerEleve(ne: boolean = false, absent: boolean = false) {
     const score = ne ? null : calculerScore()
     setEleves(prev => prev.map((e, i) =>
       i === eleveIdx ? {
-        ...e, fait: true, ne,
+        ...e, fait: true, ne, absent,
         scoreActuel: score,
         nbErreurs,
         dernierMot: parseInt(dernierMot) || null,
@@ -161,7 +162,6 @@ function PassationContent() {
     ))
     resetChrono()
 
-    // Passer au suivant automatiquement
     const prochain = eleves.findIndex((e, i) => i > eleveIdx && !e.fait)
     if (prochain >= 0) {
       setEleveIdx(prochain)
@@ -181,6 +181,7 @@ function PassationContent() {
         periode_id:    periode.id,
         score:         eleve.ne ? null : eleve.scoreActuel,
         non_evalue:    eleve.ne,
+        absent:        eleve.absent,
         mode:          'passation',
         enseignant_id: profil.id,
         q1: eleve.q1 === true ? 'Correct' : eleve.q1 === false ? 'Incorrect' : null,
@@ -307,32 +308,35 @@ function PassationContent() {
 
         {/* ── Écran passation élève ── */}
         {etape === 'eleve' && eleve && (
-          <div style={{ minHeight: '100vh', background: 'var(--primary-dark)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ minHeight: '100vh', background: 'white', display: 'flex', flexDirection: 'column' }}>
 
             {/* Top bar */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', borderBottom: '1.5px solid var(--border-light)' }}>
               <button onClick={() => setEtape('liste')}
-                style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.7)', padding: '8px 16px', borderRadius: 10, fontSize: 13, fontFamily: 'var(--font-sans)', cursor: 'pointer', fontWeight: 600 }}>
+                style={{ background: 'var(--bg-gray)', border: 'none', color: 'var(--text-secondary)', padding: '8px 16px', borderRadius: 10, fontSize: 13, fontFamily: 'var(--font-sans)', cursor: 'pointer', fontWeight: 600 }}>
                 ← Retour à la liste
               </button>
-              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+              <span style={{ color: 'var(--text-tertiary)', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
                 Élève {eleveIdx + 1} / {eleves.length}
               </span>
             </div>
 
             {/* Nom élève */}
-            <div style={{ textAlign: 'center', padding: '32px 24px 16px' }}>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 8 }}>Lecture en cours</div>
-              <h2 style={{ fontSize: 40, fontWeight: 900, color: 'white', margin: 0, fontFamily: 'var(--font-sans)', letterSpacing: -1 }}>{eleve.nom}</h2>
-              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 20, marginTop: 4, fontFamily: 'var(--font-sans)' }}>{eleve.prenom}</p>
+            <div style={{ textAlign: 'center', padding: '28px 24px 12px' }}>
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 8 }}>Lecture en cours</div>
+              <h2 style={{ fontSize: 38, fontWeight: 900, color: 'var(--primary-dark)', margin: 0, fontFamily: 'var(--font-sans)', letterSpacing: -1 }}>{eleve.nom}</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 20, marginTop: 4, fontFamily: 'var(--font-sans)' }}>{eleve.prenom}</p>
             </div>
 
             {/* Chrono */}
-            <div style={{ textAlign: 'center', padding: '8px 24px 16px' }}>
-              <div style={{ fontSize: 96, fontWeight: 900, color: chronoCouleur, fontVariantNumeric: 'tabular-nums', lineHeight: 1, transition: 'color 0.3s', fontFamily: 'var(--font-sans)' }}>
+            <div style={{ textAlign: 'center', padding: '8px 24px 12px' }}>
+              <div style={{
+                fontSize: 96, fontWeight: 900, fontVariantNumeric: 'tabular-nums', lineHeight: 1, transition: 'color 0.3s', fontFamily: 'var(--font-sans)',
+                color: secondes <= 10 ? '#ef4444' : secondes <= 20 ? '#f97316' : 'var(--primary-dark)',
+              }}>
                 {Math.floor(secondes/60)}:{String(secondes%60).padStart(2,'0')}
               </div>
-              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 8, fontFamily: 'var(--font-sans)' }}>
+              <p style={{ color: 'var(--text-tertiary)', fontSize: 13, marginTop: 8, fontFamily: 'var(--font-sans)' }}>
                 {chronoActif ? 'Chronomètre en cours' : chronoTermine ? 'Temps écoulé' : 'Prêt à démarrer'}
               </p>
             </div>
@@ -341,7 +345,7 @@ function PassationContent() {
             <div style={{ display: 'flex', gap: 12, padding: '0 28px 16px', justifyContent: 'center' }}>
               {!chronoActif && !chronoTermine && (
                 <button onClick={demarrerChrono}
-                  style={{ flex: 1, maxWidth: 320, background: '#22c55e', color: 'white', border: 'none', padding: '16px', borderRadius: 16, fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer', letterSpacing: 0.5 }}>
+                  style={{ flex: 1, maxWidth: 320, background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '16px', borderRadius: 16, fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
                   ▶ Démarrer les 60 secondes
                 </button>
               )}
@@ -353,17 +357,17 @@ function PassationContent() {
               )}
               {(chronoActif || chronoTermine) && (
                 <button onClick={resetChrono}
-                  style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', border: 'none', padding: '16px 20px', borderRadius: 16, fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
+                  style={{ background: 'var(--bg-gray)', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)', padding: '16px 20px', borderRadius: 16, fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
                   ↺
                 </button>
               )}
             </div>
 
-            {/* Bouton erreur — grand bouton tactile */}
+            {/* Bouton erreur */}
             {chronoActif && (
               <div style={{ padding: '0 28px 16px' }}>
                 <button onClick={() => setNbErreurs(n => n+1)}
-                  style={{ width: '100%', background: 'rgba(239,68,68,0.15)', border: '2px solid rgba(239,68,68,0.4)', color: '#fca5a5', padding: '20px', borderRadius: 16, fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-sans)', cursor: 'pointer', letterSpacing: 0.3 }}>
+                  style={{ width: '100%', background: '#fef2f2', border: '1.5px solid #fca5a5', color: '#dc2626', padding: '20px', borderRadius: 16, fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
                   ✗ Erreur de lecture {nbErreurs > 0 && <span style={{ fontSize: 15, opacity: 0.8 }}>({nbErreurs})</span>}
                 </button>
               </div>
@@ -372,8 +376,8 @@ function PassationContent() {
             {/* Saisie après chrono */}
             {chronoTermine && (
               <div style={{ padding: '0 28px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 16, padding: 20 }}>
-                  <label style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 10, fontFamily: 'var(--font-sans)' }}>
+                <div style={{ background: 'var(--bg-gray)', borderRadius: 16, padding: 20 }}>
+                  <label style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 10, fontFamily: 'var(--font-sans)' }}>
                     N° du dernier mot lu
                   </label>
                   <input
@@ -382,21 +386,21 @@ function PassationContent() {
                     onChange={e => setDernierMot(e.target.value)}
                     placeholder="ex: 87"
                     autoFocus
-                    style={{ width: '100%', background: 'rgba(255,255,255,0.1)', border: '1.5px solid rgba(255,255,255,0.2)', color: 'white', fontSize: 32, fontWeight: 700, textAlign: 'center', borderRadius: 12, padding: '12px', outline: 'none', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' }}
+                    style={{ width: '100%', background: 'white', border: '1.5px solid var(--border-main)', color: 'var(--primary-dark)', fontSize: 32, fontWeight: 700, textAlign: 'center', borderRadius: 12, padding: '12px', outline: 'none', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' }}
                   />
                   {nbErreurs > 0 && (
-                    <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 8, textAlign: 'center', fontFamily: 'var(--font-sans)' }}>
+                    <p style={{ color: 'var(--text-tertiary)', fontSize: 12, marginTop: 8, textAlign: 'center', fontFamily: 'var(--font-sans)' }}>
                       {nbErreurs} erreur{nbErreurs > 1 ? 's' : ''} comptabilisée{nbErreurs > 1 ? 's' : ''}
                     </p>
                   )}
                 </div>
 
                 {scoreCalc !== null && (
-                  <div style={{ background: 'rgba(34,197,94,0.12)', border: '1.5px solid rgba(34,197,94,0.25)', borderRadius: 16, padding: 20, textAlign: 'center' }}>
-                    <p style={{ color: '#86efac', fontSize: 13, fontWeight: 600, marginBottom: 4, fontFamily: 'var(--font-sans)' }}>Score calculé</p>
-                    <p style={{ color: 'white', fontSize: 52, fontWeight: 900, lineHeight: 1, fontFamily: 'var(--font-sans)' }}>{scoreCalc}</p>
-                    <p style={{ color: '#86efac', fontSize: 14, marginTop: 4, fontFamily: 'var(--font-sans)' }}>mots / minute</p>
-                    <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 6, fontFamily: 'var(--font-sans)' }}>
+                  <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 16, padding: 20, textAlign: 'center' }}>
+                    <p style={{ color: '#16a34a', fontSize: 13, fontWeight: 600, marginBottom: 4, fontFamily: 'var(--font-sans)' }}>Score calculé</p>
+                    <p style={{ color: 'var(--primary-dark)', fontSize: 52, fontWeight: 900, lineHeight: 1, fontFamily: 'var(--font-sans)' }}>{scoreCalc}</p>
+                    <p style={{ color: '#16a34a', fontSize: 14, marginTop: 4, fontFamily: 'var(--font-sans)' }}>mots / minute</p>
+                    <p style={{ color: 'var(--text-tertiary)', fontSize: 11, marginTop: 6, fontFamily: 'var(--font-sans)' }}>
                       {parseInt(dernierMot)} mots − {nbErreurs} erreurs = {parseInt(dernierMot)-nbErreurs} corrects · {tempsEcoule}s
                     </p>
                   </div>
@@ -407,14 +411,15 @@ function PassationContent() {
             {/* Questions compréhension */}
             {chronoTermine && scoreCalc !== null && (
               <div style={{ padding: '0 28px 16px' }}>
-                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: 600, marginBottom: 10, fontFamily: 'var(--font-sans)' }}>Questions de compréhension</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, marginBottom: 10, fontFamily: 'var(--font-sans)' }}>Questions de compréhension</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 }}>
                   {qs.map((q, i) => (
                     <button key={i} onClick={() => toggleQ(i)}
                       style={{
-                        padding: '12px 4px', borderRadius: 12, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)',
-                        background: q === true ? '#22c55e' : q === false ? '#ef4444' : 'rgba(255,255,255,0.1)',
-                        color: q === null ? 'rgba(255,255,255,0.6)' : 'white',
+                        padding: '12px 4px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                        border: q === true ? '1.5px solid #22c55e' : q === false ? '1.5px solid #ef4444' : '1.5px solid var(--border-main)',
+                        background: q === true ? '#f0fdf4' : q === false ? '#fef2f2' : 'var(--bg-gray)',
+                        color: q === true ? '#16a34a' : q === false ? '#dc2626' : 'var(--text-tertiary)',
                       }}>
                       Q{i+1}
                       <div style={{ fontSize: 16, marginTop: 2 }}>{q === true ? '✓' : q === false ? '✗' : '·'}</div>
@@ -424,16 +429,20 @@ function PassationContent() {
               </div>
             )}
 
-            {/* Boutons valider */}
-            <div style={{ padding: '16px 28px 28px', marginTop: 'auto', display: 'flex', gap: 12 }}>
-              <button onClick={() => validerEleve(true)}
-                style={{ flex: 1, border: '2px solid rgba(251,146,60,0.5)', background: 'rgba(251,146,60,0.08)', color: '#fdba74', padding: '16px', borderRadius: 16, fontWeight: 700, fontSize: 15, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+            {/* Boutons action */}
+            <div style={{ padding: '16px 28px 28px', marginTop: 'auto', display: 'flex', gap: 10 }}>
+              <button onClick={() => validerEleve(true, true)}
+                style={{ flex: 1, border: '1.5px solid #fca5a5', background: '#fef2f2', color: '#dc2626', padding: '14px 10px', borderRadius: 14, fontWeight: 700, fontSize: 14, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+                Absent
+              </button>
+              <button onClick={() => validerEleve(true, false)}
+                style={{ flex: 1, border: '1.5px solid #fed7aa', background: '#fff7ed', color: '#c2410c', padding: '14px 10px', borderRadius: 14, fontWeight: 700, fontSize: 14, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
                 Non évalué
               </button>
               {scoreCalc !== null && (
-                <button onClick={() => validerEleve(false)}
-                  style={{ flex: 2, background: 'white', color: 'var(--primary-dark)', border: 'none', padding: '16px 24px', borderRadius: 16, fontWeight: 800, fontSize: 17, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
-                  Valider · Élève suivant →
+                <button onClick={() => validerEleve(false, false)}
+                  style={{ flex: 2, background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '14px 20px', borderRadius: 14, fontWeight: 800, fontSize: 15, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+                  Valider · Suivant →
                 </button>
               )}
             </div>

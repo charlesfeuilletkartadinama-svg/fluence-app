@@ -112,7 +112,7 @@ export default function Admin() {
     ])
     setEtablissements(etabRes.data || [])
     setPeriodes(periRes.data || [])
-    setCoordoEtabs((ceRes.data || []) as CoorDoEtab[])
+    setCoordoEtabs((ceRes.data || []) as unknown as CoorDoEtab[])
     setLoading(false)
   }
 

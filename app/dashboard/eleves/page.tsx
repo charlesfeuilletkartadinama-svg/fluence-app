@@ -183,14 +183,17 @@ export default function MesClasses() {
     if (!profil?.id || selections.length === 0) return
     setSaving(true)
 
-    await supabase.from('enseignant_classes').delete().eq('enseignant_id', profil.id)
-    await supabase.from('enseignant_classes').insert(
+    const { error: delError } = await supabase.from('enseignant_classes').delete().eq('enseignant_id', profil.id)
+    if (delError) { console.error('Delete error:', delError); setSaving(false); alert('Erreur suppression: ' + delError.message); return }
+
+    const { error: insError } = await supabase.from('enseignant_classes').insert(
       selections.map(s => ({
         enseignant_id:  profil.id,
         classe_id:      s.classeId,
         groupe_lecture: s.groupe,
       }))
     )
+    if (insError) { console.error('Insert error:', insError); setSaving(false); alert('Erreur sauvegarde: ' + insError.message); return }
 
     setSaving(false)
     setMode('liste')

@@ -86,7 +86,7 @@ function RapportContent() {
       const { data } = profil?.etablissement_id
         ? await q.eq('etablissement_id', profil.etablissement_id)
         : await q
-      classesData = data || []
+      classesData = (data as unknown as ClasseOption[]) || []
     }
     setClasses(classesData)
     if (classesData[0]) setClasseId(classesData[0].id)

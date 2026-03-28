@@ -50,7 +50,7 @@ export default function ElevesClasse({ params }: { params: Promise<{ id: string 
       .select('id, nom, niveau, etablissement:etablissements(nom)')
       .eq('id', classeId)
       .single()
-    if (classeData) setClasse(classeData as ClasseDetail)
+    if (classeData) setClasse(classeData as unknown as ClasseDetail)
 
     // Élèves
     const { data: elevesData } = await supabase
@@ -70,7 +70,7 @@ export default function ElevesClasse({ params }: { params: Promise<{ id: string 
         .select('eleve_id, score, non_evalue, periode:periodes(code)')
         .in('eleve_id', ids)
         .order('created_at', { ascending: false })
-      setScores(scoresData as ScoreRecent[] || [])
+      setScores((scoresData as unknown as ScoreRecent[]) || [])
     }
 
     setLoading(false)

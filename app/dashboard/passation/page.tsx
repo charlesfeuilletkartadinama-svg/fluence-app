@@ -70,7 +70,7 @@ function PassationContent() {
 
     const { data: periodesData } = await supabase
       .from('periodes').select('id, code, label')
-      .eq('etablissement_id', classeData.etablissement_id)
+      .eq('etablissement_id', (classeData as any).etablissement_id)
       .eq('actif', true).order('code')
     setPeriodes(periodesData || [])
 

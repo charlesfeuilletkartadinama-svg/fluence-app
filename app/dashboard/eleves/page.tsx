@@ -110,7 +110,7 @@ export default function MesClasses() {
       }
 
       const { data: dataAvecCount } = await queryAvecCount
-      const classesAvecNb: Classe[] = (dataAvecCount as ClasseRaw[] || []).map(c => ({
+      const classesAvecNb: Classe[] = ((dataAvecCount as unknown as ClasseRaw[]) || []).map(c => ({
         id:             c.id,
         nom:            c.nom,
         niveau:         c.niveau,

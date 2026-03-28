@@ -175,6 +175,7 @@ function Saisie() {
         ...e,
         score: '',
         ne: false,
+        absent: false,
         q1: null, q2: null, q3: null,
         q4: null, q5: null, q6: null,
       })))

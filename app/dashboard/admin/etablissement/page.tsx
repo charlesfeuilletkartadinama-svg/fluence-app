@@ -9,41 +9,52 @@ import ImpersonationBar from '@/app/components/ImpersonationBar'
 const TYPES_ETABLISSEMENT = ['école', 'collège', 'lycée']
 const TYPES_RESEAU = ['Hors REP', 'REP', 'REP+']
 
+const GEO_DATA: Record<string, Record<string, string[]>> = {
+  'Guyane (973)': {
+    'Cayenne 1': ['Cayenne'],
+    'Cayenne 2': ['Rémire-Montjoly', 'Matoury', 'Montsinéry-Tonnégrande'],
+    'Kourou': ['Kourou', 'Macouria', 'Sinnamary', 'Iracoubo'],
+    'Saint-Laurent-du-Maroni': ['Saint-Laurent-du-Maroni', 'Mana', 'Awala-Yalimapo'],
+    'Haut-Maroni': ['Maripasoula', 'Grand-Santi', 'Papaichton', 'Apatou'],
+    'Oyapock': ["Saint-Georges-de-l'Oyapock", 'Camopi', 'Ouanary', 'Régina'],
+    'Roura': ['Roura', 'Cacao', 'Saint-Élie'],
+  },
+}
+
 export default function NouvelEtablissement() {
   const [nom, setNom]                   = useState('')
   const [type, setType]                 = useState('école')
   const [typeReseau, setTypeReseau]     = useState('Hors REP')
+  const [dept, setDept]                 = useState('')
+  const [circo, setCirco]               = useState('')
   const [ville, setVille]               = useState('')
-  const [departement, setDepartement]   = useState('')
-  const [circonscription, setCirconscription] = useState('')
   const [saving, setSaving]             = useState(false)
   const [erreur, setErreur]             = useState('')
   const router   = useRouter()
   const supabase = createClient()
 
+  const depts  = Object.keys(GEO_DATA)
+  const circos = dept ? Object.keys(GEO_DATA[dept] || {}) : []
+  const villes = dept && circo ? (GEO_DATA[dept]?.[circo] || []) : []
+
+  function onDeptChange(val: string) { setDept(val); setCirco(''); setVille('') }
+  function onCircoChange(val: string) { setCirco(val); setVille('') }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!nom.trim()) { setErreur('Le nom est obligatoire.'); return }
-
-    setSaving(true)
-    setErreur('')
-
+    setSaving(true); setErreur('')
     const { error } = await supabase.from('etablissements').insert({
-      nom:            nom.trim(),
-      type:           type,
-      type_reseau:    typeReseau,
-      ville:          ville.trim()          || null,
-      departement:    departement.trim()    || null,
-      circonscription: circonscription.trim() || null,
+      nom:             nom.trim(),
+      type,
+      type_reseau:     typeReseau,
+      departement:     dept     || null,
+      circonscription: circo    || null,
+      ville:           ville    || null,
     })
-
     setSaving(false)
-
-    if (error) {
-      setErreur(`Erreur : ${error.message}`)
-    } else {
-      router.push('/dashboard/admin?onglet=1')
-    }
+    if (error) { setErreur(`Erreur : ${error.message}`) }
+    else { router.push('/dashboard/admin') }
   }
 
   const F: React.CSSProperties = {
@@ -58,23 +69,18 @@ export default function NouvelEtablissement() {
     color: 'var(--text-tertiary)', letterSpacing: 1.2,
     textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 6,
   }
-  const divider: React.CSSProperties = {
-    borderTop: '1.5px solid var(--border-light)', margin: '28px 0',
-  }
+  const divider: React.CSSProperties = { borderTop: '1.5px solid var(--border-light)', margin: '28px 0' }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-light)' }}>
       <Sidebar />
       <ImpersonationBar />
-
       <main style={{ marginLeft: 'var(--sidebar-width)', padding: '40px 48px', maxWidth: 680 }}>
 
-        {/* Header */}
         <button onClick={() => router.back()} style={{
           background: 'none', border: 'none', cursor: 'pointer',
           color: 'var(--text-secondary)', fontSize: 13,
-          fontFamily: 'var(--font-sans)', marginBottom: 16,
-          display: 'flex', alignItems: 'center', gap: 6, padding: 0,
+          fontFamily: 'var(--font-sans)', marginBottom: 16, display: 'block', padding: 0,
         }}>
           ← Retour à l'administration
         </button>
@@ -90,14 +96,46 @@ export default function NouvelEtablissement() {
           <div style={{ background: 'white', borderRadius: 16, padding: 32, border: '1.5px solid var(--border-light)' }}>
 
             {erreur && (
-              <div style={{
-                background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.2)',
-                borderRadius: 10, padding: '12px 16px', fontSize: 13,
-                color: '#dc2626', fontFamily: 'var(--font-sans)', marginBottom: 24,
-              }}>
+              <div style={{ background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#dc2626', fontFamily: 'var(--font-sans)', marginBottom: 24 }}>
                 {erreur}
               </div>
             )}
+
+            {/* ── Localisation ── */}
+            <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', margin: '0 0 20px 0' }}>
+              Localisation
+            </p>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={L}>Département</label>
+              <select value={dept} onChange={e => onDeptChange(e.target.value)} style={{ ...F, cursor: 'pointer' }}>
+                <option value="">— Choisir un département —</option>
+                {depts.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div>
+                <label style={L}>Circonscription</label>
+                <select value={circo} onChange={e => onCircoChange(e.target.value)}
+                  style={{ ...F, cursor: dept ? 'pointer' : 'default', opacity: dept ? 1 : 0.5 }} disabled={!dept}>
+                  <option value="">— Choisir —</option>
+                  {circos.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {!dept && <p style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)', marginTop: 4 }}>Choisissez d'abord un département</p>}
+              </div>
+              <div>
+                <label style={L}>Ville / Commune</label>
+                <select value={ville} onChange={e => setVille(e.target.value)}
+                  style={{ ...F, cursor: circo ? 'pointer' : 'default', opacity: circo ? 1 : 0.5 }} disabled={!circo}>
+                  <option value="">— Choisir —</option>
+                  {villes.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+                {!circo && dept && <p style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)', marginTop: 4 }}>Choisissez d'abord une circonscription</p>}
+              </div>
+            </div>
+
+            <div style={divider} />
 
             {/* ── Identité ── */}
             <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', margin: '0 0 20px 0' }}>
@@ -107,27 +145,23 @@ export default function NouvelEtablissement() {
             <div style={{ marginBottom: 20 }}>
               <label style={L}>Nom de l'établissement *</label>
               <input type="text" value={nom} onChange={e => setNom(e.target.value)}
-                placeholder="Ex : École primaire Jules Verne"
-                style={F} autoFocus required />
+                placeholder="Ex : École primaire Jules Verne" style={F} autoFocus required />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
               <div>
                 <label style={L}>Type</label>
                 <select value={type} onChange={e => setType(e.target.value)} style={{ ...F, cursor: 'pointer' }}>
-                  {TYPES_ETABLISSEMENT.map(t => (
-                    <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-                  ))}
+                  {TYPES_ETABLISSEMENT.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
                 </select>
               </div>
               <div>
                 <label style={L}>Réseau d'éducation prioritaire</label>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, paddingTop: 2 }}>
                   {TYPES_RESEAU.map(r => (
                     <button key={r} type="button" onClick={() => setTypeReseau(r)} style={{
                       flex: 1, padding: '10px 6px', borderRadius: 10, cursor: 'pointer',
-                      fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 700,
-                      transition: 'all 0.15s',
+                      fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 700, transition: 'all 0.15s',
                       border: typeReseau === r ? '2px solid var(--primary-dark)' : '1.5px solid var(--border-main)',
                       background: typeReseau === r ? 'var(--primary-dark)' : 'white',
                       color: typeReseau === r ? 'white' : 'var(--text-secondary)',
@@ -137,35 +171,6 @@ export default function NouvelEtablissement() {
                   ))}
                 </div>
               </div>
-            </div>
-
-            <div style={divider} />
-
-            {/* ── Localisation ── */}
-            <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', margin: '0 0 20px 0' }}>
-              Localisation
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-              <div>
-                <label style={L}>Ville</label>
-                <input type="text" value={ville} onChange={e => setVille(e.target.value)}
-                  placeholder="Ex : Cayenne"
-                  style={F} />
-              </div>
-              <div>
-                <label style={L}>Département</label>
-                <input type="text" value={departement} onChange={e => setDepartement(e.target.value)}
-                  placeholder="Ex : Guyane (973)"
-                  style={F} />
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 32 }}>
-              <label style={L}>Circonscription</label>
-              <input type="text" value={circonscription} onChange={e => setCirconscription(e.target.value)}
-                placeholder="Ex : Circonscription de Cayenne 1"
-                style={F} />
             </div>
 
             {/* ── Actions ── */}
@@ -179,14 +184,12 @@ export default function NouvelEtablissement() {
                 Annuler
               </button>
               <button type="submit" disabled={saving} style={{
-                flex: 2, padding: '13px 0', borderRadius: 12,
-                border: 'none',
+                flex: 2, padding: '13px 0', borderRadius: 12, border: 'none',
                 background: saving ? 'var(--text-tertiary)' : 'var(--primary-dark)',
                 fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700,
-                color: 'white', cursor: saving ? 'not-allowed' : 'pointer',
-                transition: 'background 0.15s',
+                color: 'white', cursor: saving ? 'not-allowed' : 'pointer', transition: 'background 0.15s',
               }}>
-                {saving ? 'Enregistrement...' : 'Créer l\'établissement →'}
+                {saving ? 'Enregistrement...' : "Créer l'établissement →"}
               </button>
             </div>
           </div>

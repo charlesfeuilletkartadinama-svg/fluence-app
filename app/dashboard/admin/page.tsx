@@ -51,6 +51,7 @@ export default function Admin() {
   const [invitations, setInvitations]         = useState<Invitation[]>([])
   const [monReseau, setMonReseau]             = useState<Etablissement[]>([])
   const [loading, setLoading]                 = useState(true)
+  const [editingEtabId, setEditingEtabId]     = useState<string | null>(null)
   const [newPeriodeCode, setNewPeriodeCode]   = useState('')
   const [newPeriodeLabel, setNewPeriodeLabel] = useState('')
   const [newPeriodeType, setNewPeriodeType]   = useState('regular')
@@ -154,6 +155,17 @@ export default function Admin() {
     })
     setNewPeriodeCode(''); setNewPeriodeLabel(''); setNewPeriodeType('regular')
     chargerDonnees()
+  }
+
+  async function updateEtablissement(id: string, data: Partial<Etablissement>) {
+    await supabase.from('etablissements').update(data).eq('id', id)
+    setEtablissements(prev => prev.map(e => e.id === id ? { ...e, ...data } : e))
+  }
+
+  async function supprimerEtablissement(id: string) {
+    if (!window.confirm('Supprimer cet établissement ? Cette action est irréversible.')) return
+    await supabase.from('etablissements').delete().eq('id', id)
+    setEtablissements(prev => prev.filter(e => e.id !== id))
   }
 
   async function supprimerAffectation(id: string) {
@@ -292,21 +304,24 @@ export default function Admin() {
             <div style={S.card}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
-                  <th style={S.th}>Nom</th>
+                  <th style={S.th}>Circonscription</th>
+                  <th style={S.th}>Ville</th>
+                  <th style={S.th}>Établissement</th>
                   <th style={S.th}>Type</th>
                   <th style={S.th}>Réseau</th>
-                  <th style={S.th}>Ville</th>
-                  <th style={S.th}>Circonscription</th>
+                  <th style={S.thC}>Actions</th>
                 </tr></thead>
                 <tbody>
                   {etablissements.map(e => (
-                    <tr key={e.id}>
-                      <td style={S.tdBold}>{e.nom}</td>
-                      <td style={S.td}>{e.type}</td>
-                      <td style={S.td}><span style={S.badge(e.type_reseau)}>{e.type_reseau || '—'}</span></td>
-                      <td style={S.td}>{e.ville || '—'}</td>
-                      <td style={S.td}>{e.circonscription || '—'}</td>
-                    </tr>
+                    <EtablissementRow
+                      key={e.id}
+                      e={e}
+                      editing={editingEtabId === e.id}
+                      onEdit={() => setEditingEtabId(e.id)}
+                      onCancel={() => setEditingEtabId(null)}
+                      onSave={async data => { await updateEtablissement(e.id, data); setEditingEtabId(null) }}
+                      onDelete={() => supprimerEtablissement(e.id)}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -424,6 +439,144 @@ const A = {
   label:        { fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.2, textTransform: 'uppercase' as const, fontFamily: 'var(--font-sans)', display: 'block' as const, marginBottom: 6 },
   sectionTitle: { fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: '0 0 16px 0' },
   emptyState:   { background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 40, textAlign: 'center' as const, fontSize: 14, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' },
+}
+
+// ── Données géographiques Guyane ───────────────────────────────────────────────
+
+const GEO_DATA: Record<string, Record<string, string[]>> = {
+  'Guyane (973)': {
+    'Cayenne 1': ['Cayenne'],
+    'Cayenne 2': ['Rémire-Montjoly', 'Matoury', 'Montsinéry-Tonnégrande'],
+    'Kourou': ['Kourou', 'Macouria', 'Sinnamary', 'Iracoubo'],
+    'Saint-Laurent-du-Maroni': ['Saint-Laurent-du-Maroni', 'Mana', 'Awala-Yalimapo'],
+    'Haut-Maroni': ['Maripasoula', 'Grand-Santi', 'Papaichton', 'Apatou'],
+    'Oyapock': ['Saint-Georges-de-l\'Oyapock', 'Camopi', 'Ouanary', 'Régina'],
+    'Roura': ['Roura', 'Cacao', 'Saint-Élie'],
+  },
+}
+
+// ── EtablissementRow ───────────────────────────────────────────────────────────
+
+function EtablissementRow({ e, editing, onEdit, onCancel, onSave, onDelete }: {
+  e: Etablissement
+  editing: boolean
+  onEdit: () => void
+  onCancel: () => void
+  onSave: (data: Partial<Etablissement>) => Promise<void>
+  onDelete: () => void
+}) {
+  const [nom,    setNom]    = useState(e.nom)
+  const [type,   setType]   = useState(e.type)
+  const [reseau, setReseau] = useState(e.type_reseau)
+  const [dept,   setDept]   = useState(e.departement   || '')
+  const [circo,  setCirco]  = useState(e.circonscription || '')
+  const [ville,  setVille]  = useState(e.ville          || '')
+  const [saving, setSaving] = useState(false)
+
+  const depts  = Object.keys(GEO_DATA)
+  const circos = dept ? Object.keys(GEO_DATA[dept] || {}) : []
+  const villes = dept && circo ? (GEO_DATA[dept]?.[circo] || []) : []
+
+  function onDeptChange(val: string) { setDept(val); setCirco(''); setVille('') }
+  function onCircoChange(val: string) { setCirco(val); setVille('') }
+
+  async function handleSave() {
+    if (!nom.trim()) return
+    setSaving(true)
+    await onSave({ nom: nom.trim(), type, type_reseau: reseau, departement: dept || null, circonscription: circo || null, ville: ville || null })
+    setSaving(false)
+  }
+
+  const badge = (color: string) => ({
+    fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+    background: color === 'REP+' ? '#f3e8ff' : color === 'REP' ? '#dbeafe' : 'var(--bg-gray)',
+    color: color === 'REP+' ? '#7e22ce' : color === 'REP' ? '#1d4ed8' : 'var(--text-tertiary)',
+    fontFamily: 'var(--font-sans)',
+  })
+
+  return (
+    <>
+      <tr>
+        <td style={A.td}>{e.circonscription || '—'}</td>
+        <td style={A.td}>{e.ville || '—'}</td>
+        <td style={A.tdBold}>{e.nom}</td>
+        <td style={A.td}>{e.type}</td>
+        <td style={A.td}><span style={badge(e.type_reseau)}>{e.type_reseau || '—'}</span></td>
+        <td style={A.tdC}>
+          <button onClick={onEdit} style={{
+            fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 8, cursor: 'pointer',
+            border: '1.5px solid var(--border-main)', background: 'white',
+            color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)',
+          }}>
+            Modifier
+          </button>
+        </td>
+      </tr>
+      {editing && (
+        <tr>
+          <td colSpan={6} style={{ padding: 0, borderBottom: '2px solid var(--primary-dark)' }}>
+            <div style={{ padding: '20px 24px', background: 'var(--bg-gray)', borderLeft: '3px solid var(--primary-dark)' }}>
+
+              {/* Entonnoir géographique */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+                <div>
+                  <label style={A.label}>Département</label>
+                  <select value={dept} onChange={e => onDeptChange(e.target.value)} style={A.select}>
+                    <option value="">— Choisir —</option>
+                    {depts.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={A.label}>Circonscription</label>
+                  <select value={circo} onChange={e => onCircoChange(e.target.value)} style={{ ...A.select, opacity: dept ? 1 : 0.4 }} disabled={!dept}>
+                    <option value="">— Choisir —</option>
+                    {circos.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={A.label}>Ville / Commune</label>
+                  <select value={ville} onChange={e => setVille(e.target.value)} style={{ ...A.select, opacity: circo ? 1 : 0.4 }} disabled={!circo}>
+                    <option value="">— Choisir —</option>
+                    {villes.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Identité */}
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div>
+                  <label style={A.label}>Nom de l'établissement</label>
+                  <input value={nom} onChange={e => setNom(e.target.value)}
+                    style={{ ...A.input, width: '100%', boxSizing: 'border-box' as const }} />
+                </div>
+                <div>
+                  <label style={A.label}>Type</label>
+                  <select value={type} onChange={e => setType(e.target.value)} style={A.select}>
+                    {['école', 'collège', 'lycée'].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={A.label}>Réseau</label>
+                  <select value={reseau} onChange={e => setReseau(e.target.value)} style={A.select}>
+                    {['Hors REP', 'REP', 'REP+'].map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Boutons */}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+                <button onClick={onDelete} style={A.btnDanger}>Supprimer</button>
+                <button onClick={onCancel} style={A.btnGhost}>Annuler</button>
+                <button onClick={handleSave} disabled={saving || !nom.trim()} style={{ ...A.btnPrimary, opacity: (saving || !nom.trim()) ? 0.4 : 1 }}>
+                  {saving ? 'Enregistrement...' : 'Enregistrer'}
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
 }
 
 // ── VueEnsembleTab ─────────────────────────────────────────────────────────────

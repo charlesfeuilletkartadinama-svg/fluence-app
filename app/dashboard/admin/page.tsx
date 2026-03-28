@@ -172,111 +172,124 @@ export default function Admin() {
   }
 
   if (profilLoading || loading) {
-    return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">Chargement...</div>
+    return (
+      <>
+        <Sidebar />
+        <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>Chargement...</div>
+      </>
+    )
+  }
+
+  const S = {
+    card:    { background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden' as const },
+    th:      { padding: '12px 20px', textAlign: 'left' as const, fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase' as const, background: 'var(--bg-gray)', fontFamily: 'var(--font-sans)', borderBottom: '1.5px solid var(--border-light)' },
+    thC:     { padding: '12px 20px', textAlign: 'center' as const, fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase' as const, background: 'var(--bg-gray)', fontFamily: 'var(--font-sans)', borderBottom: '1.5px solid var(--border-light)' },
+    td:      { padding: '14px 20px', fontSize: 14, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', borderBottom: '1px solid var(--border-light)' },
+    tdBold:  { padding: '14px 20px', fontSize: 14, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', borderBottom: '1px solid var(--border-light)' },
+    tdC:     { padding: '14px 20px', fontSize: 14, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', textAlign: 'center' as const, borderBottom: '1px solid var(--border-light)' },
+    btnPrimary: { background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '9px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' },
+    btnDanger:  { background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' },
+    input:   { border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '8px 12px', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none' },
+    badge:   (color: string) => ({ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: color === 'REP+' ? '#f3e8ff' : color === 'REP' ? '#dbeafe' : 'var(--bg-gray)', color: color === 'REP+' ? '#7e22ce' : color === 'REP' ? '#1d4ed8' : 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }),
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div style={{ minHeight: '100vh', background: 'var(--bg-light)' }}>
       <Sidebar />
       <ImpersonationBar />
-      {/* Main */}
-      <div className="ml-64 p-8">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-blue-900">Administration</h2>
-          <p className="text-slate-500 mt-1">Gestion de l'application</p>
+
+      <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, maxWidth: 1100 }}>
+
+        {/* Header */}
+        <div style={{ marginBottom: 32 }}>
+          <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
+            {isReseau ? 'Mon espace IEN / Coordo' : 'Administration'}
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>
+            {isReseau ? 'Consultation de votre réseau d\'établissements' : 'Gestion de l\'application'}
+          </p>
         </div>
 
         {/* Onglets */}
-        <div className="flex gap-2 mb-6 border-b border-slate-200">
+        <div style={{ display: 'flex', gap: 4, marginBottom: 28, borderBottom: '2px solid var(--border-light)' }}>
           {ONGLETS.map((o, i) => (
-            <button key={o} onClick={() => setOnglet(i)}
-              className={`px-4 py-2.5 text-sm font-semibold transition border-b-2 -mb-px
-                ${onglet === i
-                  ? 'border-blue-900 text-blue-900'
-                  : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+            <button key={o} onClick={() => setOnglet(i)} style={{
+              padding: '10px 18px', fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)',
+              background: 'none', border: 'none', cursor: 'pointer', marginBottom: -2,
+              borderBottom: `2px solid ${onglet === i ? 'var(--primary-dark)' : 'transparent'}`,
+              color: onglet === i ? 'var(--primary-dark)' : 'var(--text-secondary)',
+              transition: 'all 0.15s',
+            }}>
               {o}
             </button>
           ))}
         </div>
 
-        {/* ── Onglet Mon réseau (coordo uniquement) ── */}
+        {/* ── Onglet Mon réseau (IEN / Coordo) ── */}
         {isReseau && onglet === 0 && (
           <div>
-            <h3 className="font-bold text-blue-900 mb-4">
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
               {monReseau.length} établissement{monReseau.length > 1 ? 's' : ''} dans votre réseau
-            </h3>
-            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Établissement</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Type réseau</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {monReseau.map((e: any) => (
-                    <tr key={e.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-4 font-semibold text-blue-900">{e.nom}</td>
-                      <td className="px-6 py-4">
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full
-                          ${e.type_reseau === 'REP+' ? 'bg-purple-100 text-purple-700' :
-                            e.type_reseau === 'REP'  ? 'bg-blue-100 text-blue-700' :
-                            'bg-slate-100 text-slate-500'}`}>
-                          {e.type_reseau || '—'}
-                        </span>
-                      </td>
+            </p>
+            {monReseau.length === 0 ? (
+              <div style={{ ...S.card, padding: 40, textAlign: 'center' }}>
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+                  Aucun établissement affecté. Contactez l'administrateur pour configurer votre réseau.
+                </p>
+              </div>
+            ) : (
+              <div style={S.card}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={S.th}>Établissement</th>
+                      <th style={S.th}>Type</th>
+                      <th style={S.th}>Réseau</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {monReseau.length === 0 && (
-              <p className="text-sm text-slate-400 mt-4 bg-white rounded-xl p-6 text-center border border-slate-100">
-                Aucun établissement affecté. Contactez l'administrateur pour configurer votre réseau.
-              </p>
+                  </thead>
+                  <tbody>
+                    {monReseau.map((e: any) => (
+                      <tr key={e.id}>
+                        <td style={S.tdBold}>{e.nom}</td>
+                        <td style={S.td}>{e.type || '—'}</td>
+                        <td style={S.td}><span style={S.badge(e.type_reseau)}>{e.type_reseau || '—'}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
 
-        {/* ── Onglet Établissements (admin/direction) ── */}
+        {/* ── Onglet Établissements (admin) ── */}
         {!isReseau && onglet === 0 && (
           <div>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-blue-900">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', margin: 0 }}>
                 {etablissements.length} établissement{etablissements.length > 1 ? 's' : ''}
-              </h3>
-              <button
-                onClick={() => router.push('/dashboard/admin/etablissement')}
-                className="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800 transition">
+              </p>
+              <button onClick={() => router.push('/dashboard/admin/etablissement')} style={S.btnPrimary}>
                 + Ajouter
               </button>
             </div>
-            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50">
+            <div style={S.card}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Nom</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Réseau</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Circonscription</th>
+                    <th style={S.th}>Nom</th>
+                    <th style={S.th}>Type</th>
+                    <th style={S.th}>Réseau</th>
+                    <th style={S.th}>Circonscription</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody>
                   {etablissements.map(e => (
-                    <tr key={e.id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4 font-semibold text-blue-900">{e.nom}</td>
-                      <td className="px-6 py-4 text-slate-500 capitalize">{e.type}</td>
-                      <td className="px-6 py-4">
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full
-                          ${e.type_reseau === 'REP+' ? 'bg-purple-100 text-purple-700' :
-                            e.type_reseau === 'REP' ? 'bg-blue-100 text-blue-700' :
-                            'bg-slate-100 text-slate-500'}`}>
-                          {e.type_reseau}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-slate-500">
-                        {(e.circonscription as any)?.[0]?.nom || '—'}
-                      </td>
+                    <tr key={e.id}>
+                      <td style={S.tdBold}>{e.nom}</td>
+                      <td style={S.td}>{e.type}</td>
+                      <td style={S.td}><span style={S.badge(e.type_reseau)}>{e.type_reseau || '—'}</span></td>
+                      <td style={S.td}>{(e.circonscription as any)?.[0]?.nom || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -288,37 +301,36 @@ export default function Admin() {
         {/* ── Onglet Périodes ── */}
         {onglet === 1 && (
           <div>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-blue-900">Périodes de passation</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', margin: 0 }}>Périodes de passation</p>
               {!isReseau && (
-                <div className="flex gap-2">
+                <div style={{ display: 'flex', gap: 8 }}>
                   <input type="text" placeholder="Code (T1…)" value={newPeriodeCode}
                     onChange={e => setNewPeriodeCode(e.target.value)}
-                    className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-24" />
+                    style={{ ...S.input, width: 80 }} />
                   <input type="text" placeholder="Libellé" value={newPeriodeLabel}
                     onChange={e => setNewPeriodeLabel(e.target.value)}
-                    className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-48" />
-                  <button onClick={creerPeriode}
-                    disabled={!newPeriodeCode || !newPeriodeLabel}
-                    className="bg-blue-900 text-white px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-blue-800 transition disabled:opacity-40">
+                    style={{ ...S.input, width: 180 }} />
+                  <button onClick={creerPeriode} disabled={!newPeriodeCode || !newPeriodeLabel}
+                    style={{ ...S.btnPrimary, opacity: (!newPeriodeCode || !newPeriodeLabel) ? 0.4 : 1 }}>
                     + Créer
                   </button>
                 </div>
               )}
             </div>
-            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50">
+            <div style={S.card}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
                   <tr>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Code</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Libellé</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Début</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Fin</th>
-                    <th className="px-5 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Saisie</th>
-                    <th className="px-5 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Active</th>
+                    <th style={S.th}>Code</th>
+                    <th style={S.th}>Libellé</th>
+                    <th style={S.th}>Début</th>
+                    <th style={S.th}>Fin</th>
+                    <th style={S.thC}>Saisie</th>
+                    <th style={S.thC}>Active</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody>
                   {periodes.map(p => (
                     <PeriodeRow key={p.id} periode={p}
                       onToggleActif={() => togglePeriode(p.id, p.actif)}

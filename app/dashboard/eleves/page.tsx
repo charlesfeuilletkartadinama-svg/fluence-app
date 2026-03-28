@@ -65,10 +65,12 @@ export default function MesClasses() {
 
     if (isEnseignant) {
       // Charger les classes assignées à cet enseignant
-      const { data: assignees } = await supabase
+      console.log('[chargerDonnees] profil.id =', profil.id)
+      const { data: assignees, error: assigneesError } = await supabase
         .from('enseignant_classes')
         .select('classe_id, groupe_lecture, classe:classes(id, nom, niveau, etablissement:etablissements(nom))')
         .eq('enseignant_id', profil.id)
+      console.log('[chargerDonnees] assignees =', assignees, 'error =', assigneesError)
 
       if (!assignees || assignees.length === 0) {
         // Pas encore de classes → mode sélection

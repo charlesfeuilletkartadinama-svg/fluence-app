@@ -183,15 +183,18 @@ export default function MesClasses() {
     if (!profil?.id || selections.length === 0) return
     setSaving(true)
 
+    // Supprimer les anciennes assignations
     const { error: delError } = await supabase.from('enseignant_classes').delete().eq('enseignant_id', profil.id)
     if (delError) { console.error('Delete error:', delError); setSaving(false); alert('Erreur suppression: ' + delError.message); return }
 
-    const { error: insError } = await supabase.from('enseignant_classes').insert(
+    // Insérer les nouvelles (upsert pour éviter les conflits)
+    const { error: insError } = await supabase.from('enseignant_classes').upsert(
       selections.map(s => ({
         enseignant_id:  profil.id,
         classe_id:      s.classeId,
         groupe_lecture: s.groupe,
-      }))
+      })),
+      { onConflict: 'enseignant_id,classe_id' }
     )
     if (insError) { console.error('Insert error:', insError); setSaving(false); alert('Erreur sauvegarde: ' + insError.message); return }
 

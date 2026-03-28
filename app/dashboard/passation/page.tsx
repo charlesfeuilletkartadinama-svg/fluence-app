@@ -30,11 +30,12 @@ type Periode = { id: string; code: string; label: string }
 type Classe  = { id: string; nom: string; niveau: string; etablissement_id: string }
 
 function PassationContent() {
-  const [etape, setEtape]       = useState<'periode'|'liste'|'eleve'|'done'>('periode')
-  const [periodes, setPeriodes] = useState<Periode[]>([])
-  const [periode, setPeriode]   = useState<Periode | null>(null)
-  const [classe, setClasse]     = useState<Classe | null>(null)
-  const [eleves, setEleves]     = useState<Eleve[]>([])
+  const [etape, setEtape]           = useState<'classe'|'periode'|'liste'|'eleve'|'done'>('periode')
+  const [periodes, setPeriodes]     = useState<Periode[]>([])
+  const [periode, setPeriode]       = useState<Periode | null>(null)
+  const [classe, setClasse]         = useState<Classe | null>(null)
+  const [classesEtab, setClassesEtab] = useState<Classe[]>([])
+  const [eleves, setEleves]         = useState<Eleve[]>([])
   const [eleveIdx, setEleveIdx] = useState(0)
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
@@ -60,10 +61,51 @@ function PassationContent() {
     else setLoading(false)
   }, [classeId])
 
+  useEffect(() => {
+    if (!profil || classeId) return
+    if (profil.role === 'enseignant') chargerClassesEnseignant()
+  }, [profil])
+
   // Nettoyage chrono
   useEffect(() => {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [])
+
+  async function chargerClassesEnseignant() {
+    if (!profil) return
+    const { data } = await supabase
+      .from('enseignant_classes')
+      .select('classe:classes(id, nom, niveau, etablissement_id)')
+      .eq('enseignant_id', profil.id)
+    const classes = (data || []).map((r: any) => r.classe).filter(Boolean) as Classe[]
+    if (classes.length === 0) { setLoading(false); return }
+    if (classes.length === 1) {
+      await selectionnerClasse(classes[0])
+    } else {
+      setClassesEtab(classes)
+      setEtape('classe')
+      setLoading(false)
+    }
+  }
+
+  async function selectionnerClasse(c: Classe) {
+    setClasse(c)
+    setLoading(true)
+    const { data: periodesData } = await supabase
+      .from('periodes').select('id, code, label')
+      .eq('etablissement_id', c.etablissement_id).eq('actif', true).order('code')
+    setPeriodes(periodesData || [])
+    const { data: elevesData } = await supabase
+      .from('eleves').select('id, nom, prenom')
+      .eq('classe_id', c.id).eq('actif', true).order('nom')
+    setEleves((elevesData || []).map(e => ({
+      ...e, scoreActuel: null, ne: false, absent: false, nbErreurs: 0,
+      dernierMot: null, fait: false,
+      q1: null, q2: null, q3: null, q4: null, q5: null, q6: null,
+    })))
+    setLoading(false)
+    setEtape('periode')
+  }
 
   async function chargerDonnees() {
     const { data: classeData } = await supabase
@@ -216,6 +258,38 @@ function PassationContent() {
       <ImpersonationBar />
 
       <div style={{ marginLeft: 'var(--sidebar-width)' }}>
+
+        {/* ── Choix classe ── */}
+        {etape === 'classe' && (
+          <div style={{ padding: 32, maxWidth: 640 }}>
+            <div style={{ marginBottom: 32 }}>
+              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode passation</h2>
+              <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez une classe</p>
+            </div>
+            <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {classesEtab.map(c => (
+                  <button key={c.id} onClick={() => selectionnerClasse(c)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      border: '1.5px solid var(--border-light)', borderRadius: 12, padding: '16px 20px',
+                      background: 'var(--bg-gray)', cursor: 'pointer', transition: 'all 0.15s', textAlign: 'left',
+                      fontFamily: 'var(--font-sans)',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary-dark)'; (e.currentTarget as HTMLElement).style.background = 'white' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-gray)' }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--primary-dark)' }}>{c.nom}</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>{c.niveau}</div>
+                    </div>
+                    <span style={{ color: 'var(--text-tertiary)', fontSize: 18 }}>→</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Choix période ── */}
         {etape === 'periode' && (

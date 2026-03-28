@@ -1,5 +1,27 @@
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 
+// ── Types nouveaux PDF ─────────────────────────────────────────────────────
+
+type ClasseEtabData = {
+  nom: string; niveau: string; nbEleves: number; nbEvalues: number; nbNE: number
+  moyenne: number|null; min: number|null; max: number|null; fragiles: number
+}
+
+type DonneesEtab = {
+  etablissement: string; periode: string; dateGeneration: string; directeur: string
+  classes: ClasseEtabData[]
+  totaux: { nbEleves: number; nbEvalues: number; moyenne: number|null; fragiles: number }
+}
+
+type DonneesComplet = {
+  etablissement: string; dateGeneration: string; directeur: string
+  periodes: string[]
+  classes: {
+    nom: string; niveau: string
+    periodes: { code: string; nbEleves: number; nbEvalues: number; moyenne: number|null; fragiles: number }[]
+  }[]
+}
+
 const styles = StyleSheet.create({
   page:        { fontFamily: 'Helvetica', fontSize: 10, padding: 40, backgroundColor: '#ffffff' },
   header:      { marginBottom: 20, borderBottomWidth: 2, borderBottomColor: '#003189', paddingBottom: 12 },
@@ -68,6 +90,167 @@ type Donnees = {
     suggestions: string
   }[]
 }
+
+// ── PDF Par établissement ─────────────────────────────────────────────────
+
+export function RapportEtabPDF({ donnees }: { donnees: DonneesEtab }) {
+  const pctEval = donnees.totaux.nbEleves > 0
+    ? Math.round(donnees.totaux.nbEvalues / donnees.totaux.nbEleves * 100)
+    : 0
+  const pctFrag = donnees.totaux.nbEvalues > 0
+    ? Math.round(donnees.totaux.fragiles / donnees.totaux.nbEvalues * 100)
+    : 0
+
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        <View style={styles.header}>
+          <Text style={styles.titre}>Rapport d'établissement — Fluence</Text>
+          <Text style={styles.sousTitre}>{donnees.etablissement} · Période {donnees.periode}</Text>
+        </View>
+
+        <View style={styles.infoGrid}>
+          {[
+            { label: 'Établissement', val: donnees.etablissement },
+            { label: 'Période',       val: donnees.periode },
+            { label: 'Directeur',     val: donnees.directeur },
+            { label: 'Généré le',     val: donnees.dateGeneration },
+          ].map(item => (
+            <View key={item.label} style={styles.infoCard}>
+              <Text style={styles.infoLabel}>{item.label}</Text>
+              <Text style={styles.infoVal}>{item.val}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={[styles.statBox, { backgroundColor: '#EFF6FF' }]}>
+            <Text style={[styles.statNum, { color: '#003189' }]}>{donnees.totaux.nbEleves}</Text>
+            <Text style={[styles.statLabel, { color: '#003189' }]}>Élèves total</Text>
+          </View>
+          <View style={[styles.statBox, { backgroundColor: '#F0FDF4' }]}>
+            <Text style={[styles.statNum, { color: '#16A34A' }]}>{donnees.totaux.nbEvalues}</Text>
+            <Text style={[styles.statLabel, { color: '#16A34A' }]}>Évalués ({pctEval}%)</Text>
+          </View>
+          <View style={[styles.statBox, { backgroundColor: '#FEF2F2' }]}>
+            <Text style={[styles.statNum, { color: '#DC2626' }]}>{donnees.totaux.fragiles}</Text>
+            <Text style={[styles.statLabel, { color: '#DC2626' }]}>Fragiles ({pctFrag}%)</Text>
+          </View>
+          <View style={[styles.statBox, { backgroundColor: '#F8FAFC' }]}>
+            <Text style={[styles.statNum, { color: '#475569' }]}>{donnees.totaux.moyenne ?? '—'}</Text>
+            <Text style={[styles.statLabel, { color: '#475569' }]}>Score moyen m/min</Text>
+          </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>Détail par classe</Text>
+        <View>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Classe</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Niveau</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'center' }]}>Élèves</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'center' }]}>Évalués</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'center' }]}>Moyenne</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'center' }]}>Fragiles</Text>
+          </View>
+          {donnees.classes.map((c, i) => {
+            const pctF = c.nbEvalues > 0 ? Math.round(c.fragiles / c.nbEvalues * 100) : 0
+            return (
+              <View key={i} style={[styles.tableRow, i % 2 === 1 ? styles.tableRowAlt : {}]}>
+                <Text style={[styles.cellBold, { flex: 2 }]}>{c.nom}</Text>
+                <Text style={[styles.cell, { flex: 1 }]}>{c.niveau}</Text>
+                <Text style={[styles.cell, { flex: 1, textAlign: 'center' }]}>{c.nbEleves}</Text>
+                <Text style={[styles.cell, { flex: 1, textAlign: 'center' }]}>
+                  {c.nbEvalues} {c.nbEleves > 0 ? `(${Math.round(c.nbEvalues / c.nbEleves * 100)}%)` : ''}
+                </Text>
+                <Text style={[styles.cellBold, { flex: 1, textAlign: 'center', color: '#003189' }]}>
+                  {c.moyenne ?? '—'} {c.moyenne ? 'm/min' : ''}
+                </Text>
+                <Text style={[styles.cell, { flex: 1, textAlign: 'center', color: pctF > 40 ? '#DC2626' : pctF > 20 ? '#D97706' : '#16A34A' }]}>
+                  {c.fragiles} ({pctF}%)
+                </Text>
+              </View>
+            )
+          })}
+        </View>
+
+        <View style={styles.footer} fixed>
+          <Text style={styles.footerText}>Fluence+ — Académie de Guyane</Text>
+          <Text style={styles.footerText}>Généré le {donnees.dateGeneration}</Text>
+        </View>
+      </Page>
+    </Document>
+  )
+}
+
+// ── PDF Rapport complet ───────────────────────────────────────────────────
+
+export function RapportCompletPDF({ donnees }: { donnees: DonneesComplet }) {
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        <View style={styles.header}>
+          <Text style={styles.titre}>Rapport complet — Fluence</Text>
+          <Text style={styles.sousTitre}>{donnees.etablissement} · {donnees.periodes.join(' / ')}</Text>
+        </View>
+
+        <View style={styles.infoGrid}>
+          {[
+            { label: 'Établissement', val: donnees.etablissement },
+            { label: 'Périodes',      val: donnees.periodes.join(', ') },
+            { label: 'Directeur',     val: donnees.directeur },
+            { label: 'Généré le',     val: donnees.dateGeneration },
+          ].map(item => (
+            <View key={item.label} style={styles.infoCard}>
+              <Text style={styles.infoLabel}>{item.label}</Text>
+              <Text style={styles.infoVal}>{item.val}</Text>
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.sectionTitle}>Progression par classe et par période</Text>
+        <View>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Classe</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Niveau</Text>
+            {donnees.periodes.map(p => (
+              <Text key={p} style={[styles.tableHeaderCell, { flex: 1, textAlign: 'center' }]}>
+                {p} moy.
+              </Text>
+            ))}
+            <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'center' }]}>Évol.</Text>
+          </View>
+          {donnees.classes.map((c, i) => {
+            const perMap: Record<string, number|null> = {}
+            c.periodes.forEach(p => { perMap[p.code] = p.moyenne })
+            const scores  = donnees.periodes.map(p => perMap[p] ?? null).filter(s => s !== null) as number[]
+            const evol    = scores.length >= 2 ? scores[scores.length - 1] - scores[0] : null
+            return (
+              <View key={i} style={[styles.tableRow, i % 2 === 1 ? styles.tableRowAlt : {}]}>
+                <Text style={[styles.cellBold, { flex: 2 }]}>{c.nom}</Text>
+                <Text style={[styles.cell, { flex: 1 }]}>{c.niveau}</Text>
+                {donnees.periodes.map(p => (
+                  <Text key={p} style={[styles.cellBold, { flex: 1, textAlign: 'center', color: perMap[p] != null ? '#003189' : '#94A3B8' }]}>
+                    {perMap[p] ?? '—'}
+                  </Text>
+                ))}
+                <Text style={[styles.cellBold, { flex: 1, textAlign: 'center', color: evol == null ? '#94A3B8' : evol > 0 ? '#16A34A' : evol < 0 ? '#DC2626' : '#475569' }]}>
+                  {evol == null ? '—' : evol > 0 ? `+${evol}` : `${evol}`}
+                </Text>
+              </View>
+            )
+          })}
+        </View>
+
+        <View style={styles.footer} fixed>
+          <Text style={styles.footerText}>Fluence+ — Académie de Guyane</Text>
+          <Text style={styles.footerText}>Généré le {donnees.dateGeneration}</Text>
+        </View>
+      </Page>
+    </Document>
+  )
+}
+
+// ── PDF Par classe (existant) ─────────────────────────────────────────────
 
 export function RapportPDF({ donnees }: { donnees: Donnees }) {
   const { stats, normes } = donnees

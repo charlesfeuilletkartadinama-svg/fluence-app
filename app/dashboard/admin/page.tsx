@@ -13,7 +13,20 @@ import { ROLE_LABELS } from '@/app/lib/types'
 // ── Composant principal ────────────────────────────────────────────────────────
 
 export default function Admin() {
+  // Lire ?tab=X depuis l'URL
+  const [directTab, setDirectTab] = useState<number | null>(null)
   const [onglet, setOnglet]                   = useState(0)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const tab = params.get('tab')
+    if (tab !== null) {
+      const idx = parseInt(tab)
+      if (!isNaN(idx)) { setOnglet(idx); setDirectTab(idx) }
+    } else {
+      setDirectTab(null)
+    }
+  }, [])
   const [etablissements, setEtablissements]   = useState<Etablissement[]>([])
   const [periodes, setPeriodes]               = useState<Periode[]>([])
   const [coordoEtabs, setCoordoEtabs]         = useState<CoorDoEtab[]>([])
@@ -244,15 +257,24 @@ export default function Admin() {
 
         {/* Header */}
         <div style={{ marginBottom: 32 }}>
+          {directTab !== null && (
+            <button onClick={() => { setDirectTab(null); window.history.pushState({}, '', '/dashboard/admin') }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14, fontFamily: 'var(--font-sans)', marginBottom: 12, padding: 0, display: 'block' }}>
+              ← Retour à l'administration
+            </button>
+          )}
           <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
-            {isReseau ? 'Mon espace IEN / Coordo' : 'Administration'}
+            {directTab !== null ? ONGLETS[onglet] || 'Administration' : isReseau ? 'Mon espace IEN / Coordo' : 'Administration'}
           </h2>
-          <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>
-            {isReseau ? 'Consultation de votre réseau d\'établissements' : 'Gestion de l\'application'}
-          </p>
+          {directTab === null && (
+            <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>
+              {isReseau ? 'Consultation de votre réseau d\'établissements' : 'Gestion de l\'application'}
+            </p>
+          )}
         </div>
 
-        {/* Onglets */}
+        {/* Onglets — masqués si accès direct via sous-menu */}
+        {directTab === null && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 28, borderBottom: '2px solid var(--border-light)', flexWrap: 'wrap' as const }}>
           {ONGLETS.map((o, i) => (
             <button key={o} onClick={() => setOnglet(i)} style={{
@@ -266,6 +288,7 @@ export default function Admin() {
             </button>
           ))}
         </div>
+        )}
 
         {/* ── Mon réseau (IEN / Coordo) ── */}
         {isReseau && onglet === 0 && (

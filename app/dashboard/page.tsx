@@ -562,6 +562,9 @@ export default function Dashboard() {
   // ── Vue autres rôles ───────────────────────────────────────────────────
 
   async function chargerStatsGlobales() {
+    // Lancer le chargement admin overview en parallèle
+    const adminPromise = chargerAdminOverview()
+
     let classeQuery = supabase.from('classes').select('id, nom')
     if (profil && ['directeur', 'principal'].includes(profil.role) && profil.etablissement_id) {
       classeQuery = classeQuery.eq('etablissement_id', profil.etablissement_id)
@@ -571,6 +574,7 @@ export default function Dashboard() {
 
     if (classeIds.length === 0) {
       setStats({ nbEleves: 0, nbClasses: 0, nbPassations: 0, scoreMoyen: null, txNE: 0 })
+      await adminPromise
       return
     }
 
@@ -606,8 +610,10 @@ export default function Dashboard() {
       periode:      p.periode?.code || '',
       created_at:   p.created_at,
     })))
+    await adminPromise
+  }
 
-    // ── Admin overview complet ──
+  async function chargerAdminOverview() {
     const [etabsFullRes, profilsRes, periFullRes, invRes, normesRes, qcmTestsRes] = await Promise.all([
       supabase.from('etablissements').select('id, nom, ville'),
       supabase.from('profils').select('id, role, nom, prenom, etablissement_id'),
@@ -794,7 +800,10 @@ export default function Dashboard() {
       periodesDetail: periDedup,
       nbElevesTotal: elevesArr.length,
       nbElevesEvalues,
-      scoreMoyenGlobal: moyenne,
+      scoreMoyenGlobal: (() => {
+        const allScores = passArr.filter((pa: any) => !pa.non_evalue && pa.score && pa.score > 0).map((pa: any) => pa.score as number)
+        return allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : null
+      })(),
       scoreParNiveau,
       groupesRepartition,
       evolutionPeriodes,

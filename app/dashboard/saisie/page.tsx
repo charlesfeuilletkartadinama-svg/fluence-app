@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import { useProfil } from '@/app/lib/useProfil'
-import type { Periode, Classe, TestSession } from '@/app/lib/types'
+import type { Periode, Classe, TestSession, QcmQuestion } from '@/app/lib/types'
 import { periodeVerrouillee } from '@/app/lib/fluenceUtils'
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -48,6 +48,17 @@ function Saisie() {
   const [creatingSession, setCreatingSession] = useState(false)
   const [copiedCode, setCopiedCode]   = useState('')
   const [qcmResultats, setQcmResultats] = useState<Record<string, { q1: string|null, q2: string|null, q3: string|null, q4: string|null, q5: string|null, q6: string|null }>>({})
+  // QCM individuel
+  const [qcmMode, setQcmMode]         = useState<'choix' | 'individuelle' | 'collective'>('choix')
+  const [qcmEleveId, setQcmEleveId]   = useState<string | null>(null)
+  const [qcmQuestions, setQcmQuestions] = useState<QcmQuestion[]>([])
+  const [qcmReponses, setQcmReponses] = useState<Record<number, string>>({})
+  const [qcmSubmitting, setQcmSubmitting] = useState(false)
+  const [qcmDone, setQcmDone]         = useState(false)
+  const [qcmScore, setQcmScore]       = useState<string[] | null>(null)
+  const [qcmErreur, setQcmErreur]     = useState('')
+  const [qcmTestLoaded, setQcmTestLoaded] = useState(false)
+  const [qcmNoTest, setQcmNoTest]     = useState(false)
 
   const router   = useRouter()
   const supabase = createClient()
@@ -168,6 +179,73 @@ function Saisie() {
       map[p.eleve_id] = { q1: p.q1, q2: p.q2, q3: p.q3, q4: p.q4, q5: p.q5, q6: p.q6 }
     }
     setQcmResultats(map)
+  }
+
+  async function chargerQcmQuestions() {
+    if (!classe || !periode) return
+    setQcmTestLoaded(false)
+    setQcmNoTest(false)
+    const { data: classeData } = await supabase.from('classes').select('niveau').eq('id', classe.id).single()
+    if (!classeData) { setQcmNoTest(true); setQcmTestLoaded(true); return }
+    const { data: test } = await supabase.from('qcm_tests')
+      .select('id').eq('periode_id', periode.id).eq('niveau', classeData.niveau).single()
+    if (!test) { setQcmNoTest(true); setQcmTestLoaded(true); return }
+    const { data: questions } = await supabase.from('qcm_questions')
+      .select('*').eq('qcm_test_id', test.id).order('numero')
+    setQcmQuestions((questions || []) as QcmQuestion[])
+    setQcmTestLoaded(true)
+    if (!questions || questions.length === 0) setQcmNoTest(true)
+  }
+
+  function ouvrirQcmIndividuel(eleveId: string) {
+    setQcmEleveId(eleveId)
+    setQcmReponses({})
+    setQcmDone(false)
+    setQcmScore(null)
+    setQcmErreur('')
+    setQcmMode('individuelle')
+    if (!qcmTestLoaded) chargerQcmQuestions()
+  }
+
+  async function soumettreQcmIndividuel() {
+    if (!qcmEleveId || !periode || !profil) return
+    if (qcmQuestions.length === 0) return
+    const toutRepondu = qcmQuestions.every(q => qcmReponses[q.numero])
+    if (!toutRepondu) { setQcmErreur('Répondez à toutes les questions.'); return }
+
+    setQcmSubmitting(true)
+    setQcmErreur('')
+
+    // Corriger localement
+    const results: string[] = qcmQuestions.map(q =>
+      qcmReponses[q.numero] === q.reponse_correcte ? 'Correct' : 'Incorrect'
+    )
+
+    // Upsert directement
+    const { error } = await supabase.from('passations').upsert({
+      eleve_id: qcmEleveId,
+      periode_id: periode.id,
+      hors_periode: false,
+      q1: results[0] || null, q2: results[1] || null, q3: results[2] || null,
+      q4: results[3] || null, q5: results[4] || null, q6: results[5] || null,
+      mode: 'qcm_enseignant',
+    }, { onConflict: 'eleve_id,periode_id,hors_periode' })
+
+    setQcmSubmitting(false)
+    if (error) { setQcmErreur(error.message); return }
+
+    setQcmScore(results)
+    setQcmDone(true)
+    // Rafraîchir les résultats
+    if (classe && periode) chargerQcmResultats(classe.id, periode.id)
+  }
+
+  function qcmEleveSuivant() {
+    setQcmDone(false)
+    setQcmScore(null)
+    setQcmReponses({})
+    setQcmEleveId(null)
+    // Rester en mode individuelle pour sélectionner le prochain
   }
 
   async function creerSession() {
@@ -448,120 +526,250 @@ function Saisie() {
             {/* ── Onglet QCM ── */}
             {onglet === 'qcm' && (
               <div>
-                {/* Créer une session */}
-                <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, marginBottom: 24 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: '0 0 12px 0' }}>
-                    Session QCM pour les élèves
-                  </h3>
-                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
-                    Créez un code pour que les élèves passent le test de compréhension sur tablette via <strong>/test</strong>.
-                  </p>
-                  <button onClick={creerSession} disabled={creatingSession} style={{
-                    background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '11px 22px',
-                    borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                    opacity: creatingSession ? 0.6 : 1,
-                  }}>
-                    {creatingSession ? 'Création…' : '+ Nouvelle session QCM'}
-                  </button>
-                </div>
+                {/* Choix du mode */}
+                {qcmMode === 'choix' && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+                      <button onClick={() => { setQcmMode('individuelle'); if (!qcmTestLoaded) chargerQcmQuestions() }} style={{
+                        background: 'white', border: '1.5px solid var(--border-light)', borderRadius: 16, padding: '28px 24px',
+                        cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
+                      }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary-dark)' }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-light)' }}
+                      >
+                        <div style={{ fontSize: 28, marginBottom: 12 }}>👤</div>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--primary-dark)', marginBottom: 6 }}>Passation individuelle</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                          L'enseignant sélectionne un élève et saisit ses réponses au QCM en tête-à-tête.
+                        </div>
+                      </button>
+                      <button onClick={() => setQcmMode('collective')} style={{
+                        background: 'white', border: '1.5px solid var(--border-light)', borderRadius: 16, padding: '28px 24px',
+                        cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
+                      }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary-dark)' }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-light)' }}
+                      >
+                        <div style={{ fontSize: 28, marginBottom: 12 }}>📱</div>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--primary-dark)', marginBottom: 6 }}>Session collective</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                          Générez un code pour que les élèves passent le QCM en autonomie sur tablette.
+                        </div>
+                      </button>
+                    </div>
 
-                {/* Sessions actives */}
-                {sessions.length > 0 && (
-                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden', marginBottom: 24 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
-                      <thead>
-                        <tr style={{ background: 'var(--bg-gray)' }}>
-                          <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>CODE</th>
-                          <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>STATUT</th>
-                          <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>EXPIRE</th>
-                          <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>ACTIONS</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sessions.map(s => {
-                          const expired = new Date(s.expires_at) < new Date()
-                          const isActive = s.active && !expired
-                          return (
-                            <tr key={s.id} style={{ borderTop: '1px solid var(--border-light)' }}>
-                              <td style={{ padding: '14px 20px', fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'monospace', fontSize: 16, letterSpacing: 2 }}>{s.code}</td>
-                              <td style={{ padding: '14px 20px', textAlign: 'center' }}>
-                                <span style={{
-                                  fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, fontFamily: 'var(--font-sans)',
-                                  background: isActive ? '#f0fdf4' : '#f3f4f6',
-                                  color: isActive ? '#16a34a' : '#6b7280',
-                                }}>
-                                  {isActive ? 'Active' : !s.active ? 'Désactivée' : 'Expirée'}
+                    {/* Résultats QCM */}
+                    <QcmResultatsTable eleves={eleves} qcmResultats={qcmResultats} />
+                  </>
+                )}
+
+                {/* ── Mode individuel ── */}
+                {qcmMode === 'individuelle' && !qcmEleveId && !qcmDone && (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                      <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
+                        Passation individuelle — Sélectionner un élève
+                      </h3>
+                      <button onClick={() => { setQcmMode('choix'); setQcmEleveId(null) }} style={{
+                        background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
+                        padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                      }}>← Retour</button>
+                    </div>
+                    {qcmNoTest && (
+                      <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#c2410c', fontFamily: 'var(--font-sans)' }}>
+                        Aucun test QCM configuré pour ce niveau et cette période. Créez-en un dans Administration → QCM.
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {eleves.map(e => {
+                        const r = qcmResultats[e.id]
+                        const hasResult = r && [r.q1, r.q2, r.q3, r.q4, r.q5, r.q6].some(q => q !== null)
+                        return (
+                          <button key={e.id} onClick={() => !qcmNoTest && ouvrirQcmIndividuel(e.id)} disabled={qcmNoTest} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            background: hasResult ? '#f0fdf4' : 'white',
+                            border: `1.5px solid ${hasResult ? '#bbf7d0' : 'var(--border-light)'}`,
+                            borderRadius: 14, padding: '16px 20px', cursor: qcmNoTest ? 'not-allowed' : 'pointer',
+                            fontFamily: 'var(--font-sans)', transition: 'all 0.15s', textAlign: 'left',
+                            opacity: qcmNoTest ? 0.5 : 1,
+                          }}>
+                            <div>
+                              <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--primary-dark)' }}>{e.nom}</span>
+                              <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 14 }}>{e.prenom}</span>
+                              {hasResult && (
+                                <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: 6 }}>
+                                  {[r!.q1, r!.q2, r!.q3, r!.q4, r!.q5, r!.q6].filter(q => q === 'Correct').length}/6
                                 </span>
-                              </td>
-                              <td style={{ padding: '14px 20px', textAlign: 'center', fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
-                                {new Date(s.expires_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                              </td>
-                              <td style={{ padding: '14px 20px', textAlign: 'center' }}>
-                                <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                                  <button onClick={() => copierCode(s.code)} style={{
-                                    background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
-                                    padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                  }}>
-                                    {copiedCode === s.code ? 'Copié !' : 'Copier'}
-                                  </button>
-                                  {isActive && (
-                                    <button onClick={() => desactiverSession(s.id)} style={{
-                                      background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5',
-                                      padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                    }}>Désactiver</button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                              )}
+                            </div>
+                            {hasResult ? <span style={{ color: '#16a34a', fontSize: 18 }}>✓</span> : <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>→</span>}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
 
-                {/* Résultats QCM des élèves */}
-                <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden' }}>
-                  <div style={{ padding: '16px 20px', background: 'var(--bg-gray)', borderBottom: '1.5px solid var(--border-light)' }}>
-                    <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', margin: 0 }}>
-                      Résultats QCM
-                    </h4>
+                {/* ── Mode individuel : questions ── */}
+                {qcmMode === 'individuelle' && qcmEleveId && !qcmDone && (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                      <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
+                        QCM — {eleves.find(e => e.id === qcmEleveId)?.prenom} {eleves.find(e => e.id === qcmEleveId)?.nom}
+                      </h3>
+                      <button onClick={() => setQcmEleveId(null)} style={{
+                        background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
+                        padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                      }}>← Retour</button>
+                    </div>
+
+                    {qcmErreur && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#dc2626', fontFamily: 'var(--font-sans)' }}>{qcmErreur}</div>}
+
+                    {qcmQuestions.map((q, idx) => (
+                      <div key={q.id} style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 20, marginBottom: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+                          <span style={{ background: qcmReponses[q.numero] ? '#16a34a' : 'var(--primary-dark)', color: 'white', borderRadius: 10, minWidth: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, flexShrink: 0, fontFamily: 'var(--font-sans)' }}>
+                            {q.numero}
+                          </span>
+                          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--primary-dark)', margin: 0, lineHeight: 1.5, fontFamily: 'var(--font-sans)' }}>{q.question_text}</p>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, paddingLeft: 48 }}>
+                          {(['A', 'B', 'C', 'D'] as const).map(letter => {
+                            const selected = qcmReponses[q.numero] === letter
+                            return (
+                              <button key={letter} onClick={() => setQcmReponses(prev => ({ ...prev, [q.numero]: letter }))} style={{
+                                padding: '12px 14px', borderRadius: 10, textAlign: 'left',
+                                border: `2px solid ${selected ? '#3b82f6' : 'var(--border-light)'}`,
+                                background: selected ? '#eff6ff' : 'white',
+                                cursor: 'pointer', fontSize: 14, fontWeight: selected ? 700 : 500,
+                                color: selected ? 'var(--primary-dark)' : 'var(--text-secondary)',
+                                fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
+                              }}>
+                                <span style={{ fontWeight: 800, marginRight: 8, color: selected ? '#3b82f6' : 'var(--text-tertiary)' }}>{letter}.</span>
+                                {(q as any)[`option_${letter.toLowerCase()}`]}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+
+                    <button onClick={soumettreQcmIndividuel} disabled={qcmSubmitting || Object.keys(qcmReponses).length < qcmQuestions.length} style={{
+                      width: '100%', background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '14px', borderRadius: 12,
+                      fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer', marginTop: 8,
+                      opacity: (qcmSubmitting || Object.keys(qcmReponses).length < qcmQuestions.length) ? 0.5 : 1,
+                    }}>
+                      {qcmSubmitting ? 'Enregistrement…' : 'Valider les réponses'}
+                    </button>
                   </div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--bg-gray)' }}>
-                        <th style={{ padding: '10px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>ÉLÈVE</th>
-                        {['Q1','Q2','Q3','Q4','Q5','Q6'].map(q => (
-                          <th key={q} style={{ padding: '10px 8px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>{q}</th>
-                        ))}
-                        <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>SCORE</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {eleves.map(e => {
-                        const r = qcmResultats[e.id]
-                        const qs = r ? [r.q1, r.q2, r.q3, r.q4, r.q5, r.q6] : Array(6).fill(null)
-                        const nbCorrect = qs.filter(q => q === 'Correct').length
-                        const hasAny = qs.some(q => q !== null)
-                        return (
-                          <tr key={e.id} style={{ borderTop: '1px solid var(--border-light)' }}>
-                            <td style={{ padding: '12px 20px', fontWeight: 700, color: 'var(--primary-dark)' }}>{e.nom} {e.prenom}</td>
-                            {qs.map((q, i) => (
-                              <td key={i} style={{ padding: '12px 8px', textAlign: 'center' }}>
-                                {q === 'Correct' ? <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
-                                  : q === 'Incorrect' ? <span style={{ color: '#dc2626', fontWeight: 800 }}>✗</span>
-                                  : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
-                              </td>
-                            ))}
-                            <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: hasAny ? (nbCorrect >= 4 ? '#16a34a' : nbCorrect >= 2 ? '#d97706' : '#dc2626') : 'var(--text-tertiary)' }}>
-                              {hasAny ? `${nbCorrect}/6` : '—'}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                )}
+
+                {/* ── Mode individuel : résultat ── */}
+                {qcmMode === 'individuelle' && qcmDone && qcmScore && (
+                  <div style={{ background: 'white', borderRadius: 20, padding: '40px 32px', border: '1.5px solid var(--border-light)', textAlign: 'center' }}>
+                    <div style={{ fontSize: 48, fontWeight: 800, color: qcmScore.filter(r => r === 'Correct').length >= 4 ? '#16a34a' : '#d97706', marginBottom: 12, fontFamily: 'var(--font-sans)' }}>
+                      {qcmScore.filter(r => r === 'Correct').length} / {qcmScore.length}
+                    </div>
+                    <p style={{ fontSize: 15, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 8 }}>
+                      {eleves.find(e => e.id === qcmEleveId)?.prenom} {eleves.find(e => e.id === qcmEleveId)?.nom}
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
+                      {qcmScore.map((r, i) => (
+                        <span key={i} style={{
+                          padding: '6px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)',
+                          background: r === 'Correct' ? '#f0fdf4' : '#fef2f2',
+                          color: r === 'Correct' ? '#16a34a' : '#dc2626',
+                          border: `1px solid ${r === 'Correct' ? '#bbf7d0' : '#fecaca'}`,
+                        }}>Q{i + 1} {r === 'Correct' ? '✓' : '✗'}</span>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                      <button onClick={qcmEleveSuivant} style={{
+                        background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '13px 28px', borderRadius: 12,
+                        fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                      }}>Élève suivant</button>
+                      <button onClick={() => { setQcmMode('choix'); setQcmEleveId(null); setQcmDone(false) }} style={{
+                        background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
+                        padding: '13px 28px', borderRadius: 12, fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                      }}>Retour</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Mode collectif ── */}
+                {qcmMode === 'collective' && (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                      <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
+                        Session collective
+                      </h3>
+                      <button onClick={() => setQcmMode('choix')} style={{
+                        background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
+                        padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                      }}>← Retour</button>
+                    </div>
+
+                    <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, marginBottom: 24 }}>
+                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
+                        Créez un code pour que les élèves passent le QCM sur tablette via <strong>/test</strong>. La session expire après 2 heures.
+                      </p>
+                      <button onClick={creerSession} disabled={creatingSession} style={{
+                        background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '11px 22px',
+                        borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                        opacity: creatingSession ? 0.6 : 1,
+                      }}>
+                        {creatingSession ? 'Création…' : '+ Nouvelle session'}
+                      </button>
+                    </div>
+
+                    {sessions.length > 0 && (
+                      <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden', marginBottom: 24 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+                          <thead>
+                            <tr style={{ background: 'var(--bg-gray)' }}>
+                              <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>CODE</th>
+                              <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>STATUT</th>
+                              <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>ACTIONS</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sessions.map(s => {
+                              const expired = new Date(s.expires_at) < new Date()
+                              const isActive = s.active && !expired
+                              return (
+                                <tr key={s.id} style={{ borderTop: '1px solid var(--border-light)' }}>
+                                  <td style={{ padding: '14px 20px', fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'monospace', fontSize: 16, letterSpacing: 2 }}>{s.code}</td>
+                                  <td style={{ padding: '14px 20px', textAlign: 'center' }}>
+                                    <span style={{
+                                      fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, fontFamily: 'var(--font-sans)',
+                                      background: isActive ? '#f0fdf4' : '#f3f4f6', color: isActive ? '#16a34a' : '#6b7280',
+                                    }}>{isActive ? 'Active' : !s.active ? 'Désactivée' : 'Expirée'}</span>
+                                  </td>
+                                  <td style={{ padding: '14px 20px', textAlign: 'center' }}>
+                                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                                      <button onClick={() => copierCode(s.code)} style={{
+                                        background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
+                                        padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                      }}>{copiedCode === s.code ? 'Copié !' : 'Copier'}</button>
+                                      {isActive && (
+                                        <button onClick={() => desactiverSession(s.id)} style={{
+                                          background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5',
+                                          padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                        }}>Désactiver</button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    <QcmResultatsTable eleves={eleves} qcmResultats={qcmResultats} />
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -671,6 +879,52 @@ function Saisie() {
             </div>
           </div>
         )}
+    </div>
+  )
+}
+
+function QcmResultatsTable({ eleves, qcmResultats }: { eleves: { id: string; nom: string; prenom: string }[]; qcmResultats: Record<string, any> }) {
+  return (
+    <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden' }}>
+      <div style={{ padding: '16px 20px', background: 'var(--bg-gray)', borderBottom: '1.5px solid var(--border-light)' }}>
+        <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', margin: 0 }}>
+          Résultats QCM
+        </h4>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+        <thead>
+          <tr style={{ background: 'var(--bg-gray)' }}>
+            <th style={{ padding: '10px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>ÉLÈVE</th>
+            {['Q1','Q2','Q3','Q4','Q5','Q6'].map(q => (
+              <th key={q} style={{ padding: '10px 8px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>{q}</th>
+            ))}
+            <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>SCORE</th>
+          </tr>
+        </thead>
+        <tbody>
+          {eleves.map(e => {
+            const r = qcmResultats[e.id]
+            const qs = r ? [r.q1, r.q2, r.q3, r.q4, r.q5, r.q6] : Array(6).fill(null)
+            const nbCorrect = qs.filter((q: any) => q === 'Correct').length
+            const hasAny = qs.some((q: any) => q !== null)
+            return (
+              <tr key={e.id} style={{ borderTop: '1px solid var(--border-light)' }}>
+                <td style={{ padding: '12px 20px', fontWeight: 700, color: 'var(--primary-dark)' }}>{e.nom} {e.prenom}</td>
+                {qs.map((q: any, i: number) => (
+                  <td key={i} style={{ padding: '12px 8px', textAlign: 'center' }}>
+                    {q === 'Correct' ? <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
+                      : q === 'Incorrect' ? <span style={{ color: '#dc2626', fontWeight: 800 }}>✗</span>
+                      : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                  </td>
+                ))}
+                <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: hasAny ? (nbCorrect >= 4 ? '#16a34a' : nbCorrect >= 2 ? '#d97706' : '#dc2626') : 'var(--text-tertiary)' }}>
+                  {hasAny ? `${nbCorrect}/6` : '—'}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

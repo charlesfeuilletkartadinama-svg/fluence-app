@@ -102,9 +102,9 @@ export default function MesClasses() {
       })))
 
     } else {
-      const isAdmin = ['admin', 'ia_dasen', 'recteur'].includes(profil.role)
+      const needsExplorer = ['admin', 'ia_dasen', 'recteur', 'ien', 'coordo_rep'].includes(profil.role)
 
-      if (isAdmin && !profil.etablissement_id) {
+      if (needsExplorer && !profil.etablissement_id) {
         // Admin : charger la liste des établissements pour l'entonnoir
         const { data: etabsData } = await supabase.from('etablissements')
           .select('id, nom, circonscription').order('nom')
@@ -268,7 +268,7 @@ export default function MesClasses() {
             <div className={styles.topbar}>
               <div>
                 <h1 className={styles.pageTitle}>
-                  {['admin', 'ia_dasen', 'recteur'].includes(profil?.role || '') ? 'Explorateur élèves'
+                  {['admin', 'ia_dasen', 'recteur', 'ien', 'coordo_rep'].includes(profil?.role || '') ? 'Explorateur élèves'
                     : ['directeur','principal'].includes(profil?.role || '') ? 'Détail élèves'
                     : 'Mes classes'}
                 </h1>

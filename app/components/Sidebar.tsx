@@ -76,7 +76,7 @@ export default function Sidebar() {
       { href: '/dashboard/eleves',     icon: '🏫', label: 'Mes classes'  },
       { href: '/dashboard/mes-eleves', icon: '👥', label: 'Mes élèves'  },
     ] : !isDirection ? [
-      { href: '/dashboard/eleves', icon: '👥', label: (isReseau || isGlobal) ? "Réseau d'élèves" : 'Mes élèves' },
+      { href: '/dashboard/eleves', icon: '👥', label: profil?.role === 'admin' ? 'Explorateur élèves' : (isReseau || isGlobal) ? "Réseau d'élèves" : 'Mes élèves' },
     ] : []),
     ...(canSaisie ? [{
       href: '/dashboard/saisie', icon: '✏️', label: 'Évaluations',

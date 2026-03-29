@@ -88,6 +88,41 @@ export type IenEtab = {
   etablissement: { nom: string } | null
 }
 
+// ── QCM / Sessions de test ─────────────────────────────────────────────────
+
+export type QcmTest = {
+  id: string
+  periode_id: string
+  niveau: string
+  texte_reference: string | null
+  titre: string | null
+  created_by: string
+  created_at?: string
+}
+
+export type QcmQuestion = {
+  id: string
+  qcm_test_id: string
+  numero: number
+  question_text: string
+  option_a: string
+  option_b: string
+  option_c: string
+  option_d: string
+  reponse_correcte: 'A' | 'B' | 'C' | 'D'
+}
+
+export type TestSession = {
+  id: string
+  code: string
+  classe_id: string
+  periode_id: string
+  enseignant_id: string
+  active: boolean
+  expires_at: string
+  created_at?: string
+}
+
 // ── Constantes partagées ────────────────────────────────────────────────────
 
 export const ROLE_LABELS: Record<string, string> = {

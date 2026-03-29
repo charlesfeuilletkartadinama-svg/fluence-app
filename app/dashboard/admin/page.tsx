@@ -6,7 +6,7 @@ import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
-import type { Etablissement, Periode, Norme, CoorDoEtab, IenEtab, ProfilOption, Invitation, UserRow, Departement, Circonscription, Ville } from '@/app/lib/types'
+import type { Etablissement, Periode, Norme, CoorDoEtab, IenEtab, ProfilOption, Invitation, UserRow, Departement, Circonscription, Ville, QcmTest, QcmQuestion } from '@/app/lib/types'
 import { ROLE_LABELS } from '@/app/lib/types'
 
 // ── Composant principal ────────────────────────────────────────────────────────
@@ -34,11 +34,12 @@ export default function Admin() {
   const isReseau = profil?.role === 'coordo_rep' || profil?.role === 'ien'
 
   const ONGLETS = isReseau
-    ? ['Mon réseau', 'Périodes', 'Normes']
-    : ['Vue d\'ensemble', 'Établissements', 'Géographie', 'Périodes', 'Normes', 'Utilisateurs', 'Invitations', 'Affectations']
+    ? ['Mon réseau', 'Périodes', 'Normes', 'QCM']
+    : ['Vue d\'ensemble', 'Établissements', 'Géographie', 'Périodes', 'Normes', 'Utilisateurs', 'Invitations', 'Affectations', 'QCM']
 
   const periodesOnglet = isReseau ? 1 : 3
   const normesOnglet   = isReseau ? 2 : 4
+  const qcmOnglet      = isReseau ? 3 : 8
 
   // GeoData dynamique (construit depuis Supabase)
   const geoData: Record<string, Record<string, string[]>> = {}
@@ -416,6 +417,11 @@ export default function Admin() {
             onSupprimerIen={supprimerAffectationIen}
             onRefresh={chargerDonnees}
           />
+        )}
+
+        {/* ── QCM ── */}
+        {onglet === qcmOnglet && (
+          <QcmTab supabase={supabase} profil={profil} periodes={periodes} />
         )}
       </div>
     </div>
@@ -1405,6 +1411,260 @@ function NormeRow({ norme, onSave }: { norme: Norme; onSave: (n: Norme) => void 
 }
 
 // ── NormesTab ──────────────────────────────────────────────────────────────────
+
+// ── QCM Tab ───────────────────────────────────────────────────────────────────
+
+const NIVEAUX_QCM = ['CP', 'CE1', 'CE2', 'CM1', 'CM2', '6eme', '5eme', '4eme', '3eme']
+
+function QcmTab({ supabase, profil, periodes }: { supabase: any; profil: any; periodes: Periode[] }) {
+  const [tests, setTests] = useState<(QcmTest & { qcm_questions?: QcmQuestion[] })[]>([])
+  const [loadingQcm, setLoadingQcm] = useState(true)
+  const [mode, setMode] = useState<'liste' | 'edit'>('liste')
+  const [editTest, setEditTest] = useState<QcmTest | null>(null)
+  const [titre, setTitre] = useState('')
+  const [texteRef, setTexteRef] = useState('')
+  const [qcmPeriodeId, setQcmPeriodeId] = useState('')
+  const [niveau, setNiveau] = useState('')
+  const [questions, setQuestions] = useState<QcmQuestion[]>([])
+  const [saving, setSaving] = useState(false)
+  const [erreur, setErreur] = useState('')
+
+  useEffect(() => { chargerQcm() }, [])
+
+  async function chargerQcm() {
+    setLoadingQcm(true)
+    const { data: testsData } = await supabase
+      .from('qcm_tests')
+      .select('*, qcm_questions(*)')
+      .order('created_at', { ascending: false })
+    setTests(testsData || [])
+    setLoadingQcm(false)
+  }
+
+  function initQuestions(): QcmQuestion[] {
+    return Array.from({ length: 6 }, (_, i) => ({
+      id: '', qcm_test_id: '', numero: i + 1,
+      question_text: '', option_a: '', option_b: '', option_c: '', option_d: '',
+      reponse_correcte: 'A' as const,
+    }))
+  }
+
+  function ouvrirCreation() {
+    setEditTest(null)
+    setTitre(''); setTexteRef(''); setQcmPeriodeId(''); setNiveau('')
+    setQuestions(initQuestions())
+    setErreur('')
+    setMode('edit')
+  }
+
+  function ouvrirEdition(test: QcmTest & { qcm_questions?: QcmQuestion[] }) {
+    setEditTest(test)
+    setTitre(test.titre || '')
+    setTexteRef(test.texte_reference || '')
+    setQcmPeriodeId(test.periode_id)
+    setNiveau(test.niveau)
+    const qs = (test.qcm_questions || []).sort((a, b) => a.numero - b.numero)
+    const filled: QcmQuestion[] = Array.from({ length: 6 }, (_, i) => {
+      const existing = qs.find(q => q.numero === i + 1)
+      return existing || { id: '', qcm_test_id: test.id, numero: i + 1, question_text: '', option_a: '', option_b: '', option_c: '', option_d: '', reponse_correcte: 'A' as const }
+    })
+    setQuestions(filled)
+    setErreur('')
+    setMode('edit')
+  }
+
+  function updateQuestion(idx: number, field: string, value: string) {
+    setQuestions(prev => prev.map((q, i) => i === idx ? { ...q, [field]: value } : q))
+  }
+
+  async function sauvegarder() {
+    setErreur('')
+    if (!qcmPeriodeId || !niveau) { setErreur('Sélectionnez une période et un niveau.'); return }
+    const incomplete = questions.some(q => !q.question_text.trim() || !q.option_a.trim() || !q.option_b.trim() || !q.option_c.trim() || !q.option_d.trim())
+    if (incomplete) { setErreur('Toutes les questions doivent avoir un énoncé et 4 options.'); return }
+
+    setSaving(true)
+    try {
+      let testId = editTest?.id
+      if (editTest) {
+        const { error } = await supabase.from('qcm_tests').update({
+          titre: titre.trim() || null,
+          texte_reference: texteRef.trim() || null,
+          periode_id: qcmPeriodeId,
+          niveau,
+        }).eq('id', editTest.id)
+        if (error) { setErreur(error.message); setSaving(false); return }
+      } else {
+        const { data, error } = await supabase.from('qcm_tests').insert({
+          titre: titre.trim() || null,
+          texte_reference: texteRef.trim() || null,
+          periode_id: qcmPeriodeId,
+          niveau,
+          created_by: profil.id,
+        }).select('id').single()
+        if (error) { setErreur(error.message); setSaving(false); return }
+        testId = data.id
+      }
+
+      await supabase.from('qcm_questions').delete().eq('qcm_test_id', testId)
+      const rows = questions.map(q => ({
+        qcm_test_id: testId,
+        numero: q.numero,
+        question_text: q.question_text.trim(),
+        option_a: q.option_a.trim(),
+        option_b: q.option_b.trim(),
+        option_c: q.option_c.trim(),
+        option_d: q.option_d.trim(),
+        reponse_correcte: q.reponse_correcte,
+      }))
+      const { error: qErr } = await supabase.from('qcm_questions').insert(rows)
+      if (qErr) { setErreur(qErr.message); setSaving(false); return }
+
+      await chargerQcm()
+      setMode('liste')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function supprimerTest(id: string) {
+    if (!window.confirm('Supprimer ce test QCM ? Les questions seront aussi supprimées.')) return
+    await supabase.from('qcm_tests').delete().eq('id', id)
+    await chargerQcm()
+  }
+
+  function qcmPeriodeLabel(pid: string) {
+    const p = periodes.find(pr => pr.id === pid)
+    return p ? `${p.code} — ${p.label}` : pid
+  }
+
+  if (loadingQcm) return <div style={{ padding: 32, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }}>Chargement…</div>
+
+  if (mode === 'edit') return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
+          {editTest ? 'Modifier le test QCM' : 'Nouveau test QCM'}
+        </h3>
+        <button onClick={() => setMode('liste')} style={A.btnGhost}>← Retour</button>
+      </div>
+
+      {erreur && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#dc2626', fontFamily: 'var(--font-sans)' }}>{erreur}</div>}
+
+      <div style={{ ...A.card, padding: 24, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div>
+            <label style={A.label}>Période *</label>
+            <select value={qcmPeriodeId} onChange={e => setQcmPeriodeId(e.target.value)} style={A.select}>
+              <option value="">— Choisir —</option>
+              {periodes.filter(p => p.actif).map(p => (
+                <option key={p.id} value={p.id}>{p.code} — {p.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={A.label}>Niveau *</label>
+            <select value={niveau} onChange={e => setNiveau(e.target.value)} style={A.select}>
+              <option value="">— Choisir —</option>
+              {NIVEAUX_QCM.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={A.label}>Titre (optionnel)</label>
+            <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Ex: Le petit prince" style={{ ...A.input, width: '100%' }} />
+          </div>
+        </div>
+        <div>
+          <label style={A.label}>Texte de référence (le passage que l'élève lit)</label>
+          <textarea value={texteRef} onChange={e => setTexteRef(e.target.value)} rows={5} placeholder="Collez ici le texte que les élèves doivent lire avant de répondre aux questions…" style={{ ...A.input, width: '100%', resize: 'vertical' as const }} />
+        </div>
+      </div>
+
+      {questions.map((q, idx) => (
+        <div key={idx} style={{ ...A.card, padding: 20, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <span style={{ background: 'var(--primary-dark)', color: 'white', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, fontFamily: 'var(--font-sans)', flexShrink: 0 }}>Q{q.numero}</span>
+            <input value={q.question_text} onChange={e => updateQuestion(idx, 'question_text', e.target.value)} placeholder="Énoncé de la question…" style={{ ...A.input, flex: 1 }} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, paddingLeft: 44 }}>
+            {(['A', 'B', 'C', 'D'] as const).map(letter => (
+              <div key={letter} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="radio"
+                  name={`correct-${idx}`}
+                  checked={q.reponse_correcte === letter}
+                  onChange={() => updateQuestion(idx, 'reponse_correcte', letter)}
+                  style={{ accentColor: 'var(--primary-dark)' }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 700, color: q.reponse_correcte === letter ? '#16a34a' : 'var(--text-tertiary)', fontFamily: 'var(--font-sans)', minWidth: 16 }}>{letter}.</span>
+                <input
+                  value={(q as any)[`option_${letter.toLowerCase()}`] || ''}
+                  onChange={e => updateQuestion(idx, `option_${letter.toLowerCase()}`, e.target.value)}
+                  placeholder={`Option ${letter}`}
+                  style={{ ...A.input, flex: 1 }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+        <button onClick={sauvegarder} disabled={saving} style={{ ...A.btnPrimary, opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Enregistrement…' : editTest ? 'Mettre à jour' : 'Créer le test'}
+        </button>
+        <button onClick={() => setMode('liste')} style={A.btnGhost}>Annuler</button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
+          Tests QCM de compréhension
+        </h3>
+        <button onClick={ouvrirCreation} style={A.btnPrimary}>+ Nouveau test</button>
+      </div>
+
+      {tests.length === 0 ? (
+        <div style={A.emptyState}>
+          Aucun test QCM créé. Cliquez sur « + Nouveau test » pour commencer.
+        </div>
+      ) : (
+        <div style={A.card}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={A.th}>Période</th>
+              <th style={A.th}>Niveau</th>
+              <th style={A.th}>Titre</th>
+              <th style={A.thC}>Questions</th>
+              <th style={A.thC}>Actions</th>
+            </tr></thead>
+            <tbody>
+              {tests.map(t => (
+                <tr key={t.id}>
+                  <td style={A.td}>{qcmPeriodeLabel(t.periode_id)}</td>
+                  <td style={A.tdBold}>{t.niveau}</td>
+                  <td style={A.td}>{t.titre || '—'}</td>
+                  <td style={A.tdC}>{(t.qcm_questions || []).length} / 6</td>
+                  <td style={A.tdC}>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                      <button onClick={() => ouvrirEdition(t)} style={A.btnGhost}>Modifier</button>
+                      <button onClick={() => supprimerTest(t.id)} style={A.btnDanger}>Supprimer</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Normes Tab ────────────────────────────────────────────────────────────────
 
 function NormesTab({ supabase, periodes, profil }: { supabase: any; periodes: Periode[]; profil: any }) {
   const [normes,    setNormes]    = useState<Norme[]>([])

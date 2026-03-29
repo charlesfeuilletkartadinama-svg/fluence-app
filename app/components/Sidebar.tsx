@@ -32,7 +32,7 @@ export default function Sidebar() {
   const isGlobal     = profil?.role === 'ia_dasen' || profil?.role === 'recteur'
   const isEnseignant = profil?.role === 'enseignant'
   // Saisie/Passation : uniquement pour les rôles rattachés à un établissement
-  const canSaisie    = profil && ['enseignant', 'directeur', 'principal'].includes(profil.role)
+  const canSaisie    = profil && ['enseignant', 'directeur', 'principal', 'admin', 'coordo_rep'].includes(profil.role)
 
   const NAV = [
     { href: '/dashboard',              icon: '📊', label: 'Tableau de bord' },
@@ -48,6 +48,7 @@ export default function Sidebar() {
     ...(canSaisie ? [
       { href: '/dashboard/saisie',    icon: '✏️', label: 'Mode Saisie'   },
       { href: '/dashboard/passation', icon: '⏱️', label: 'Mode passation' },
+      { href: '/dashboard/sessions',  icon: '📋', label: 'Sessions QCM'  },
     ] : []),
     { href: '/dashboard/statistiques', icon: '📈', label: 'Statistiques'     },
     { href: '/dashboard/groupes',      icon: '🎯', label: 'Groupes & Remédiation' },

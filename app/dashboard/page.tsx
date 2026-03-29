@@ -843,252 +843,68 @@ export default function Dashboard() {
 
   async function chargerAdminOverview(anneeParam?: string) {
     const anneeChoisie = anneeParam || adminAnnee
-    const [etabsFullRes, profilsRes, periFullRes, invRes, normesRes, qcmTestsRes] = await Promise.all([
-      supabase.from('etablissements').select('id, nom, ville'),
-      supabase.from('profils').select('id, role, nom, prenom, etablissement_id'),
-      supabase.from('periodes').select('id, code, label, actif, saisie_ouverte, type, etablissement_id, annee_scolaire').order('code'),
-      supabase.from('invitations').select('actif'),
-      supabase.from('config_normes').select('niveau, seuil_min, seuil_attendu'),
-      supabase.from('qcm_tests').select('id, niveau, periode_id'),
-    ])
-    const allEtabs = etabsFullRes.data || []
-    const allProfils = profilsRes.data || []
-    const allPeriodes = periFullRes.data || []
-    const allNormes = normesRes.data || []
 
-    // Rôles
-    const rolesCounts: Record<string, number> = {}
-    allProfils.forEach((u: any) => { rolesCounts[u.role] = (rolesCounts[u.role] || 0) + 1 })
+    // Appel unique à la fonction SQL pré-agrégée
+    const { data: raw, error } = await supabase.rpc('get_admin_dashboard', { p_annee: anneeChoisie })
+    if (error || !raw) { console.error('Erreur admin dashboard:', error); return }
 
-    // Dédupliquer périodes par code+annee
-    const seenPKeys = new Set<string>()
-    const periDedup = allPeriodes.filter((p: any) => {
-      const key = `${p.annee_scolaire || ''}_${p.code}`
-      if (seenPKeys.has(key)) return false
-      seenPKeys.add(key); return true
-    })
+    const d = raw as any
+    const totaux = d.totaux || {}
+    const statsNiveau = (d.stats_niveau || []) as any[]
+    const statsEtab = (d.stats_etab || []) as any[]
+    const groupesRaw = (d.groupes || []) as any[]
+    const evolution = (d.evolution || []) as any[]
+    const ensSansSaisie = (d.ens_sans_saisie || []) as any[]
+    const periodesDetail = (d.periodes || []) as any[]
+    const rolesRaw = (d.roles || []) as any[]
+    const etabsSansAct = (d.etabs_sans_activite || []) as any[]
+    const qcm = d.qcm || {}
 
-    // Période active courante — filtrer par année choisie, code T1 en priorité
-    const periodesAnnee = periDedup.filter((p: any) => p.annee_scolaire === anneeChoisie && p.type !== 'evaluation_nationale')
-    // Si pas de périodes pour cette année, prendre toutes les actives
-    const candidats = periodesAnnee.length > 0 ? periodesAnnee : periDedup.filter((p: any) => p.actif && p.type !== 'evaluation_nationale')
-    const periodeActive = candidats.length > 0
-      ? candidats.sort((a: any, b: any) => {
-          const priority = (c: string) => c === 'T1' ? 1 : c === 'T2' ? 2 : c === 'T3' ? 3 : 10
-          return priority(a.code) - priority(b.code)
-        })[0]
-      : null
+    // Mapper les rôles
+    const usersByRole: Record<string, number> = {}
+    rolesRaw.forEach((r: any) => { usersByRole[r.role] = r.count })
 
-    // Charger avec pagination forcée par 1000 (limite Supabase)
-    async function fetchAll(table: string, select: string, filters?: (q: any) => any) {
-      let all: any[] = []
-      let off = 0
-      while (true) {
-        let q = supabase.from(table).select(select).range(off, off + 999)
-        if (filters) q = filters(q)
-        const { data } = await q
-        if (!data || data.length === 0) break
-        all = all.concat(data)
-        if (data.length < 1000) break
-        off += 1000
-      }
-      return all
-    }
-
-    // Récupérer TOUS les IDs de périodes regular de l'année choisie (T1+T2+T3)
-    const allPeriodeIdsAnnee = allPeriodes
-      .filter((p: any) => p.annee_scolaire === anneeChoisie && p.type !== 'evaluation_nationale')
-      .map((p: any) => p.id)
-
-    // IDs de la période active spécifique (T1) pour les stats "période courante"
-    const periodeActiveIds = allPeriodes
-      .filter((p: any) => p.code === periodeActive?.code && p.annee_scolaire === anneeChoisie)
-      .map((p: any) => p.id)
-
-    const [allEleves, allPassations] = await Promise.all([
-      fetchAll('eleves', 'id, classe_id, classe:classes(niveau, etablissement_id, nom)', q => q.eq('actif', true)),
-      allPeriodeIdsAnnee.length > 0
-        ? fetchAll('passations', 'eleve_id, score, non_evalue, q1, q2, q3, q4, q5, q6, periode:periodes(code, type)', q => q.in('periode_id', allPeriodeIdsAnnee))
-        : Promise.resolve([]),
-    ])
-
-    const elevesArr = allEleves || []
-    const passArr = allPassations || []
-
-    // Pour chaque élève, prendre le dernier score de l'année (T3 > T2 > T1)
-    const codePriority = (c: string) => c === 'T3' ? 3 : c === 'T2' ? 2 : c === 'T1' ? 1 : 0
-    function dernierScore(eleveId: string) {
-      const passes = passArr.filter((pa: any) => pa.eleve_id === eleveId)
-      if (passes.length === 0) return null
-      return passes.sort((a: any, b: any) => codePriority(b.periode?.code) - codePriority(a.periode?.code))[0]
-    }
-
-    // Score par niveau (dernier score de l'année)
-    const niveauxMap: Record<string, { scores: number[]; nbEleves: number; nbEvalues: number }> = {}
-    const NIVEAUX_ORDRE = ['CP', 'CE1', 'CE2', 'CM1', 'CM2', '6eme', '5eme', '4eme', '3eme']
-    for (const e of elevesArr) {
-      const niv = (e as any).classe?.niveau || 'Autre'
-      if (!niveauxMap[niv]) niveauxMap[niv] = { scores: [], nbEleves: 0, nbEvalues: 0 }
-      niveauxMap[niv].nbEleves++
-      const p = dernierScore(e.id)
-      if (p && !p.non_evalue && p.score && p.score > 0) {
-        niveauxMap[niv].scores.push(p.score as number)
-        niveauxMap[niv].nbEvalues++
-      }
-    }
-    const scoreParNiveau = Object.entries(niveauxMap)
-      .map(([niveau, d]) => ({
-        niveau,
-        moyenne: d.scores.length > 0 ? Math.round(d.scores.reduce((a, b) => a + b, 0) / d.scores.length) : null,
-        nbEleves: d.nbEleves,
-        nbEvalues: d.nbEvalues,
-      }))
-      .sort((a, b) => {
-        const ia = NIVEAUX_ORDRE.indexOf(a.niveau), ib = NIVEAUX_ORDRE.indexOf(b.niveau)
-        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
-      })
-
-    // Groupes de besoin (période active)
-    const normeDefault: Record<string, { min: number; attendu: number }> = {}
-    for (const n of allNormes) normeDefault[(n as any).niveau] = { min: (n as any).seuil_min, attendu: (n as any).seuil_attendu }
-    // Fallback norms
-    const defaultNorms: Record<string, { min: number; attendu: number }> = {
-      CP: { min: 40, attendu: 55 }, CE1: { min: 65, attendu: 80 }, CE2: { min: 80, attendu: 90 },
-      CM1: { min: 90, attendu: 100 }, CM2: { min: 100, attendu: 110 }, '6eme': { min: 110, attendu: 120 },
-    }
-    let gTresFragile = 0, gFragile = 0, gEnCours = 0, gAttendu = 0
-    for (const e of elevesArr) {
-      const niv = (e as any).classe?.niveau || ''
-      const p = dernierScore(e.id)
-      if (!p || p.non_evalue || !p.score) continue
-      const norme = normeDefault[niv] || defaultNorms[niv]
-      if (!norme) continue
-      const s = p.score as number
-      if (s < norme.min * 0.7) gTresFragile++
-      else if (s < norme.min) gFragile++
-      else if (s < norme.attendu) gEnCours++
-      else gAttendu++
-    }
-    const groupesRepartition = [
-      { label: 'Très fragile', count: gTresFragile, color: '#DC2626' },
-      { label: 'Fragile', count: gFragile, color: '#D97706' },
-      { label: "En cours d'acq.", count: gEnCours, color: '#2563EB' },
-      { label: 'Attendu', count: gAttendu, color: '#16A34A' },
-    ]
-
-    // Évolution entre périodes — requête légère par période (année choisie)
-    const periCodesActifs = [...new Set(periodesAnnee.map((p: any) => p.code))]
-    const evolutionPeriodes: { code: string; moyenne: number | null }[] = []
-    for (const code of periCodesActifs) {
-      const perIds = allPeriodes.filter((p: any) => p.code === code && p.annee_scolaire === anneeChoisie).map((p: any) => p.id)
-      if (perIds.length === 0) { evolutionPeriodes.push({ code, moyenne: null }); continue }
-      const { data: evoPass } = await supabase.from('passations')
-        .select('score').in('periode_id', perIds).eq('non_evalue', false).not('score', 'is', null).gt('score', 0).limit(5000)
-      const scores = (evoPass || []).map((p: any) => p.score as number)
-      evolutionPeriodes.push({ code, moyenne: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null })
-    }
-
-    // Établissements sans activité (période active — passArr déjà filtré par période)
-    const etabsAvecActivite = new Set<string>()
-    for (const pa of passArr) {
-      {
-        const el = elevesArr.find(e => e.id === pa.eleve_id)
-        if (el) etabsAvecActivite.add((el as any).classe?.etablissement_id)
-      }
-    }
-    const etabsSansActivite = allEtabs.filter(e => !etabsAvecActivite.has(e.id)).map(e => ({ nom: e.nom, ville: e.ville }))
-
-    // Enseignants sans saisie (période active)
-    const enseignants = allProfils.filter((p: any) => p.role === 'enseignant')
-    const ensAvecSaisie = new Set<string>()
-    // On ne peut pas facilement savoir quel enseignant a saisi sans enseignant_id dans passations
-    // Simplification : on regarde les enseignants dont aucun élève de leurs classes n'a de passation
-    const { data: ecData } = await supabase.from('enseignant_classes').select('enseignant_id, classe_id')
-    const ecMap: Record<string, string[]> = {}
-    for (const ec of (ecData || [])) {
-      if (!ecMap[(ec as any).enseignant_id]) ecMap[(ec as any).enseignant_id] = []
-      ecMap[(ec as any).enseignant_id].push((ec as any).classe_id)
-    }
-    const enseignantsSansSaisie: { nom: string; prenom: string; etablissement: string }[] = []
-    for (const ens of enseignants) {
-      const classeIds = ecMap[ens.id] || []
-      if (classeIds.length === 0) continue
-      const eleveIds = elevesArr.filter(e => classeIds.includes(e.classe_id)).map(e => e.id)
-      const aPassation = passArr.some((pa: any) => eleveIds.includes(pa.eleve_id))
-      if (!aPassation) {
-        const etab = allEtabs.find(e => e.id === ens.etablissement_id)
-        enseignantsSansSaisie.push({ nom: ens.nom, prenom: ens.prenom, etablissement: etab?.nom || '—' })
-      }
-    }
+    // Mapper les groupes
+    const gMap: Record<string, number> = {}
+    groupesRaw.forEach((g: any) => { gMap[g.groupe] = g.nb })
 
     // Top / Bottom établissements
-    const etabScores: Record<string, { nom: string; scores: number[]; nbEleves: number; nbFragiles: number }> = {}
-    for (const e of elevesArr) {
-      const etabId = (e as any).classe?.etablissement_id
-      if (!etabId) continue
-      if (!etabScores[etabId]) {
-        const etab = allEtabs.find(et => et.id === etabId)
-        etabScores[etabId] = { nom: etab?.nom || '?', scores: [], nbEleves: 0, nbFragiles: 0 }
-      }
-      etabScores[etabId].nbEleves++
-      const p = dernierScore(e.id)
-      if (p && !p.non_evalue && p.score && p.score > 0) {
-        etabScores[etabId].scores.push(p.score as number)
-        const niv = (e as any).classe?.niveau || ''
-        const norme = normeDefault[niv] || defaultNorms[niv]
-        if (norme && (p.score as number) < norme.min) etabScores[etabId].nbFragiles++
-      }
-    }
-    const etabRanking = Object.values(etabScores)
-      .filter(e => e.scores.length > 0)
-      .map(e => ({
-        nom: e.nom,
-        moyenne: Math.round(e.scores.reduce((a, b) => a + b, 0) / e.scores.length),
-        pctFragiles: Math.round(e.nbFragiles / e.scores.length * 100),
-      }))
-      .sort((a, b) => b.moyenne - a.moyenne)
-    const topEtabs = etabRanking.slice(0, 5)
-    const bottomEtabs = etabRanking.slice(-5).reverse()
-
-    // QCM stats
-    const qcmTests = qcmTestsRes.data || []
-    const qcmConfigures = qcmTests.length
-    const qcmNiveauxPossibles = NIVEAUX_ORDRE.length
-    // Élèves avec QCM complété (au moins q1 renseigné)
-    const qcmComplete = passArr.filter((pa: any) =>
-      (pa as any).periode?.code === periodeActive?.code && pa.q1 !== null
-    ).length
-    const nbElevesEvaluesTotal = elevesArr.length
-
-    // Totaux évalués
-    const nbElevesEvalues = passArr.filter((pa: any) =>
-      (pa as any).periode?.code === periodeActive?.code && !pa.non_evalue && pa.score && pa.score > 0
-    ).length
+    const etabsAvecScore = statsEtab.filter((e: any) => e.moyenne != null)
+    const topEtabs = etabsAvecScore.slice(0, 5).map((e: any) => {
+      const fragiles = e.nb_evalues > 0 ? Math.round((e.nb_eleves - e.nb_evalues) / e.nb_eleves * 100) : 0
+      return { nom: e.etab_nom, moyenne: e.moyenne, pctFragiles: fragiles }
+    })
+    const bottomEtabs = etabsAvecScore.slice(-5).reverse().map((e: any) => {
+      const fragiles = e.nb_evalues > 0 ? Math.round((e.nb_eleves - e.nb_evalues) / e.nb_eleves * 100) : 0
+      return { nom: e.etab_nom, moyenne: e.moyenne, pctFragiles: fragiles }
+    })
 
     setAdminOverview({
-      nbEtablissements: allEtabs.length,
-      nbUtilisateurs: Object.values(rolesCounts).reduce((s, n) => s + n, 0),
-      periodesActives: periDedup.filter((p: any) => p.actif).length,
-      invitationsActives: (invRes.data || []).filter((i: any) => i.actif).length,
-      usersByRole: rolesCounts,
-      periodesDetail: periDedup,
-      nbElevesTotal: elevesArr.length,
-      nbElevesEvalues,
-      scoreMoyenGlobal: (() => {
-        const allScores = passArr.filter((pa: any) => !pa.non_evalue && pa.score && pa.score > 0).map((pa: any) => pa.score as number)
-        return allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : null
-      })(),
-      scoreParNiveau,
-      groupesRepartition,
-      evolutionPeriodes,
-      etabsSansActivite,
-      enseignantsSansSaisie,
+      nbEtablissements: totaux.nb_etablissements || 0,
+      nbUtilisateurs: totaux.nb_utilisateurs || 0,
+      periodesActives: totaux.periodes_actives || 0,
+      invitationsActives: totaux.invitations_actives || 0,
+      usersByRole,
+      periodesDetail: periodesDetail.map((p: any) => ({ code: p.code, label: p.label, actif: p.actif, saisie_ouverte: p.saisie_ouverte, type: p.type })),
+      nbElevesTotal: totaux.nb_eleves || 0,
+      nbElevesEvalues: totaux.nb_evalues || 0,
+      scoreMoyenGlobal: totaux.score_moyen,
+      scoreParNiveau: statsNiveau.map((n: any) => ({ niveau: n.niveau, moyenne: n.moyenne, nbEleves: n.nb_eleves, nbEvalues: n.nb_evalues })),
+      groupesRepartition: [
+        { label: 'Très fragile', count: gMap['tres_fragile'] || 0, color: '#DC2626' },
+        { label: 'Fragile', count: gMap['fragile'] || 0, color: '#D97706' },
+        { label: "En cours d'acq.", count: gMap['en_cours'] || 0, color: '#2563EB' },
+        { label: 'Attendu', count: gMap['attendu'] || 0, color: '#16A34A' },
+      ],
+      evolutionPeriodes: evolution.map((e: any) => ({ code: e.code, moyenne: e.moyenne })),
+      etabsSansActivite: etabsSansAct.map((e: any) => ({ nom: e.nom, ville: e.ville })),
+      enseignantsSansSaisie: ensSansSaisie.map((e: any) => ({ nom: e.nom, prenom: e.prenom, etablissement: e.etablissement || '—' })),
       topEtabs,
       bottomEtabs,
-      qcmConfigures,
-      qcmNiveauxTotal: qcmNiveauxPossibles,
-      qcmElevesComplete: qcmComplete,
-      qcmElevesTotal: nbElevesEvaluesTotal,
+      qcmConfigures: qcm.nb_tests || 0,
+      qcmNiveauxTotal: 9,
+      qcmElevesComplete: qcm.nb_qcm_complete || 0,
+      qcmElevesTotal: totaux.nb_eleves || 0,
     })
   }
 

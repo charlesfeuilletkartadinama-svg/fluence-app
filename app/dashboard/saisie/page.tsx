@@ -73,8 +73,29 @@ function Saisie() {
     if (!ALLOWED_ROLES.includes(profil.role)) { router.push('/dashboard'); return }
     if (isDirection) chargerDonneesDirection()
     else if (profil.role === 'enseignant') chargerDonneesEnseignant()
+    else if (['admin', 'coordo_rep'].includes(profil.role)) chargerDonneesAdmin()
     else setLoading(false)
   }, [profil, profilLoading])
+
+  async function chargerDonneesAdmin() {
+    const classeId = new URLSearchParams(window.location.search).get('classe')
+    if (!classeId) { setLoading(false); return }
+    // Trouver l'établissement depuis la classe
+    const { data: classeData } = await supabase.from('classes').select('id, nom, niveau, etablissement_id').eq('id', classeId).single()
+    if (!classeData?.etablissement_id) { setLoading(false); return }
+    const etabId = classeData.etablissement_id
+    const [{ data: periodesData }, { data: classesData }] = await Promise.all([
+      supabase.from('periodes').select('id, code, label, date_fin, type')
+        .eq('etablissement_id', etabId).eq('actif', true).order('code'),
+      supabase.from('classes').select('id, nom, niveau')
+        .eq('etablissement_id', etabId).order('niveau'),
+    ])
+    setPeriodes(periodesData || [])
+    setClassesEtab(classesData || [])
+    const c = (classesData || []).find((c: Classe) => c.id === classeId)
+    if (c) setClasse(c)
+    setLoading(false)
+  }
 
   async function chargerDonneesDirection() {
     if (!profil?.etablissement_id) { setLoading(false); return }

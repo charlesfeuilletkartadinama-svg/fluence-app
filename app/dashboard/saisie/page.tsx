@@ -98,12 +98,20 @@ function Saisie() {
   async function chargerEtabAdmin(etabId: string, classeId?: string) {
     setLoading(true)
     const [{ data: periodesData }, { data: classesData }] = await Promise.all([
-      supabase.from('periodes').select('id, code, label, date_fin, type')
-        .eq('etablissement_id', etabId).eq('actif', true).order('code'),
+      // Admin : charger TOUTES les périodes (actives + inactives) pour pouvoir saisir sur le passé
+      supabase.from('periodes').select('id, code, label, date_fin, type, annee_scolaire')
+        .eq('etablissement_id', etabId).order('annee_scolaire', { ascending: false }).order('code'),
       supabase.from('classes').select('id, nom, niveau')
         .eq('etablissement_id', etabId).order('niveau'),
     ])
-    setPeriodes(periodesData || [])
+    // Dédupliquer par code+année
+    const seen = new Set<string>()
+    const dedup = (periodesData || []).filter((p: any) => {
+      const key = `${p.annee_scolaire}_${p.code}`
+      if (seen.has(key)) return false
+      seen.add(key); return true
+    })
+    setPeriodes(dedup)
     setClassesEtab(classesData || [])
     if (classeId) {
       const c = (classesData || []).find((c: Classe) => c.id === classeId)
@@ -480,7 +488,10 @@ function Saisie() {
                       onMouseLeave={e => { if (!locked) { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-gray)' } }}
                     >
                       <div>
-                        <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--primary-dark)' }}>{p.code}</div>
+                        <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--primary-dark)' }}>
+                          {p.code}
+                          {(p as any).annee_scolaire && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginLeft: 8 }}>{(p as any).annee_scolaire}</span>}
+                        </div>
                         <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>{p.label}</div>
                         {locked && <div style={{ fontSize: 11, color: '#DC2626', fontWeight: 600, marginTop: 4 }}>Période clôturée — saisie réservée au directeur</div>}
                       </div>

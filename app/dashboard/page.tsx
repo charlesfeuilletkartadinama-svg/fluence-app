@@ -846,7 +846,7 @@ export default function Dashboard() {
     const [etabsFullRes, profilsRes, periFullRes, invRes, normesRes, qcmTestsRes] = await Promise.all([
       supabase.from('etablissements').select('id, nom, ville'),
       supabase.from('profils').select('id, role, nom, prenom, etablissement_id'),
-      supabase.from('periodes').select('id, code, label, actif, saisie_ouverte, type, etablissement_id').order('code'),
+      supabase.from('periodes').select('id, code, label, actif, saisie_ouverte, type, etablissement_id, annee_scolaire').order('code'),
       supabase.from('invitations').select('actif'),
       supabase.from('config_normes').select('niveau, seuil_min, seuil_attendu'),
       supabase.from('qcm_tests').select('id, niveau, periode_id'),

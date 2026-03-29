@@ -93,8 +93,12 @@ export default function Sidebar() {
           href: '/dashboard/admin', icon: '⚙️', label: 'Administration',
           children: [
             { href: '/dashboard/admin', label: 'Établissements', hash: '0' },
+            { href: '/dashboard/admin', label: 'Géographie', hash: '1' },
             { href: '/dashboard/admin', label: 'Périodes', hash: '2' },
+            { href: '/dashboard/admin', label: 'Normes', hash: '3' },
             { href: '/dashboard/admin', label: 'Utilisateurs', hash: '4' },
+            { href: '/dashboard/admin', label: 'Invitations', hash: '5' },
+            { href: '/dashboard/admin', label: 'Affectations', hash: '6' },
             { href: '/dashboard/admin', label: 'QCM', hash: '7' },
             { href: '/dashboard/admin', label: 'Structure', hash: '8' },
           ],

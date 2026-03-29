@@ -280,6 +280,8 @@ function Statistiques() {
   const [viewMode,       setViewMode]       = useState<'reseau' | 'classe'>('reseau')
   const [reseauToggle,   setReseauToggle]   = useState<'etab' | 'niveau' | 'circo'>('etab')
   const [reseauRepFilter, setReseauRepFilter] = useState<'tous' | 'rep' | 'horsrep'>('tous')
+  const [statsAnnee,     setStatsAnnee]     = useState('2025-2026')
+  const [anneesDisponibles, setAnneesDisponibles] = useState<string[]>(['2025-2026'])
   const [circosReseau,   setCircosReseau]   = useState<{ circo: string; nbEleves: number; nbEvalues: number; moyenne: number | null; g1: number; g2: number; g3: number; g4: number }[]>([])
   const [reseauPeriode,  setReseauPeriode]  = useState('')
   const [etabsReseau,    setEtabsReseau]    = useState<EtabReseauStat[]>([])
@@ -306,7 +308,8 @@ function Statistiques() {
 
   // ── Init ───────────────────────────────────────────────────────────────
 
-  async function init() {
+  async function init(anneeOverride?: string) {
+    const anneeUtilisee = anneeOverride || statsAnnee
     if (!profil) return
 
     // Classes accessibles
@@ -327,15 +330,20 @@ function Statistiques() {
     const niveauxUniq = [...new Set((classesData as any[]).map((c: any) => c.niveau).filter(Boolean))].sort()
     setNiveaux(niveauxUniq)
 
-    // Périodes — déduplication par code
-    const { data: perData } = await supabase.from('periodes').select('id, code, label, annee_scolaire').order('code')
+    // Périodes — déduplication par code+année, filtrées par année sélectionnée
+    const { data: perData } = await supabase.from('periodes').select('id, code, label, annee_scolaire').order('annee_scolaire', { ascending: false }).order('code')
+    // Toutes les années disponibles (pour le sélecteur)
+    const toutesAnnees = [...new Set((perData || []).map((p: any) => p.annee_scolaire).filter(Boolean))].sort().reverse()
+    // Filtrer par année sélectionnée et dédupliquer par code
     const seen = new Set<string>()
-    const per: Periode[] = (perData || []).filter(p => {
+    const per: Periode[] = (perData || []).filter((p: any) => {
+      if (p.annee_scolaire !== anneeUtilisee) return false
       if (seen.has(p.code)) return false
       seen.add(p.code)
       return true
     })
     setPeriodes(per)
+    setAnneesDisponibles(toutesAnnees)
 
     // Normes
     const { data: normesData } = await supabase
@@ -528,7 +536,7 @@ function Statistiques() {
     setReseauPeriode(codeParam)
 
     const etabIds = etabsList.map(e => e.id)
-    const { data: perData } = await supabase.from('periodes').select('id').eq('code', codeParam)
+    const { data: perData } = await supabase.from('periodes').select('id').eq('code', codeParam).eq('annee_scolaire', statsAnnee)
     const periodeIds = (perData || []).map(p => p.id)
 
     const { data: classesData } = await supabase
@@ -972,6 +980,25 @@ function Statistiques() {
 
         {vueReseau && viewMode === 'reseau' && (
           <>
+            {/* Sélecteur année scolaire */}
+            {anneesDisponibles.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>Année scolaire :</span>
+                {anneesDisponibles.map(a => (
+                  <button key={a} onClick={() => {
+                    setStatsAnnee(a)
+                    init(a)
+                  }} style={{
+                    padding: '6px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    fontFamily: 'var(--font-sans)', border: '1.5px solid',
+                    borderColor: statsAnnee === a ? 'var(--primary-dark)' : 'var(--border-main)',
+                    background: statsAnnee === a ? 'var(--primary-dark)' : 'white',
+                    color: statsAnnee === a ? 'white' : 'var(--text-secondary)', transition: 'all 0.15s',
+                  }}>{a}</button>
+                ))}
+              </div>
+            )}
+
             {/* ══ INFOGRAPHIE RÉSEAU ══ */}
             {etabsReseau.length > 0 && (() => {
               const totalEleves = etabsReseau.reduce((s, e) => s + e.nbEleves, 0)

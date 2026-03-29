@@ -33,12 +33,14 @@ type Eleve = {
 
 
 function Saisie() {
-  const [etape, setEtape]             = useState<'periode' | 'classe' | 'saisie' | 'recap' | 'done'>('periode')
+  const [etape, setEtape]             = useState<'etablissement' | 'periode' | 'classe' | 'saisie' | 'recap' | 'done'>('periode')
   const [onglet, setOnglet]           = useState<'fluence' | 'qcm'>('fluence')
   const [periodes, setPeriodes]       = useState<Periode[]>([])
   const [periode, setPeriode]         = useState<Periode | null>(null)
   const [classe, setClasse]           = useState<Classe | null>(null)
   const [classesEtab, setClassesEtab] = useState<Classe[]>([])
+  // Admin : sélecteur d'établissement
+  const [adminEtabs, setAdminEtabs]   = useState<{ id: string; nom: string; type: string }[]>([])
   const [eleves, setEleves]           = useState<Eleve[]>([])
   const [loading, setLoading]         = useState(true)
   const [saving, setSaving]           = useState(false)
@@ -79,11 +81,22 @@ function Saisie() {
 
   async function chargerDonneesAdmin() {
     const classeId = new URLSearchParams(window.location.search).get('classe')
-    if (!classeId) { setLoading(false); return }
-    // Trouver l'établissement depuis la classe
-    const { data: classeData } = await supabase.from('classes').select('id, nom, niveau, etablissement_id').eq('id', classeId).single()
-    if (!classeData?.etablissement_id) { setLoading(false); return }
-    const etabId = classeData.etablissement_id
+    if (classeId) {
+      // Arrivée depuis l'explorateur avec une classe précise
+      const { data: classeData } = await supabase.from('classes').select('id, nom, niveau, etablissement_id').eq('id', classeId).single()
+      if (!classeData?.etablissement_id) { setLoading(false); return }
+      await chargerEtabAdmin(classeData.etablissement_id, classeId)
+    } else {
+      // Pas de classe précise → afficher le sélecteur d'établissement
+      const { data: etabs } = await supabase.from('etablissements').select('id, nom, type').order('nom')
+      setAdminEtabs(etabs || [])
+      setEtape('etablissement')
+      setLoading(false)
+    }
+  }
+
+  async function chargerEtabAdmin(etabId: string, classeId?: string) {
+    setLoading(true)
     const [{ data: periodesData }, { data: classesData }] = await Promise.all([
       supabase.from('periodes').select('id, code, label, date_fin, type')
         .eq('etablissement_id', etabId).eq('actif', true).order('code'),
@@ -92,8 +105,11 @@ function Saisie() {
     ])
     setPeriodes(periodesData || [])
     setClassesEtab(classesData || [])
-    const c = (classesData || []).find((c: Classe) => c.id === classeId)
-    if (c) setClasse(c)
+    if (classeId) {
+      const c = (classesData || []).find((c: Classe) => c.id === classeId)
+      if (c) setClasse(c)
+    }
+    setEtape('periode')
     setLoading(false)
   }
 
@@ -376,6 +392,39 @@ function Saisie() {
     <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, maxWidth: 900, minHeight: '100vh', background: 'var(--bg-light)' }}>
 
         {/* ÉTAPE 0 : Choix de la période */}
+        {/* ÉTAPE ADMIN : Choix de l'établissement */}
+        {etape === 'etablissement' && (
+          <>
+            <div style={{ marginBottom: 32 }}>
+              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode Saisie</h2>
+              <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez un établissement</p>
+            </div>
+            <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>Établissement</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {adminEtabs.map(e => (
+                  <button key={e.id} onClick={() => chargerEtabAdmin(e.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      border: '1.5px solid var(--border-light)', borderRadius: 12, padding: '16px 20px',
+                      background: 'var(--bg-gray)', cursor: 'pointer', transition: 'all 0.15s', textAlign: 'left',
+                      fontFamily: 'var(--font-sans)',
+                    }}
+                    onMouseEnter={ev => { ev.currentTarget.style.borderColor = 'var(--primary-dark)'; ev.currentTarget.style.background = 'white' }}
+                    onMouseLeave={ev => { ev.currentTarget.style.borderColor = 'var(--border-light)'; ev.currentTarget.style.background = 'var(--bg-gray)' }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--primary-dark)' }}>{e.nom}</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>{e.type}</div>
+                    </div>
+                    <span style={{ color: 'var(--text-tertiary)', fontSize: 18 }}>→</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
         {etape === 'periode' && (
           <>
             <div style={{ marginBottom: 32 }}>

@@ -361,6 +361,25 @@ function Saisie() {
               <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode Saisie</h2>
               <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez une période</p>
             </div>
+            {!localStorage.getItem('fluence-info-saisie') && (
+              <div style={{
+                background: '#EFF6FF', border: '1.5px solid #BFDBFE', borderRadius: 14,
+                padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'flex-start', gap: 14,
+                fontFamily: 'var(--font-sans)',
+              }}>
+                <span style={{ fontSize: 24, flexShrink: 0 }}>ℹ️</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1D4ED8', marginBottom: 6 }}>À quoi sert le Mode Saisie ?</div>
+                  <p style={{ fontSize: 13, color: '#1E40AF', lineHeight: 1.6, margin: 0 }}>
+                    Le Mode Saisie est destiné aux enseignants qui ont <strong>déjà fait passer le test de fluence</strong> (sur papier ou avec un autre outil)
+                    et qui souhaitent <strong>entrer les résultats a posteriori</strong> dans l'application.<br />
+                    Saisissez le score en mots/minute, marquez les élèves non évalués ou absents, et renseignez les réponses de compréhension.
+                  </p>
+                </div>
+                <button onClick={() => { localStorage.setItem('fluence-info-saisie', '1'); window.location.reload() }}
+                  style={{ background: 'none', border: 'none', color: '#93C5FD', cursor: 'pointer', fontSize: 18, flexShrink: 0, padding: 0 }}>✕</button>
+              </div>
+            )}
             {periodes.length === 0 ? (
               <div style={{ background: 'white', borderRadius: 16, padding: '48px 32px', border: '1.5px solid var(--border-light)', textAlign: 'center' }}>
                 <div style={{ fontSize: 40, marginBottom: 16 }}>🏫</div>

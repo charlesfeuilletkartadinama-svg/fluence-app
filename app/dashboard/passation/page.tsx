@@ -449,6 +449,26 @@ function PassationContent() {
               <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode passation</h2>
               <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez une période</p>
             </div>
+            {!localStorage.getItem('fluence-info-passation') && (
+              <div style={{
+                background: '#F0FDF4', border: '1.5px solid #BBF7D0', borderRadius: 14,
+                padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'flex-start', gap: 14,
+                fontFamily: 'var(--font-sans)',
+              }}>
+                <span style={{ fontSize: 24, flexShrink: 0 }}>⏱️</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#166534', marginBottom: 6 }}>À quoi sert le Mode Passation ?</div>
+                  <p style={{ fontSize: 13, color: '#15803D', lineHeight: 1.6, margin: 0 }}>
+                    Le Mode Passation est destiné à <strong>faire passer le test de fluence en direct</strong> avec un élève.<br />
+                    Un chronomètre de 60 secondes se lance, vous comptez les erreurs de lecture en temps réel,
+                    puis vous indiquez le dernier mot lu. Le score est <strong>calculé automatiquement</strong> en mots/minute.<br />
+                    Vous pouvez ensuite enchaîner avec les questions de compréhension (QCM).
+                  </p>
+                </div>
+                <button onClick={() => { localStorage.setItem('fluence-info-passation', '1'); window.location.reload() }}
+                  style={{ background: 'none', border: 'none', color: '#86EFAC', cursor: 'pointer', fontSize: 18, flexShrink: 0, padding: 0 }}>✕</button>
+              </div>
+            )}
             {periodes.length === 0 ? (
               <div style={{ background: 'white', borderRadius: 16, padding: '48px 32px', border: '1.5px solid var(--border-light)', textAlign: 'center' }}>
                 <div style={{ fontSize: 40, marginBottom: 16 }}>🏫</div>

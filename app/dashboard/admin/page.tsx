@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
 import { logAction } from '@/app/lib/auditLog'
@@ -1753,6 +1753,14 @@ function StructureTab({ supabase, etablissements }: { supabase: any; etablisseme
   const [assignModal, setAssignModal]   = useState<EnseignantRow | null>(null)
   const [classesSel, setClassesSel]     = useState<string[]>([])
   const [savingAssign, setSavingAssign] = useState(false)
+  // Gestion élèves dans une classe
+  const [openClasseId, setOpenClasseId] = useState<string | null>(null)
+  const [classeEleves, setClasseEleves] = useState<{ id: string; nom: string; prenom: string }[]>([])
+  const [loadingEleves, setLoadingEleves] = useState(false)
+  const [newEleveNom, setNewEleveNom]   = useState('')
+  const [newElevePrenom, setNewElevePrenom] = useState('')
+  const [addingEleve, setAddingEleve]   = useState(false)
+  const [csvImporting, setCsvImporting] = useState(false)
 
   const NIVEAUX = ['CP', 'CE1', 'CE2', 'CM1', 'CM2', 'ULIS', '6ème', '5ème', '4ème', '3ème', 'Autre']
 
@@ -1792,6 +1800,61 @@ function StructureTab({ supabase, etablissements }: { supabase: any; etablisseme
     if (!window.confirm(`Supprimer la classe "${nom}" ?`)) return
     await supabase.from('classes').delete().eq('id', id)
     await chargerStructure(selectedEtab)
+  }
+
+  async function ouvrirClasse(classeId: string) {
+    if (openClasseId === classeId) { setOpenClasseId(null); return }
+    setOpenClasseId(classeId)
+    setLoadingEleves(true)
+    const { data } = await supabase.from('eleves').select('id, nom, prenom').eq('classe_id', classeId).eq('actif', true).order('nom')
+    setClasseEleves(data || [])
+    setLoadingEleves(false)
+    setNewEleveNom(''); setNewElevePrenom('')
+  }
+
+  async function ajouterEleveDansClasse() {
+    if (!newEleveNom.trim() || !newElevePrenom.trim() || !openClasseId) return
+    setAddingEleve(true)
+    await supabase.from('eleves').insert({ nom: newEleveNom.trim().toUpperCase(), prenom: newElevePrenom.trim(), classe_id: openClasseId, actif: true })
+    setNewEleveNom(''); setNewElevePrenom('')
+    const { data } = await supabase.from('eleves').select('id, nom, prenom').eq('classe_id', openClasseId).eq('actif', true).order('nom')
+    setClasseEleves(data || [])
+    setAddingEleve(false)
+  }
+
+  async function retirerEleve(eleveId: string, nom: string) {
+    if (!window.confirm(`Retirer ${nom} de cette classe ?`)) return
+    await supabase.from('eleves').update({ actif: false }).eq('id', eleveId)
+    setClasseEleves(prev => prev.filter(e => e.id !== eleveId))
+  }
+
+  async function importerCSVClasse(e: React.ChangeEvent<HTMLInputElement>) {
+    const fichier = e.target.files?.[0]
+    if (!fichier || !openClasseId) return
+    if (fichier.size > 5 * 1024 * 1024) { alert('Fichier trop volumineux (5 Mo max).'); return }
+    setCsvImporting(true)
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      const texte = ev.target?.result as string
+      const lignes = texte.trim().split(/\r?\n/)
+      if (lignes.length < 2) { setCsvImporting(false); alert('Fichier vide.'); return }
+      const sep = lignes[0].includes(';') ? ';' : ','
+      const entetes = lignes[0].split(sep).map(h => h.trim().toLowerCase().replace(/[éèê]/g, 'e').replace(/[àâ]/g, 'a').replace(/\s+/g, '_'))
+      const rows = lignes.slice(1).filter(l => l.trim()).map(ligne => {
+        const cols = ligne.split(sep).map(c => c.trim().replace(/^["']|["']$/g, ''))
+        const get = (key: string) => cols[entetes.indexOf(key)] || ''
+        return { nom: get('nom').toUpperCase().replace(/[<>{}|\\^`]/g, '').trim(), prenom: get('prenom').replace(/[<>{}|\\^`]/g, '').trim() }
+      }).filter(r => r.nom && r.prenom)
+      if (rows.length === 0) { setCsvImporting(false); alert('Aucun élève trouvé dans le fichier.'); return }
+      const { error } = await supabase.from('eleves').insert(rows.map(r => ({ ...r, classe_id: openClasseId, actif: true })))
+      if (error) alert(`Erreur : ${error.message}`)
+      const { data } = await supabase.from('eleves').select('id, nom, prenom').eq('classe_id', openClasseId).eq('actif', true).order('nom')
+      setClasseEleves(data || [])
+      setCsvImporting(false)
+      alert(`${rows.length} élève(s) importé(s).`)
+    }
+    reader.readAsText(fichier, 'UTF-8')
+    e.target.value = '' // Reset input
   }
 
   async function sauvegarderAssign() {
@@ -1876,13 +1939,68 @@ function StructureTab({ supabase, etablissements }: { supabase: any; etablisseme
                 </tr></thead>
                 <tbody>
                   {classes.map(c => (
-                    <tr key={c.id}>
-                      <td style={A.tdBold}>{c.nom}</td>
-                      <td style={A.td}>{c.niveau}</td>
-                      <td style={A.tdC}>
-                        <button onClick={() => supprimerClasse(c.id, c.nom)} style={A.btnDanger}>Supprimer</button>
-                      </td>
-                    </tr>
+                    <React.Fragment key={c.id}>
+                      <tr style={{ cursor: 'pointer' }} onClick={() => ouvrirClasse(c.id)}>
+                        <td style={A.tdBold}>
+                          <span style={{ marginRight: 8, fontSize: 11, color: 'var(--text-tertiary)' }}>{openClasseId === c.id ? '▼' : '▶'}</span>
+                          {c.nom}
+                        </td>
+                        <td style={A.td}>{c.niveau}</td>
+                        <td style={A.tdC}>
+                          <button onClick={(e) => { e.stopPropagation(); supprimerClasse(c.id, c.nom) }} style={A.btnDanger}>Supprimer</button>
+                        </td>
+                      </tr>
+                      {openClasseId === c.id && (
+                        <tr>
+                          <td colSpan={3} style={{ padding: 0 }}>
+                            <div style={{ background: 'var(--bg-gray)', padding: '16px 24px', borderTop: '1px solid var(--border-light)' }}>
+                              {/* Barre d'actions élèves */}
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' as const }}>
+                                <input value={newEleveNom} onChange={e => setNewEleveNom(e.target.value)} placeholder="Nom"
+                                  style={{ ...A.input, width: 140, textTransform: 'uppercase' }} />
+                                <input value={newElevePrenom} onChange={e => setNewElevePrenom(e.target.value)} placeholder="Prénom"
+                                  onKeyDown={e => e.key === 'Enter' && ajouterEleveDansClasse()}
+                                  style={{ ...A.input, width: 140 }} />
+                                <button onClick={ajouterEleveDansClasse} disabled={addingEleve || !newEleveNom.trim() || !newElevePrenom.trim()}
+                                  style={{ ...A.btnPrimary, padding: '7px 14px', fontSize: 12, opacity: (addingEleve || !newEleveNom.trim() || !newElevePrenom.trim()) ? 0.5 : 1 }}>
+                                  {addingEleve ? '…' : '+ Ajouter'}
+                                </button>
+                                <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>ou</span>
+                                <label style={{ ...A.btnGhost, padding: '7px 14px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                                  {csvImporting ? '⏳ Import…' : '📄 Importer CSV'}
+                                  <input type="file" accept=".csv,.txt" onChange={importerCSVClasse} style={{ display: 'none' }} />
+                                </label>
+                              </div>
+
+                              {/* Liste élèves */}
+                              {loadingEleves ? (
+                                <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Chargement…</p>
+                              ) : classeEleves.length === 0 ? (
+                                <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Aucun élève dans cette classe.</p>
+                              ) : (
+                                <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                                  {classeEleves.map(el => (
+                                    <div key={el.id} style={{
+                                      display: 'flex', alignItems: 'center', gap: 6, background: 'white',
+                                      border: '1px solid var(--border-light)', borderRadius: 8, padding: '4px 10px',
+                                      fontSize: 12, fontFamily: 'var(--font-sans)',
+                                    }}>
+                                      <span style={{ fontWeight: 700, color: 'var(--primary-dark)' }}>{el.nom}</span>
+                                      <span style={{ color: 'var(--text-secondary)' }}>{el.prenom}</span>
+                                      <button onClick={() => retirerEleve(el.id, `${el.prenom} ${el.nom}`)}
+                                        style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 13, fontWeight: 700, padding: '0 2px' }}>✕</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 8 }}>
+                                {classeEleves.length} élève{classeEleves.length > 1 ? 's' : ''}
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>

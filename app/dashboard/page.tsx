@@ -124,6 +124,7 @@ export default function Dashboard() {
   const [periodeEnsId, setPeriodeEnsId]       = useState('')
   const [loading, setLoading]                 = useState(true)
   const [adminOverview, setAdminOverview]     = useState<AdminOverview | null>(null)
+  const [adminAnnee, setAdminAnnee]           = useState('2025-2026')
   // Enriched dashboard data (all roles)
   const [groupesGlobal, setGroupesGlobal]     = useState<{ label: string; count: number; color: string }[]>([])
   const [evolutionData, setEvolutionData]     = useState<{ code: string; moyenne: number | null }[]>([])
@@ -820,46 +821,16 @@ export default function Dashboard() {
   // ── Vue autres rôles ───────────────────────────────────────────────────
 
   async function chargerStatsGlobales() {
-    // Lancer le chargement admin overview en parallèle
-    const adminPromise = chargerAdminOverview()
+    // L'admin utilise uniquement chargerAdminOverview
+    await chargerAdminOverview()
 
-    let classeQuery = supabase.from('classes').select('id, nom')
-    if (profil && ['directeur', 'principal'].includes(profil.role) && profil.etablissement_id) {
-      classeQuery = classeQuery.eq('etablissement_id', profil.etablissement_id)
-    }
-    const { data: classes } = await classeQuery
-    const classeIds = (classes || []).map((c: any) => c.id)
-
-    if (classeIds.length === 0) {
-      setStats({ nbEleves: 0, nbClasses: 0, nbPassations: 0, scoreMoyen: null, txNE: 0 })
-      await adminPromise
-      return
-    }
-
-    const { count: nbEleves } = await supabase
-      .from('eleves').select('*', { count: 'exact', head: true })
-      .in('classe_id', classeIds).eq('actif', true)
-
+    // Activité récente (les 10 dernières passations)
     const { data: passations } = await supabase
       .from('passations')
       .select('score, non_evalue, created_at, eleve:eleves(nom, prenom, classe:classes(nom)), periode:periodes(code)')
       .order('created_at', { ascending: false })
-      .limit(200)
-
-    const pass    = (passations || []).filter((p: any) => p.eleve)
-    const evalues = pass.filter((p: any) => !p.non_evalue && p.score && p.score > 0)
-    const ne      = pass.filter((p: any) => p.non_evalue)
-    const scores  = evalues.map((p: any) => p.score as number)
-    const moyenne = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
-
-    setStats({
-      nbEleves:     nbEleves || 0,
-      nbClasses:    classeIds.length,
-      nbPassations: pass.length,
-      scoreMoyen:   moyenne,
-      txNE:         pass.length > 0 ? Math.round(ne.length / pass.length * 100) : 0,
-    })
-    setActivite(pass.slice(0, 8).map((p: any) => ({
+      .limit(10)
+    setActivite((passations || []).filter((p: any) => p.eleve).map((p: any) => ({
       eleve_nom:    p.eleve?.nom || '',
       eleve_prenom: p.eleve?.prenom || '',
       classe:       p.eleve?.classe?.nom || '',
@@ -868,10 +839,10 @@ export default function Dashboard() {
       periode:      p.periode?.code || '',
       created_at:   p.created_at,
     })))
-    await adminPromise
   }
 
-  async function chargerAdminOverview() {
+  async function chargerAdminOverview(anneeParam?: string) {
+    const anneeChoisie = anneeParam || adminAnnee
     const [etabsFullRes, profilsRes, periFullRes, invRes, normesRes, qcmTestsRes] = await Promise.all([
       supabase.from('etablissements').select('id, nom, ville'),
       supabase.from('profils').select('id, role, nom, prenom, etablissement_id'),
@@ -897,13 +868,12 @@ export default function Dashboard() {
       seenPKeys.add(key); return true
     })
 
-    // Période active courante — année la plus récente, code T1 en priorité
-    const activePeriodes = periDedup.filter((p: any) => p.actif && p.type !== 'evaluation_nationale')
-    const periodeActive = activePeriodes.length > 0
-      ? activePeriodes.sort((a: any, b: any) => {
-          const anneeComp = (b.annee_scolaire || '').localeCompare(a.annee_scolaire || '')
-          if (anneeComp !== 0) return anneeComp
-          // Priorité T1 > T2 > T3 > autres
+    // Période active courante — filtrer par année choisie, code T1 en priorité
+    const periodesAnnee = periDedup.filter((p: any) => p.annee_scolaire === anneeChoisie && p.type !== 'evaluation_nationale')
+    // Si pas de périodes pour cette année, prendre toutes les actives
+    const candidats = periodesAnnee.length > 0 ? periodesAnnee : periDedup.filter((p: any) => p.actif && p.type !== 'evaluation_nationale')
+    const periodeActive = candidats.length > 0
+      ? candidats.sort((a: any, b: any) => {
           const priority = (c: string) => c === 'T1' ? 1 : c === 'T2' ? 2 : c === 'T3' ? 3 : 10
           return priority(a.code) - priority(b.code)
         })[0]
@@ -993,8 +963,8 @@ export default function Dashboard() {
       { label: 'Attendu', count: gAttendu, color: '#16A34A' },
     ]
 
-    // Évolution entre périodes — requête légère par période
-    const periCodesActifs = [...new Set(periDedup.filter((p: any) => p.actif && p.type !== 'evaluation_nationale').map((p: any) => p.code))]
+    // Évolution entre périodes — requête légère par période (année choisie)
+    const periCodesActifs = [...new Set(periodesAnnee.map((p: any) => p.code))]
     const evolutionPeriodes: { code: string; moyenne: number | null }[] = []
     for (const code of periCodesActifs) {
       const perIds = allPeriodes.filter((p: any) => p.code === code).map((p: any) => p.id)
@@ -1253,8 +1223,8 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ── KPI globaux (enseignant et réseau uniquement) ── */}
-            {!isDirection && (
+            {/* ── KPI globaux (enseignant et réseau — pas admin qui a son overview) ── */}
+            {!isDirection && (isEnseignant || isReseau) && (
               <div className={styles.statsGrid}>
                 <div className={`${styles.statCard} ${styles.featured}`}>
                   <div className={styles.statLabel}>Score moyen</div>
@@ -1927,8 +1897,8 @@ export default function Dashboard() {
               </>
             )}
 
-            {/* ── Actions rapides (autres rôles non-enseignant, non-direction) ── */}
-            {!isEnseignant && !isDirection && !isReseau && (
+            {/* ── Actions rapides (autres rôles — masqué si admin overview disponible) ── */}
+            {!isEnseignant && !isDirection && !isReseau && !adminOverview && (
               <div className={styles.actionsGrid}>
                 <a href="/dashboard/eleves" className={styles.actionCard}>
                   <div className={styles.actionIcon}>👥</div>
@@ -1963,6 +1933,21 @@ export default function Dashboard() {
               const totalGroupes = ov.groupesRepartition.reduce((s, g) => s + g.count, 0)
               return (
               <>
+                {/* Sélecteur année scolaire */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>Année scolaire :</span>
+                  {['2024-2025', '2025-2026', '2026-2027'].map(a => (
+                    <button key={a} onClick={() => { setAdminAnnee(a); chargerAdminOverview(a) }} style={{
+                      padding: '6px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                      fontFamily: 'var(--font-sans)', border: '1.5px solid',
+                      borderColor: adminAnnee === a ? 'var(--primary-dark)' : 'var(--border-main)',
+                      background: adminAnnee === a ? 'var(--primary-dark)' : 'white',
+                      color: adminAnnee === a ? 'white' : 'var(--text-secondary)',
+                      transition: 'all 0.15s',
+                    }}>{a}</button>
+                  ))}
+                </div>
+
                 {/* Row 1 : Stats principales */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
                   {[

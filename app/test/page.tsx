@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/app/lib/supabase'
+import { playEndBeep } from '@/app/lib/useBeep'
 
 type Etape = 'code' | 'eleve' | 'lecture' | 'questions' | 'resultat'
 type Eleve = { id: string; nom: string; prenom: string }
@@ -25,6 +26,34 @@ export default function TestEleve() {
   const [resultats, setResultats] = useState<string[] | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [classeNiveau, setClasseNiveau] = useState('')
+  // Timer QCM
+  const [qcmTimer, setQcmTimer] = useState(300) // 5 minutes par défaut
+  const [qcmTimerActive, setQcmTimerActive] = useState(false)
+  const [qcmTimerExpired, setQcmTimerExpired] = useState(false)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [])
+
+  function startQcmTimer() {
+    setQcmTimer(300) // 5 min
+    setQcmTimerActive(true)
+    setQcmTimerExpired(false)
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      setQcmTimer(t => {
+        if (t <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current)
+          setQcmTimerActive(false)
+          setQcmTimerExpired(true)
+          playEndBeep()
+          return 0
+        }
+        return t - 1
+      })
+    }, 1000)
+  }
 
   // ── Étape 1 : Valider le code session ──
   async function validerCode() {
@@ -110,11 +139,14 @@ export default function TestEleve() {
       setEtape('lecture')
     } else {
       setEtape('questions')
+      startQcmTimer()
     }
   }
 
   // ── Étape 5 : Soumettre les réponses ──
   async function soumettre() {
+    if (timerRef.current) clearInterval(timerRef.current)
+    setQcmTimerActive(false)
     setErreur('')
     const toutRepondu = questions.every(q => reponses[q.numero])
     if (!toutRepondu) { setErreur('Réponds à toutes les questions avant d\'envoyer.'); return }
@@ -146,6 +178,8 @@ export default function TestEleve() {
 
   // ── Recommencer (pour l'élève suivant) ──
   function recommencer() {
+    if (timerRef.current) clearInterval(timerRef.current)
+    setQcmTimerActive(false); setQcmTimerExpired(false)
     setSelectedEleve(null)
     setReponses({})
     setResultats(null)
@@ -153,6 +187,8 @@ export default function TestEleve() {
   }
 
   function retourAccueil() {
+    if (timerRef.current) clearInterval(timerRef.current)
+    setQcmTimerActive(false); setQcmTimerExpired(false)
     setCodeInput('')
     setSessionData(null)
     setEleves([])
@@ -288,7 +324,7 @@ export default function TestEleve() {
           }}>
             {texteReference}
           </div>
-          <button onClick={() => setEtape('questions')} style={btnPrimary}>
+          <button onClick={() => { setEtape('questions'); startQcmTimer() }} style={btnPrimary}>
             J'ai lu le texte
           </button>
         </div>
@@ -301,6 +337,19 @@ export default function TestEleve() {
             <h1 style={{ ...title, fontSize: 22 }}>
               {selectedEleve?.prenom}, réponds aux questions
             </h1>
+            {/* Minuteur QCM */}
+            <div style={{
+              fontSize: 32, fontWeight: 900, fontVariantNumeric: 'tabular-nums', margin: '8px 0 12px',
+              color: qcmTimerExpired ? '#dc2626' : qcmTimer <= 30 ? '#f97316' : qcmTimer <= 60 ? '#d97706' : '#1e3a5f',
+              fontFamily: 'var(--font-sans, sans-serif)',
+            }}>
+              {Math.floor(qcmTimer / 60)}:{String(qcmTimer % 60).padStart(2, '0')}
+            </div>
+            {qcmTimerExpired && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: '8px 16px', marginBottom: 12, fontSize: 14, color: '#dc2626', fontWeight: 700 }}>
+                Temps écoulé ! Envoie vite tes réponses.
+              </div>
+            )}
             <p style={{ ...subtitle, marginBottom: 0 }}>
               {Object.keys(reponses).length} / {questions.length} répondu{Object.keys(reponses).length > 1 ? 'es' : ''}
             </p>

@@ -656,6 +656,30 @@ function Statistiques() {
 
   // ── Recherche élève ────────────────────────────────────────────────────
 
+  function exporterCSV() {
+    if (eleves.length === 0 || statsPer.length === 0) return
+    const sp = statsPer.find(s => s.code === periodeActive) || statsPer[0]
+    const headers = ['Nom', 'Prénom', 'Score', 'Groupe', 'Compréhension %', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Mode']
+    const rows = eleves.map(e => {
+      const d = e.data[periodeActive]
+      const g = d?.groupe ? GROUPES[d.groupe - 1]?.label || '' : ''
+      return [
+        e.nom, e.prenom,
+        d ? (d.ne ? 'N.É.' : d.score ?? '') : '',
+        g,
+        d && d.comp >= 0 ? `${d.comp}%` : '',
+        ...(d?.qs || Array(6).fill(null)).map((q: boolean | null) => q === true ? 'Correct' : q === false ? 'Incorrect' : ''),
+        d?.mode || '',
+      ].join(';')
+    })
+    const csv = [headers.join(';'), ...rows].join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `export-${classeId ? 'classe' : 'stats'}-${periodeActive}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
   function rechercherEleve(query: string) {
     setRechercheQuery(query)
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -1353,7 +1377,14 @@ function Statistiques() {
                     <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, color: 'var(--primary-dark)' }}>
                       Élèves · {spActive.code}
                     </h2>
-                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Cliquez sur un élève pour sa fiche détaillée</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Cliquez sur un élève pour sa fiche</span>
+                      <button onClick={exporterCSV} style={{
+                        background: 'var(--bg-gray)', border: '1.5px solid var(--border-light)', borderRadius: 8,
+                        padding: '5px 12px', fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)',
+                        cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                      }}>Exporter CSV</button>
+                    </div>
                   </div>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

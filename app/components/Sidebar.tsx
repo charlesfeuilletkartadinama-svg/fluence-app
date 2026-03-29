@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useRef } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
@@ -21,6 +22,30 @@ export default function Sidebar() {
   const router   = useRouter()
   const supabase = createClient()
   const { profil } = useProfil()
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<{ id: string; nom: string; prenom: string; classe: string }[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function onSearch(q: string) {
+    setSearchQuery(q)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (q.trim().length < 2) { setSearchResults([]); return }
+    debounceRef.current = setTimeout(async () => {
+      setSearchLoading(true)
+      const { data } = await supabase
+        .from('eleves')
+        .select('id, nom, prenom, classe:classes(nom)')
+        .or(`nom.ilike.%${q.trim()}%,prenom.ilike.%${q.trim()}%`)
+        .eq('actif', true)
+        .limit(8)
+      setSearchResults((data || []).map((e: any) => ({
+        id: e.id, nom: e.nom, prenom: e.prenom, classe: e.classe?.nom || '',
+      })))
+      setSearchLoading(false)
+    }, 300)
+  }
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -64,6 +89,54 @@ export default function Sidebar() {
           <text className={styles.sbLw} x="0" y="34">Fluence</text>
           <text className={styles.sbLp} x="163" y="28">+</text>
         </svg>
+      </div>
+
+      {/* Recherche rapide */}
+      <div style={{ padding: '0 16px 12px', position: 'relative' }}>
+        <input
+          type="text"
+          placeholder="Rechercher un élève…"
+          value={searchQuery}
+          onChange={e => onSearch(e.target.value)}
+          style={{
+            width: '100%', padding: '8px 12px', borderRadius: 8,
+            border: '1.5px solid var(--border-light)', fontSize: 12,
+            fontFamily: 'var(--font-sans)', outline: 'none',
+            background: 'var(--bg-gray)', color: 'var(--text-secondary)',
+            boxSizing: 'border-box',
+          }}
+        />
+        {searchResults.length > 0 && (
+          <div style={{
+            position: 'absolute', top: '100%', left: 16, right: 16, zIndex: 100,
+            background: 'white', borderRadius: 10, border: '1.5px solid var(--border-light)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 240, overflowY: 'auto',
+          }}>
+            {searchResults.map(r => (
+              <a key={r.id} href={`/dashboard/eleve/${r.id}`}
+                onClick={() => { setSearchQuery(''); setSearchResults([]) }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 14px', borderBottom: '1px solid var(--border-light)',
+                  textDecoration: 'none', cursor: 'pointer', transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-gray)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'white')}
+              >
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{r.nom} {r.prenom}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{r.classe}</div>
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>→</span>
+              </a>
+            ))}
+          </div>
+        )}
+        {searchLoading && searchQuery.length >= 2 && (
+          <div style={{ position: 'absolute', top: '100%', left: 16, right: 16, padding: '10px 14px', background: 'white', borderRadius: 10, border: '1.5px solid var(--border-light)', fontSize: 12, color: 'var(--text-tertiary)' }}>
+            Recherche…
+          </div>
+        )}
       </div>
 
       <nav className={styles.sidebarNav}>

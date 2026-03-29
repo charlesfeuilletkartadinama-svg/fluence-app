@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import type { Periode, Classe, TestSession, QcmQuestion } from '@/app/lib/types'
+import { playEndBeep } from '@/app/lib/useBeep'
 import { periodeVerrouillee } from '@/app/lib/fluenceUtils'
 
 type Eleve = {
@@ -301,6 +302,7 @@ function PassationContent() {
           setChronoActif(false)
           setChronoTermine(true)
           setTempsEcoule(60)
+          playEndBeep()
           return 0
         }
         setTempsEcoule(60 - s + 1)

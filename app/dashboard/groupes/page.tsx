@@ -116,6 +116,7 @@ export default function Groupes() {
 
   async function chargerVueAdmin(annee?: string) {
     setAdminLoading(true)
+    setLoading(false) // Débloquer l'affichage principal
     const { data, error } = await supabase.rpc('get_groupes_overview', { p_annee: annee || adminAnnee })
     if (error) console.error('Erreur groupes:', error)
     setAdminData(data)

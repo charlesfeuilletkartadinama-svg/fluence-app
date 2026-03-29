@@ -35,6 +35,11 @@ export default function ElevesClasse({ params }: { params: Promise<{ id: string 
   const [eleves, setEleves]   = useState<Eleve[]>([])
   const [scores, setScores]   = useState<ScoreRecent[]>([])
   const [loading, setLoading] = useState(true)
+  // Ajout manuel d'élève
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newNom, setNewNom]     = useState('')
+  const [newPrenom, setNewPrenom] = useState('')
+  const [adding, setAdding]     = useState(false)
   const { profil, loading: profilLoading } = useProfil()
   const router   = useRouter()
   const supabase = createClient()
@@ -74,6 +79,25 @@ export default function ElevesClasse({ params }: { params: Promise<{ id: string 
     }
 
     setLoading(false)
+  }
+
+  async function ajouterEleve() {
+    if (!newNom.trim() || !newPrenom.trim()) return
+    setAdding(true)
+    await supabase.from('eleves').insert({
+      nom: newNom.trim().toUpperCase(),
+      prenom: newPrenom.trim(),
+      classe_id: classeId,
+      actif: true,
+    })
+    setNewNom(''); setNewPrenom(''); setAdding(false); setShowAddForm(false)
+    await chargerDonnees()
+  }
+
+  async function desactiverEleve(id: string, nom: string) {
+    if (!window.confirm(`Retirer ${nom} de cette classe ?`)) return
+    await supabase.from('eleves').update({ actif: false }).eq('id', id)
+    setEleves(prev => prev.filter(e => e.id !== id))
   }
 
   // Score le plus récent par élève
@@ -120,6 +144,11 @@ export default function ElevesClasse({ params }: { params: Promise<{ id: string 
           <div className={styles.headerActions}>
             <button
               className={`${styles.button} ${styles.buttonSecondary}`}
+              onClick={() => setShowAddForm(!showAddForm)}>
+              {showAddForm ? '✕ Annuler' : '+ Ajouter un élève'}
+            </button>
+            <button
+              className={`${styles.button} ${styles.buttonSecondary}`}
               onClick={() => router.push(`/dashboard/statistiques?classe=${classeId}`)}>
               📈 Statistiques
             </button>
@@ -130,6 +159,40 @@ export default function ElevesClasse({ params }: { params: Promise<{ id: string 
             </button>
           </div>
         </div>
+
+        {/* Formulaire ajout élève */}
+        {showAddForm && (
+          <div style={{
+            background: 'white', borderRadius: 14, border: '1.5px solid var(--border-light)',
+            padding: '20px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <input
+              value={newNom}
+              onChange={e => setNewNom(e.target.value)}
+              placeholder="Nom"
+              style={{ border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '10px 14px', fontSize: 14, fontFamily: 'var(--font-sans)', outline: 'none', flex: 1, textTransform: 'uppercase' }}
+              autoFocus
+            />
+            <input
+              value={newPrenom}
+              onChange={e => setNewPrenom(e.target.value)}
+              placeholder="Prénom"
+              onKeyDown={e => e.key === 'Enter' && ajouterEleve()}
+              style={{ border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '10px 14px', fontSize: 14, fontFamily: 'var(--font-sans)', outline: 'none', flex: 1 }}
+            />
+            <button
+              onClick={ajouterEleve}
+              disabled={adding || !newNom.trim() || !newPrenom.trim()}
+              style={{
+                background: 'var(--primary-dark)', color: 'white', border: 'none', borderRadius: 10,
+                padding: '10px 20px', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'var(--font-sans)', opacity: (adding || !newNom.trim() || !newPrenom.trim()) ? 0.5 : 1,
+                whiteSpace: 'nowrap' as const,
+              }}>
+              {adding ? '…' : 'Ajouter'}
+            </button>
+          </div>
+        )}
 
         {eleves.length === 0 ? (
           <div className={styles.emptyState}>
@@ -179,6 +242,7 @@ export default function ElevesClasse({ params }: { params: Promise<{ id: string 
                     <th className={styles.tableHeaderCell}>Prénom</th>
                     <th className={styles.tableHeaderCell}>Dernier score</th>
                     <th className={styles.tableHeaderCell}>Période</th>
+                    <th className={styles.tableHeaderCell}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -201,6 +265,13 @@ export default function ElevesClasse({ params }: { params: Promise<{ id: string 
                         </td>
                         <td className={`${styles.tableCell} ${styles.tableCellSmall}`}>
                           {s?.periode?.code || '—'}
+                        </td>
+                        <td className={styles.tableCell} style={{ textAlign: 'center' }}>
+                          <button onClick={() => desactiverEleve(e.id, `${e.prenom} ${e.nom}`)} style={{
+                            background: 'transparent', color: '#dc2626', border: '1px solid #fca5a5',
+                            borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 600,
+                            cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                          }}>Retirer</button>
                         </td>
                       </tr>
                     )

@@ -384,7 +384,7 @@ export default function Admin() {
                   <th style={S.th}>Fin</th>
                   <th style={S.thC}>Saisie</th>
                   <th style={S.thC}>Active</th>
-                  {!isReseau && <th style={S.thC}></th>}
+                  <th style={S.thC}></th>
                 </tr></thead>
                 <tbody>
                   {periodes.map(p => (
@@ -1285,15 +1285,15 @@ function PeriodeRow({ periode, isReseau, onToggleActif, onToggleSaisie, onUpdate
           {periode.actif ? 'Active' : 'Inactive'}
         </button>
       </td>
-      {!isReseau && (
-        <td style={A.tdC}>
+      <td style={A.tdC}>
+        {onSupprimer && (
           <button onClick={onSupprimer} style={{
             background: '#fef2f2', color: '#dc2626', border: '1.5px solid #fca5a5',
             padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
             fontFamily: 'var(--font-sans)', cursor: 'pointer',
           }}>Supprimer</button>
-        </td>
-      )}
+        )}
+      </td>
     </tr>
   )
 }

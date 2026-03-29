@@ -384,6 +384,7 @@ export default function Admin() {
                   <th style={S.th}>Fin</th>
                   <th style={S.thC}>Saisie</th>
                   <th style={S.thC}>Active</th>
+                  <th style={S.thC}></th>
                 </tr></thead>
                 <tbody>
                   {periodes.map(p => (
@@ -1225,18 +1226,7 @@ function PeriodeRow({ periode, isReseau, onToggleActif, onToggleSaisie, onUpdate
 
   return (
     <tr>
-      <td style={{ ...A.tdBold, fontSize: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span>{periode.code}</span>
-          {onSupprimer && (
-            <button onClick={onSupprimer} style={{
-              background: '#fef2f2', color: '#dc2626', border: '1.5px solid #fca5a5',
-              padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-              fontFamily: 'var(--font-sans)', cursor: 'pointer',
-            }}>✕</button>
-          )}
-        </div>
-      </td>
+      <td style={{ ...A.tdBold, fontSize: 16 }}>{periode.code}</td>
       <td style={A.td}>
         {isReseau ? (
           <span>{periode.label}</span>
@@ -1294,6 +1284,15 @@ function PeriodeRow({ periode, isReseau, onToggleActif, onToggleSaisie, onUpdate
         }}>
           {periode.actif ? 'Active' : 'Inactive'}
         </button>
+      </td>
+      <td style={A.tdC}>
+        {onSupprimer && (
+          <button onClick={onSupprimer} style={{
+            background: '#fef2f2', color: '#dc2626', border: '1.5px solid #fca5a5',
+            padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+            fontFamily: 'var(--font-sans)', cursor: 'pointer',
+          }}>Supprimer</button>
+        )}
       </td>
     </tr>
   )

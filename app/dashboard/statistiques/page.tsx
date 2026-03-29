@@ -972,6 +972,119 @@ function Statistiques() {
 
         {vueReseau && viewMode === 'reseau' && (
           <>
+            {/* ══ INFOGRAPHIE RÉSEAU ══ */}
+            {etabsReseau.length > 0 && (() => {
+              const totalEleves = etabsReseau.reduce((s, e) => s + e.nbEleves, 0)
+              const totalEvalues = etabsReseau.reduce((s, e) => s + e.nbEvalues, 0)
+              const totalG1 = etabsReseau.reduce((s, e) => s + e.g1, 0)
+              const totalG2 = etabsReseau.reduce((s, e) => s + e.g2, 0)
+              const totalG3 = etabsReseau.reduce((s, e) => s + e.g3, 0)
+              const totalG4 = etabsReseau.reduce((s, e) => s + e.g4, 0)
+              const totalGroupes = totalG1 + totalG2 + totalG3 + totalG4
+              const moyennes = etabsReseau.filter(e => e.moyenne != null).map(e => e.moyenne!)
+              const moyenneGlobale = moyennes.length > 0 ? Math.round(moyennes.reduce((a, b) => a + b, 0) / moyennes.length) : null
+              const pctEval = totalEleves > 0 ? Math.round(totalEvalues / totalEleves * 100) : 0
+              const pctFragiles = totalGroupes > 0 ? Math.round((totalG1 + totalG2) / totalGroupes * 100) : 0
+              const gs = [
+                { label: 'Très fragile', count: totalG1, color: '#DC2626', bg: 'rgba(220,38,38,0.08)' },
+                { label: 'Fragile', count: totalG2, color: '#D97706', bg: 'rgba(217,119,6,0.08)' },
+                { label: "En cours", count: totalG3, color: '#2563EB', bg: 'rgba(37,99,235,0.08)' },
+                { label: 'Attendu', count: totalG4, color: '#16A34A', bg: 'rgba(22,163,74,0.08)' },
+              ]
+              // Top 5 par score
+              const topEtabs = [...etabsReseau].filter(e => e.moyenne != null).sort((a, b) => (b.moyenne || 0) - (a.moyenne || 0)).slice(0, 5)
+              const maxMoy = topEtabs.length > 0 ? Math.max(...topEtabs.map(e => e.moyenne || 0)) : 1
+
+              return (
+                <div style={{ marginBottom: 28 }}>
+                  {/* KPI Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+                    {[
+                      { icon: '🏫', val: coordoEtabs.length, label: 'Établissements', color: '#1d4ed8', bg: '#dbeafe' },
+                      { icon: '🎒', val: totalEleves, label: 'Élèves', color: '#16a34a', bg: '#dcfce7' },
+                      { icon: '📊', val: `${pctEval}%`, label: 'Couverture', color: pctEval >= 80 ? '#16a34a' : pctEval >= 50 ? '#d97706' : '#dc2626', bg: pctEval >= 80 ? '#dcfce7' : pctEval >= 50 ? '#fef9c3' : '#fef2f2' },
+                      { icon: '📈', val: moyenneGlobale ?? '—', label: 'Score moyen', color: '#1e3a5f', bg: '#eff6ff' },
+                    ].map(k => (
+                      <div key={k.label} style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: '20px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div style={{ width: 48, height: 48, borderRadius: 12, background: k.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{k.icon}</div>
+                        <div>
+                          <div style={{ fontSize: 28, fontWeight: 800, color: k.color, lineHeight: 1, fontFamily: 'var(--font-sans)' }}>{k.val}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, fontFamily: 'var(--font-sans)' }}>{k.label}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                    {/* Groupes de besoin — donut simplifié */}
+                    <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24 }}>
+                      <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0', fontFamily: 'var(--font-sans)' }}>Répartition des groupes</h3>
+                      {totalGroupes > 0 && (
+                        <>
+                          <div style={{ display: 'flex', height: 32, borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
+                            {gs.filter(g => g.count > 0).map(g => (
+                              <div key={g.label} style={{ width: `${Math.round(g.count / totalGroupes * 100)}%`, background: g.color, minWidth: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {g.count / totalGroupes > 0.08 && <span style={{ color: 'white', fontSize: 11, fontWeight: 800 }}>{Math.round(g.count / totalGroupes * 100)}%</span>}
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                            {gs.map(g => (
+                              <div key={g.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, background: g.bg }}>
+                                <div style={{ width: 12, height: 12, borderRadius: 3, background: g.color, flexShrink: 0 }} />
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: g.color }}>{g.label}</div>
+                                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{g.count} élèves</div>
+                                </div>
+                                <div style={{ fontSize: 16, fontWeight: 800, color: g.color }}>{totalGroupes > 0 ? Math.round(g.count / totalGroupes * 100) : 0}%</div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Top établissements — barres horizontales */}
+                    <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24 }}>
+                      <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0', fontFamily: 'var(--font-sans)' }}>Classement établissements</h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {topEtabs.map((e, i) => (
+                          <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontWeight: 800, fontSize: 14, color: i === 0 ? '#16a34a' : 'var(--text-tertiary)', width: 20, textAlign: 'center', fontFamily: 'var(--font-sans)' }}>{i + 1}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{e.nom.replace('[TEST] ', '')}</span>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{e.moyenne} m/min</span>
+                              </div>
+                              <div style={{ height: 8, background: 'var(--bg-gray)', borderRadius: 4, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${Math.round((e.moyenne || 0) / maxMoy * 100)}%`, background: i === 0 ? '#16a34a' : i === 1 ? '#2563eb' : 'var(--primary-dark)', borderRadius: 4, transition: 'width 0.3s' }} />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Indicateurs rapides */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                    <div style={{ background: pctFragiles > 30 ? '#fef2f2' : '#f0fdf4', borderRadius: 14, padding: '18px 20px', border: `1.5px solid ${pctFragiles > 30 ? '#fecaca' : '#bbf7d0'}`, textAlign: 'center' }}>
+                      <div style={{ fontSize: 32, fontWeight: 800, color: pctFragiles > 30 ? '#dc2626' : '#16a34a', fontFamily: 'var(--font-sans)' }}>{pctFragiles}%</div>
+                      <div style={{ fontSize: 12, color: pctFragiles > 30 ? '#991b1b' : '#166534', fontFamily: 'var(--font-sans)' }}>Élèves fragiles (G1+G2)</div>
+                    </div>
+                    <div style={{ background: '#eff6ff', borderRadius: 14, padding: '18px 20px', border: '1.5px solid #bfdbfe', textAlign: 'center' }}>
+                      <div style={{ fontSize: 32, fontWeight: 800, color: '#1d4ed8', fontFamily: 'var(--font-sans)' }}>{totalEvalues}</div>
+                      <div style={{ fontSize: 12, color: '#1e40af', fontFamily: 'var(--font-sans)' }}>Passations enregistrées</div>
+                    </div>
+                    <div style={{ background: '#fefce8', borderRadius: 14, padding: '18px 20px', border: '1.5px solid #fde68a', textAlign: 'center' }}>
+                      <div style={{ fontSize: 32, fontWeight: 800, color: '#854d0e', fontFamily: 'var(--font-sans)' }}>{etabsReseau.filter(e => e.nbEvalues === 0).length}</div>
+                      <div style={{ fontSize: 12, color: '#92400e', fontFamily: 'var(--font-sans)' }}>Établissements sans données</div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Barre de contrôle : toggle etab/niveau + onglets période */}
             <div className={styles.modeBar}>
               <div className={styles.modeTabs}>

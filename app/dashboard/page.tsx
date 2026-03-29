@@ -895,9 +895,9 @@ export default function Dashboard() {
       return all
     }
 
-    // Récupérer les IDs de périodes actives pour filtrer les passations côté serveur
+    // Récupérer les IDs de périodes pour l'année + code choisi
     const periodeActiveIds = allPeriodes
-      .filter((p: any) => p.code === periodeActive?.code)
+      .filter((p: any) => p.code === periodeActive?.code && p.annee_scolaire === anneeChoisie)
       .map((p: any) => p.id)
 
     const [allEleves, allPassations] = await Promise.all([
@@ -967,7 +967,7 @@ export default function Dashboard() {
     const periCodesActifs = [...new Set(periodesAnnee.map((p: any) => p.code))]
     const evolutionPeriodes: { code: string; moyenne: number | null }[] = []
     for (const code of periCodesActifs) {
-      const perIds = allPeriodes.filter((p: any) => p.code === code).map((p: any) => p.id)
+      const perIds = allPeriodes.filter((p: any) => p.code === code && p.annee_scolaire === anneeChoisie).map((p: any) => p.id)
       if (perIds.length === 0) { evolutionPeriodes.push({ code, moyenne: null }); continue }
       const { data: evoPass } = await supabase.from('passations')
         .select('score').in('periode_id', perIds).eq('non_evalue', false).not('score', 'is', null).gt('score', 0).limit(5000)

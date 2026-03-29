@@ -136,15 +136,54 @@ export default function Admin() {
 
   async function creerPeriode() {
     if (!newPeriodeCode.trim() || !newPeriodeLabel.trim()) return
-    await supabase.from('periodes').insert({
-      code: newPeriodeCode.trim().toUpperCase(),
-      label: newPeriodeLabel.trim(),
-      actif: true,
-      saisie_ouverte: true,
-      type: newPeriodeType,
-    })
+    const code = newPeriodeCode.trim().toUpperCase()
+    const label = newPeriodeLabel.trim()
+    const type = newPeriodeType
+
+    // Vérifier si le code existe déjà
+    const existe = periodes.some(p => p.code === code)
+    if (existe) { alert(`Le code "${code}" existe déjà.`); return }
+
+    if (etablissements.length > 0) {
+      const rows = etablissements.map(e => ({
+        code, label, actif: true, saisie_ouverte: true, type,
+        etablissement_id: e.id,
+      }))
+      await supabase.from('periodes').insert(rows)
+    } else {
+      await supabase.from('periodes').insert({ code, label, actif: true, saisie_ouverte: true, type })
+    }
     setNewPeriodeCode(''); setNewPeriodeLabel(''); setNewPeriodeType('regular')
     chargerDonnees()
+  }
+
+  async function supprimerPeriode(code: string) {
+    if (!window.confirm(`Supprimer toutes les périodes "${code}" ? Les passations liées seront aussi supprimées.`)) return
+    // Supprimer toutes les périodes avec ce code (tous établissements)
+    await supabase.from('periodes').delete().eq('code', code)
+    chargerDonnees()
+  }
+
+  async function updatePeriodeLabel(code: string, newLabel: string) {
+    if (!newLabel.trim()) return
+    // Mettre à jour le libellé pour toutes les périodes avec ce code
+    await supabase.from('periodes').update({ label: newLabel.trim() }).eq('code', code)
+    setPeriodes(prev => prev.map(p => p.code === code ? { ...p, label: newLabel.trim() } : p))
+  }
+
+  async function togglePeriodeByCode(code: string, field: 'actif' | 'saisie_ouverte', currentValue: boolean) {
+    await supabase.from('periodes').update({ [field]: !currentValue }).eq('code', code)
+    setPeriodes(prev => prev.map(p => p.code === code ? { ...p, [field]: !currentValue } : p))
+  }
+
+  async function updateDatesByCode(code: string, debut: string | null, fin: string | null) {
+    await supabase.from('periodes').update({ date_debut: debut || null, date_fin: fin || null }).eq('code', code)
+    setPeriodes(prev => prev.map(p => p.code === code ? { ...p, date_debut: debut, date_fin: fin } : p))
+  }
+
+  async function updateTypeByCode(code: string, type: string) {
+    await supabase.from('periodes').update({ type }).eq('code', code)
+    setPeriodes(prev => prev.map(p => p.code === code ? { ...p, type } : p))
   }
 
   async function updateEtablissement(id: string, data: Partial<Etablissement>) {
@@ -357,17 +396,27 @@ export default function Admin() {
                   <th style={S.th}>Fin</th>
                   <th style={S.thC}>Saisie</th>
                   <th style={S.thC}>Active</th>
+                  {!isReseau && <th style={S.thC}>Actions</th>}
                 </tr></thead>
                 <tbody>
-                  {periodes.map(p => (
-                    <PeriodeRow key={p.id} periode={p}
-                      isReseau={isReseau}
-                      onToggleActif={() => togglePeriode(p.id, !!p.actif)}
-                      onToggleSaisie={() => toggleSaisie(p.id, !!p.saisie_ouverte)}
-                      onUpdateDates={(d, f) => updateDates(p.id, d, f)}
-                      onUpdateType={t => updateTypePeriode(p.id, t)}
-                    />
-                  ))}
+                  {(() => {
+                    // Dédupliquer par code — afficher une seule ligne par code
+                    const seen = new Set<string>()
+                    return periodes.filter(p => {
+                      if (seen.has(p.code)) return false
+                      seen.add(p.code); return true
+                    }).map(p => (
+                      <PeriodeRow key={p.code} periode={p}
+                        isReseau={isReseau}
+                        onToggleActif={() => togglePeriodeByCode(p.code, 'actif', !!p.actif)}
+                        onToggleSaisie={() => togglePeriodeByCode(p.code, 'saisie_ouverte', !!p.saisie_ouverte)}
+                        onUpdateDates={(d, f) => updateDatesByCode(p.code, d, f)}
+                        onUpdateType={t => updateTypeByCode(p.code, t)}
+                        onUpdateLabel={l => updatePeriodeLabel(p.code, l)}
+                        onSupprimer={() => supprimerPeriode(p.code)}
+                      />
+                    ))
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -1180,21 +1229,32 @@ function AffectationsTab({ supabase, etablissements, coordoEtabs, ienEtabs, onSu
 
 // ── PeriodeRow ─────────────────────────────────────────────────────────────────
 
-function PeriodeRow({ periode, isReseau, onToggleActif, onToggleSaisie, onUpdateDates, onUpdateType }: {
+function PeriodeRow({ periode, isReseau, onToggleActif, onToggleSaisie, onUpdateDates, onUpdateType, onUpdateLabel, onSupprimer }: {
   periode: Periode
   isReseau: boolean
   onToggleActif: () => void
   onToggleSaisie: () => void
   onUpdateDates: (debut: string | null, fin: string | null) => void
   onUpdateType: (type: string) => void
+  onUpdateLabel?: (label: string) => void
+  onSupprimer?: () => void
 }) {
   const [debut, setDebut] = useState(periode.date_debut || '')
   const [fin,   setFin]   = useState(periode.date_fin   || '')
+  const [label, setLabel] = useState(periode.label || '')
 
   return (
     <tr>
       <td style={{ ...A.tdBold, fontSize: 16 }}>{periode.code}</td>
-      <td style={A.td}>{periode.label}</td>
+      <td style={A.td}>
+        {isReseau ? (
+          <span>{periode.label}</span>
+        ) : (
+          <input value={label} onChange={e => setLabel(e.target.value)}
+            onBlur={() => onUpdateLabel?.(label)}
+            style={{ ...A.input, padding: '6px 10px', fontSize: 13, width: 160 }} />
+        )}
+      </td>
       <td style={A.td}>
         {isReseau ? (
           <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
@@ -1244,6 +1304,11 @@ function PeriodeRow({ periode, isReseau, onToggleActif, onToggleSaisie, onUpdate
           {periode.actif ? 'Active' : 'Inactive'}
         </button>
       </td>
+      {!isReseau && (
+        <td style={A.tdC}>
+          <button onClick={onSupprimer} style={A.btnDanger}>Supprimer</button>
+        </td>
+      )}
     </tr>
   )
 }

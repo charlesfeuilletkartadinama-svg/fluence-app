@@ -902,32 +902,33 @@ export default function Dashboard() {
       .filter((p: any) => p.actif && p.type !== 'evaluation_nationale')
       .sort((a: any, b: any) => (b.annee_scolaire || '').localeCompare(a.annee_scolaire || ''))[0] || null
 
-    // Charger TOUS les élèves et passations (sans limite de 1000)
-    let allElevesData: any[] = []
-    let offset = 0
-    while (true) {
-      const { data } = await supabase.from('eleves')
-        .select('id, classe_id, classe:classes(niveau, etablissement_id, nom)')
-        .eq('actif', true).range(offset, offset + 999)
-      if (!data || data.length === 0) break
-      allElevesData = allElevesData.concat(data)
-      if (data.length < 1000) break
-      offset += 1000
+    // Charger élèves et passations en parallèle (avec pagination si > 1000)
+    async function fetchAll(table: string, select: string, filters?: (q: any) => any) {
+      let all: any[] = []
+      let off = 0
+      while (true) {
+        let q = supabase.from(table).select(select).range(off, off + 4999)
+        if (filters) q = filters(q)
+        const { data } = await q
+        if (!data || data.length === 0) break
+        all = all.concat(data)
+        if (data.length < 5000) break
+        off += 5000
+      }
+      return all
     }
-    const allEleves = allElevesData
 
-    let allPassData: any[] = []
-    offset = 0
-    while (true) {
-      const { data } = await supabase.from('passations')
-        .select('eleve_id, score, non_evalue, q1, q2, q3, q4, q5, q6, periode:periodes(code, type)')
-        .range(offset, offset + 999)
-      if (!data || data.length === 0) break
-      allPassData = allPassData.concat(data)
-      if (data.length < 1000) break
-      offset += 1000
-    }
-    const allPassations = allPassData
+    // Récupérer les IDs de périodes actives pour filtrer les passations côté serveur
+    const periodeActiveIds = allPeriodes
+      .filter((p: any) => p.code === periodeActive?.code)
+      .map((p: any) => p.id)
+
+    const [allEleves, allPassations] = await Promise.all([
+      fetchAll('eleves', 'id, classe_id, classe:classes(niveau, etablissement_id, nom)', q => q.eq('actif', true)),
+      periodeActiveIds.length > 0
+        ? fetchAll('passations', 'eleve_id, score, non_evalue, q1, q2, q3, q4, q5, q6, periode:periodes(code, type)', q => q.in('periode_id', periodeActiveIds))
+        : Promise.resolve([]),
+    ])
 
     const elevesArr = allEleves || []
     const passArr = allPassations || []
@@ -939,7 +940,7 @@ export default function Dashboard() {
       const niv = (e as any).classe?.niveau || 'Autre'
       if (!niveauxMap[niv]) niveauxMap[niv] = { scores: [], nbEleves: 0, nbEvalues: 0 }
       niveauxMap[niv].nbEleves++
-      const p = passArr.find((pa: any) => pa.eleve_id === e.id && (pa as any).periode?.code === periodeActive?.code)
+      const p = passArr.find((pa: any) => pa.eleve_id === e.id)
       if (p && !p.non_evalue && p.score && p.score > 0) {
         niveauxMap[niv].scores.push(p.score as number)
         niveauxMap[niv].nbEvalues++
@@ -968,7 +969,7 @@ export default function Dashboard() {
     let gTresFragile = 0, gFragile = 0, gEnCours = 0, gAttendu = 0
     for (const e of elevesArr) {
       const niv = (e as any).classe?.niveau || ''
-      const p = passArr.find((pa: any) => pa.eleve_id === e.id && (pa as any).periode?.code === periodeActive?.code)
+      const p = passArr.find((pa: any) => pa.eleve_id === e.id)
       if (!p || p.non_evalue || !p.score) continue
       const norme = normeDefault[niv] || defaultNorms[niv]
       if (!norme) continue
@@ -985,19 +986,22 @@ export default function Dashboard() {
       { label: 'Attendu', count: gAttendu, color: '#16A34A' },
     ]
 
-    // Évolution entre périodes
-    const periCodesActifs = periDedup.filter((p: any) => p.type !== 'evaluation_nationale').map((p: any) => p.code)
-    const evolutionPeriodes = periCodesActifs.map(code => {
-      const scoresP = passArr
-        .filter((pa: any) => (pa as any).periode?.code === code && !pa.non_evalue && pa.score && pa.score > 0)
-        .map((pa: any) => pa.score as number)
-      return { code, moyenne: scoresP.length > 0 ? Math.round(scoresP.reduce((a, b) => a + b, 0) / scoresP.length) : null }
-    })
+    // Évolution entre périodes — requête légère par période
+    const periCodesActifs = [...new Set(periDedup.filter((p: any) => p.actif && p.type !== 'evaluation_nationale').map((p: any) => p.code))]
+    const evolutionPeriodes: { code: string; moyenne: number | null }[] = []
+    for (const code of periCodesActifs) {
+      const perIds = allPeriodes.filter((p: any) => p.code === code).map((p: any) => p.id)
+      if (perIds.length === 0) { evolutionPeriodes.push({ code, moyenne: null }); continue }
+      const { data: evoPass } = await supabase.from('passations')
+        .select('score').in('periode_id', perIds).eq('non_evalue', false).not('score', 'is', null).gt('score', 0).limit(5000)
+      const scores = (evoPass || []).map((p: any) => p.score as number)
+      evolutionPeriodes.push({ code, moyenne: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null })
+    }
 
-    // Établissements sans activité (période active)
+    // Établissements sans activité (période active — passArr déjà filtré par période)
     const etabsAvecActivite = new Set<string>()
     for (const pa of passArr) {
-      if ((pa as any).periode?.code === periodeActive?.code) {
+      {
         const el = elevesArr.find(e => e.id === pa.eleve_id)
         if (el) etabsAvecActivite.add((el as any).classe?.etablissement_id)
       }
@@ -1037,7 +1041,7 @@ export default function Dashboard() {
         etabScores[etabId] = { nom: etab?.nom || '?', scores: [], nbEleves: 0, nbFragiles: 0 }
       }
       etabScores[etabId].nbEleves++
-      const p = passArr.find((pa: any) => pa.eleve_id === e.id && (pa as any).periode?.code === periodeActive?.code)
+      const p = passArr.find((pa: any) => pa.eleve_id === e.id)
       if (p && !p.non_evalue && p.score && p.score > 0) {
         etabScores[etabId].scores.push(p.score as number)
         const niv = (e as any).classe?.niveau || ''

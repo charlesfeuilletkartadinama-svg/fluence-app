@@ -391,3 +391,142 @@ export function RapportPDF({ donnees }: { donnees: Donnees }) {
     </Document>
   )
 }
+
+// ── Rapport Réseau ─────────────────────────────────────────────────────────
+
+type DonneesReseau = {
+  titre: string; periode: string; dateGeneration: string; responsable: string
+  nbEtablissements: number; nbEleves: number; nbEvalues: number; scoreMoyen: number | null
+  etablissements: { nom: string; type_reseau: string; nbEleves: number; nbEvalues: number; moyenne: number | null; pctFragiles: number }[]
+  scoreParNiveau: { niveau: string; nbEleves: number; nbEvalues: number; moyenne: number | null }[]
+  groupes: { label: string; count: number; pct: number }[]
+  repVsHorsRep: { rep: number | null; horsRep: number | null } | null
+}
+
+export function RapportReseauPDF({ donnees }: { donnees: DonneesReseau }) {
+  const d = donnees
+  const totalEvalues = d.nbEvalues
+  const txEval = d.nbEleves > 0 ? Math.round(d.nbEvalues / d.nbEleves * 100) : 0
+  const gColors = ['#DC2626', '#D97706', '#2563EB', '#16A34A']
+
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.titre}>{d.titre}</Text>
+          <Text style={styles.sousTitre}>Période {d.periode} · Généré le {d.dateGeneration}</Text>
+        </View>
+
+        {/* Info */}
+        <View style={styles.infoGrid}>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoLabel}>Responsable</Text>
+            <Text style={styles.infoVal}>{d.responsable}</Text>
+          </View>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoLabel}>Période</Text>
+            <Text style={styles.infoVal}>{d.periode}</Text>
+          </View>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoLabel}>Généré le</Text>
+            <Text style={styles.infoVal}>{d.dateGeneration}</Text>
+          </View>
+        </View>
+
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          <View style={{ ...styles.statBox, backgroundColor: '#EFF6FF' }}>
+            <Text style={{ ...styles.statNum, color: '#1D4ED8' }}>{d.nbEtablissements}</Text>
+            <Text style={{ ...styles.statLabel, color: '#1D4ED8' }}>Établissements</Text>
+          </View>
+          <View style={{ ...styles.statBox, backgroundColor: '#F0FDF4' }}>
+            <Text style={{ ...styles.statNum, color: '#16A34A' }}>{d.nbEleves}</Text>
+            <Text style={{ ...styles.statLabel, color: '#16A34A' }}>Élèves</Text>
+          </View>
+          <View style={{ ...styles.statBox, backgroundColor: '#FFFBEB' }}>
+            <Text style={{ ...styles.statNum, color: '#854D0E' }}>{txEval}%</Text>
+            <Text style={{ ...styles.statLabel, color: '#854D0E' }}>Couverture</Text>
+          </View>
+          <View style={{ ...styles.statBox, backgroundColor: '#EFF6FF' }}>
+            <Text style={{ ...styles.statNum, color: '#003189' }}>{d.scoreMoyen ?? '—'}</Text>
+            <Text style={{ ...styles.statLabel, color: '#003189' }}>Score moyen</Text>
+          </View>
+        </View>
+
+        {/* Groupes de besoin */}
+        <Text style={styles.sectionTitle}>Groupes de besoin</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+          {d.groupes.map((g, i) => (
+            <View key={g.label} style={{ flex: 1, backgroundColor: gColors[i] + '15', borderRadius: 6, padding: 8, alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, fontFamily: 'Helvetica-Bold', color: gColors[i] }}>{g.count}</Text>
+              <Text style={{ fontSize: 7, color: gColors[i], marginTop: 2 }}>{g.label} ({g.pct}%)</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Tableau par établissement */}
+        <Text style={styles.sectionTitle}>Par établissement</Text>
+        <View style={styles.tableHeader}>
+          <Text style={{ ...styles.tableHeaderCell, flex: 3 }}>Établissement</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1, textAlign: 'center' }}>Réseau</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1, textAlign: 'center' }}>Élèves</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1, textAlign: 'center' }}>Évalués</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1, textAlign: 'center' }}>Moyenne</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1, textAlign: 'center' }}>Fragiles</Text>
+        </View>
+        {d.etablissements.map((e, i) => (
+          <View key={i} style={{ ...styles.tableRow, ...(i % 2 === 1 ? styles.tableRowAlt : {}) }}>
+            <Text style={{ ...styles.cellBold, flex: 3 }}>{e.nom}</Text>
+            <Text style={{ ...styles.cell, flex: 1, textAlign: 'center' }}>{e.type_reseau}</Text>
+            <Text style={{ ...styles.cell, flex: 1, textAlign: 'center' }}>{e.nbEleves}</Text>
+            <Text style={{ ...styles.cell, flex: 1, textAlign: 'center' }}>{e.nbEvalues}</Text>
+            <Text style={{ ...styles.cellBold, flex: 1, textAlign: 'center' }}>{e.moyenne ?? '—'}</Text>
+            <Text style={{ ...styles.cell, flex: 1, textAlign: 'center', color: e.pctFragiles > 40 ? '#DC2626' : e.pctFragiles > 20 ? '#D97706' : '#16A34A' }}>{e.pctFragiles}%</Text>
+          </View>
+        ))}
+
+        {/* Score par niveau */}
+        <Text style={{ ...styles.sectionTitle, marginTop: 20 }}>Score par niveau</Text>
+        <View style={styles.tableHeader}>
+          <Text style={{ ...styles.tableHeaderCell, flex: 2 }}>Niveau</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1, textAlign: 'center' }}>Élèves</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1, textAlign: 'center' }}>Évalués</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1, textAlign: 'center' }}>Moyenne</Text>
+        </View>
+        {d.scoreParNiveau.map((n, i) => (
+          <View key={i} style={{ ...styles.tableRow, ...(i % 2 === 1 ? styles.tableRowAlt : {}) }}>
+            <Text style={{ ...styles.cellBold, flex: 2 }}>{n.niveau}</Text>
+            <Text style={{ ...styles.cell, flex: 1, textAlign: 'center' }}>{n.nbEleves}</Text>
+            <Text style={{ ...styles.cell, flex: 1, textAlign: 'center' }}>{n.nbEvalues}</Text>
+            <Text style={{ ...styles.cellBold, flex: 1, textAlign: 'center' }}>{n.moyenne ?? '—'}</Text>
+          </View>
+        ))}
+
+        {/* REP vs Hors REP */}
+        {d.repVsHorsRep && (d.repVsHorsRep.rep !== null || d.repVsHorsRep.horsRep !== null) && (
+          <>
+            <Text style={{ ...styles.sectionTitle, marginTop: 20 }}>Comparaison REP / Hors REP</Text>
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+              <View style={{ flex: 1, backgroundColor: '#F3E8FF', borderRadius: 8, padding: 12, alignItems: 'center' }}>
+                <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#7E22CE', marginBottom: 4 }}>REP / REP+</Text>
+                <Text style={{ fontSize: 22, fontFamily: 'Helvetica-Bold', color: '#7E22CE' }}>{d.repVsHorsRep.rep ?? '—'}</Text>
+                <Text style={{ fontSize: 8, color: '#7E22CE', marginTop: 2 }}>mots/min</Text>
+              </View>
+              <View style={{ flex: 1, backgroundColor: '#DBEAFE', borderRadius: 8, padding: 12, alignItems: 'center' }}>
+                <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#1D4ED8', marginBottom: 4 }}>HORS REP</Text>
+                <Text style={{ fontSize: 22, fontFamily: 'Helvetica-Bold', color: '#1D4ED8' }}>{d.repVsHorsRep.horsRep ?? '—'}</Text>
+                <Text style={{ fontSize: 8, color: '#1D4ED8', marginTop: 2 }}>mots/min</Text>
+              </View>
+            </View>
+          </>
+        )}
+
+        <View style={styles.footer} fixed>
+          <Text style={styles.footerText}>Application Test de Fluence — Académie de Guyane</Text>
+          <Text style={styles.footerText}>Généré le {d.dateGeneration}</Text>
+        </View>
+      </Page>
+    </Document>
+  )
+}

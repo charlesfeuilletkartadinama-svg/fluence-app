@@ -93,14 +93,34 @@ export default function Groupes() {
   const [loading, setLoading]       = useState(true)
   const [calcul, setCalcul]         = useState(false)
   const [ouvert, setOuvert]         = useState<number | null>(null)
+  // Vue admin globale
+  const [vueAdmin, setVueAdmin]     = useState(false)
+  const [adminData, setAdminData]   = useState<any>(null)
+  const [adminAnnee, setAdminAnnee] = useState('2025-2026')
+  const [adminLoading, setAdminLoading] = useState(false)
 
   const { profil, loading: profilLoading } = useProfil()
   const router   = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    if (!profilLoading && profil) chargerSelections()
+    if (!profilLoading && profil) {
+      if (['admin', 'ia_dasen', 'recteur'].includes(profil.role)) {
+        setVueAdmin(true)
+        chargerVueAdmin()
+      } else {
+        chargerSelections()
+      }
+    }
   }, [profil, profilLoading])
+
+  async function chargerVueAdmin(annee?: string) {
+    setAdminLoading(true)
+    const { data, error } = await supabase.rpc('get_groupes_overview', { p_annee: annee || adminAnnee })
+    if (error) console.error('Erreur groupes:', error)
+    setAdminData(data)
+    setAdminLoading(false)
+  }
 
   // ── Chargement des listes de sélection ──────────────────────────────────
 
@@ -274,9 +294,182 @@ export default function Groupes() {
           <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
             Constitution automatique à partir des scores de fluence
           </p>
+
+          {/* Sélecteur année (admin) */}
+          {vueAdmin && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              {['2024-2025', '2025-2026'].map(a => (
+                <button key={a} onClick={() => { setAdminAnnee(a); chargerVueAdmin(a) }} style={{
+                  padding: '6px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)', border: '1.5px solid',
+                  borderColor: adminAnnee === a ? 'var(--primary-dark)' : 'var(--border-main)',
+                  background: adminAnnee === a ? 'var(--primary-dark)' : 'white',
+                  color: adminAnnee === a ? 'white' : 'var(--text-secondary)',
+                }}>{a}</button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Sélecteurs */}
+        {/* ══ VUE ADMIN GLOBALE ══ */}
+        {vueAdmin && adminData && (() => {
+          const d = adminData
+          const totauxMap: Record<number, number> = {}
+          ;(d.totaux || []).forEach((t: any) => { totauxMap[t.groupe] = t.nb })
+          const totalGroupes = Object.values(totauxMap).reduce((s: number, n: number) => s + n, 0)
+          const gs = [
+            { id: 1, label: 'Très fragile', count: totauxMap[1] || 0, color: '#DC2626', bg: '#fef2f2' },
+            { id: 2, label: 'Fragile', count: totauxMap[2] || 0, color: '#D97706', bg: '#fff7ed' },
+            { id: 3, label: "En cours d'acq.", count: totauxMap[3] || 0, color: '#2563EB', bg: '#eff6ff' },
+            { id: 4, label: 'Attendu', count: totauxMap[4] || 0, color: '#16A34A', bg: '#f0fdf4' },
+          ]
+          return (
+            <>
+              {adminLoading && <p style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Chargement…</p>}
+
+              {/* KPI Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+                {gs.map(g => (
+                  <div key={g.id} style={{ background: 'white', borderRadius: 16, border: `2px solid ${g.color}20`, padding: '20px 18px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 36, fontWeight: 800, color: g.color, lineHeight: 1, fontFamily: 'var(--font-sans)' }}>{g.count}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: g.color, marginTop: 6 }}>{g.label}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                      {totalGroupes > 0 ? Math.round(g.count / totalGroupes * 100) : 0}%
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Barre empilée */}
+              {totalGroupes > 0 && (
+                <div style={{ display: 'flex', height: 40, borderRadius: 12, overflow: 'hidden', marginBottom: 24, border: '1.5px solid var(--border-light)' }}>
+                  {gs.filter(g => g.count > 0).map(g => (
+                    <div key={g.id} style={{ width: `${Math.round(g.count / totalGroupes * 100)}%`, background: g.color, display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 4 }}>
+                      {g.count / totalGroupes > 0.06 && <span style={{ color: 'white', fontSize: 13, fontWeight: 800 }}>{Math.round(g.count / totalGroupes * 100)}%</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+                {/* Par niveau */}
+                <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0', fontFamily: 'var(--font-sans)' }}>Par niveau</h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: 'var(--font-sans)' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid var(--border-light)' }}>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: 11, color: 'var(--text-tertiary)' }}>Niveau</th>
+                        <th style={{ padding: '6px 4px', textAlign: 'center', fontSize: 11, color: '#DC2626' }}>G1</th>
+                        <th style={{ padding: '6px 4px', textAlign: 'center', fontSize: 11, color: '#D97706' }}>G2</th>
+                        <th style={{ padding: '6px 4px', textAlign: 'center', fontSize: 11, color: '#2563EB' }}>G3</th>
+                        <th style={{ padding: '6px 4px', textAlign: 'center', fontSize: 11, color: '#16A34A' }}>G4</th>
+                        <th style={{ padding: '6px 4px', textAlign: 'center', fontSize: 11, color: 'var(--text-tertiary)' }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(d.par_niveau || []).map((n: any) => (
+                        <tr key={n.niveau} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                          <td style={{ padding: '8px', fontWeight: 700, color: 'var(--primary-dark)' }}>{n.niveau}</td>
+                          <td style={{ padding: '8px 4px', textAlign: 'center', fontWeight: 700, color: '#DC2626' }}>{n.g1 || '—'}</td>
+                          <td style={{ padding: '8px 4px', textAlign: 'center', fontWeight: 700, color: '#D97706' }}>{n.g2 || '—'}</td>
+                          <td style={{ padding: '8px 4px', textAlign: 'center', fontWeight: 700, color: '#2563EB' }}>{n.g3 || '—'}</td>
+                          <td style={{ padding: '8px 4px', textAlign: 'center', fontWeight: 700, color: '#16A34A' }}>{n.g4 || '—'}</td>
+                          <td style={{ padding: '8px 4px', textAlign: 'center', color: 'var(--text-secondary)' }}>{n.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Par établissement */}
+                <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0', fontFamily: 'var(--font-sans)' }}>Par établissement</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {(d.par_etab || []).map((e: any) => {
+                      const total = e.total || 1
+                      return (
+                        <div key={e.etab_nom}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{(e.etab_nom || '').replace('[TEST] ', '')}</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{e.total} élèves</span>
+                          </div>
+                          <div style={{ display: 'flex', height: 14, borderRadius: 4, overflow: 'hidden' }}>
+                            {[{ n: e.g1, c: '#DC2626' }, { n: e.g2, c: '#D97706' }, { n: e.g3, c: '#2563EB' }, { n: e.g4, c: '#16A34A' }].map((g, i) => (
+                              g.n > 0 ? <div key={i} style={{ width: `${Math.round(g.n / total * 100)}%`, background: g.c, minWidth: 2 }} /> : null
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Élèves les plus fragiles */}
+              {(d.fragiles || []).length > 0 && (
+                <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, marginBottom: 24 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 800, color: '#DC2626', margin: '0 0 16px 0', fontFamily: 'var(--font-sans)' }}>
+                    Élèves les plus fragiles ({(d.fragiles || []).length})
+                  </h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid var(--border-light)' }}>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: 'var(--text-tertiary)' }}>Élève</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: 'var(--text-tertiary)' }}>Classe</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: 'var(--text-tertiary)' }}>Établissement</th>
+                        <th style={{ padding: '8px', textAlign: 'center', fontSize: 11, color: 'var(--text-tertiary)' }}>Score</th>
+                        <th style={{ padding: '8px', textAlign: 'center', fontSize: 11, color: 'var(--text-tertiary)' }}>Groupe</th>
+                        <th style={{ padding: '8px', textAlign: 'center', fontSize: 11, color: 'var(--text-tertiary)' }}>Compréh.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(d.fragiles || []).map((f: any) => {
+                        const qs = [f.q1, f.q2, f.q3, f.q4, f.q5, f.q6].filter(q => q !== null)
+                        const correct = qs.filter(q => q === 'Correct').length
+                        return (
+                          <tr key={f.eleve_id} style={{ borderBottom: '1px solid var(--border-light)', cursor: 'pointer' }}
+                            onClick={() => router.push(`/dashboard/eleve/${f.eleve_id}`)}>
+                            <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--primary-dark)' }}>{f.nom} {f.prenom}</td>
+                            <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>{(f.classe_nom || '').replace('[TEST] ', '')}</td>
+                            <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: 12 }}>{(f.etab_nom || '').replace('[TEST] ', '')}</td>
+                            <td style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 800, color: f.score < 30 ? '#DC2626' : '#D97706' }}>{f.score}</td>
+                            <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: f.groupe === 1 ? '#fef2f2' : '#fff7ed', color: f.groupe === 1 ? '#DC2626' : '#D97706' }}>
+                                G{f.groupe}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                              {qs.length > 0 ? `${correct}/${qs.length}` : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Résumé */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 32 }}>
+                <div style={{ background: '#fef2f2', borderRadius: 14, padding: 18, textAlign: 'center', border: '1px solid #fecaca' }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#DC2626' }}>{(totauxMap[1] || 0) + (totauxMap[2] || 0)}</div>
+                  <div style={{ fontSize: 12, color: '#991b1b' }}>Élèves fragiles (G1+G2)</div>
+                </div>
+                <div style={{ background: '#eff6ff', borderRadius: 14, padding: 18, textAlign: 'center', border: '1px solid #bfdbfe' }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#1d4ed8' }}>{d.total_evalues || 0}</div>
+                  <div style={{ fontSize: 12, color: '#1e40af' }}>Élèves évalués</div>
+                </div>
+                <div style={{ background: '#fefce8', borderRadius: 14, padding: 18, textAlign: 'center', border: '1px solid #fde68a' }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#854d0e' }}>{d.non_evalues || 0}</div>
+                  <div style={{ fontSize: 12, color: '#92400e' }}>Non évalués</div>
+                </div>
+              </div>
+            </>
+          )
+        })()}
+
+        {/* Sélecteurs + contenu (pour les rôles non-admin) */}
+        {!vueAdmin && (<>
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
           background: 'white', borderRadius: 16, padding: 24,
@@ -560,6 +753,7 @@ export default function Groupes() {
             </div>
           </>
         )}
+        </>)}
       </main>
     </div>
   )

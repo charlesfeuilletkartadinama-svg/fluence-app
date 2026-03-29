@@ -5,19 +5,11 @@ import { useImpersonation } from '@/app/lib/useImpersonation'
 import { useProfil } from '@/app/lib/useProfil'
 import { createClient } from '@/app/lib/supabase'
 
-const PROFILS_SIMULABLES = [
-  { role: 'enseignant',  label: '👨‍🏫 Enseignant',         etablissement_id: 'current' },
-  { role: 'directeur',   label: '🏫 Directeur',            etablissement_id: 'current' },
-  { role: 'principal',   label: '🏛️ Principal',            etablissement_id: 'current' },
-  { role: 'coordo_rep',  label: '🎯 Coordo REP+',          etablissement_id: null      },
-  { role: 'ien',         label: '📋 IEN',                  etablissement_id: null      },
-  { role: 'ia_dasen',    label: '🏢 IA-DASEN',             etablissement_id: null      },
-  { role: 'recteur',     label: '⭐ Recteur',              etablissement_id: null      },
-]
+type SimulProfil = { id: string; role: string; label: string; etablissement_id: string | null }
 
 export default function ImpersonationBar() {
   const [mounted, setMounted] = useState(false)
-  const [demoIds, setDemoIds] = useState<Record<string, string>>({})
+  const [simulProfils, setSimulProfils] = useState<SimulProfil[]>([])
   const { profil, profilReel } = useProfil()
   const { roleImpersonne, setRoleImpersonne, clearImpersonation, hydrate } = useImpersonation()
   const supabase = createClient()
@@ -25,13 +17,18 @@ export default function ImpersonationBar() {
   useEffect(() => {
     hydrate()
     setMounted(true)
-    // Charger les IDs des comptes démo pour que l'impersonation utilise les bonnes données
-    supabase.from('profils').select('id, role').eq('nom', '[DEMO]')
+    // Charger tous les profils simulables (DEMO + TEST + réels)
+    supabase.from('profils').select('id, nom, prenom, role, etablissement_id')
+      .neq('role', 'admin')
+      .order('role').order('nom')
       .then(({ data }) => {
         if (data) {
-          const map: Record<string, string> = {}
-          data.forEach((p: any) => { map[p.role] = p.id })
-          setDemoIds(map)
+          setSimulProfils(data.map((p: any) => ({
+            id: p.id,
+            role: p.role,
+            label: `${p.prenom} ${p.nom}`,
+            etablissement_id: p.etablissement_id,
+          })))
         }
       })
   }, [])
@@ -128,25 +125,34 @@ export default function ImpersonationBar() {
 
         {!roleImpersonne ? (
           <>
-            <span className="imp-label">— Simuler le profil :</span>
+            <span className="imp-label">— Simuler :</span>
             <select className="imp-select"
               value=""
               onChange={e => {
-                const found = PROFILS_SIMULABLES.find(p => p.role === e.target.value)
+                const found = simulProfils.find(p => p.id === e.target.value)
                 if (found) setRoleImpersonne({
                   role:              found.role,
                   label:             found.label,
-                  id:                demoIds[found.role] ?? null,
-                  etablissement_id:  found.etablissement_id === 'current' ? profil?.etablissement_id : null,
-                  circonscription_id: profil?.circonscription_id,
+                  id:                found.id,
+                  etablissement_id:  found.etablissement_id,
                 })
               }}>
               <option value="">Choisir un profil...</option>
-              {PROFILS_SIMULABLES.map(p => (
-                <option key={p.role} value={p.role}>{p.label}</option>
-              ))}
+              {['enseignant', 'directeur', 'principal', 'coordo_rep', 'ien', 'ia_dasen', 'recteur'].map(role => {
+                const profils = simulProfils.filter(p => p.role === role)
+                if (profils.length === 0) return null
+                const roleLabel: Record<string, string> = { enseignant: '👨‍🏫 Enseignants', directeur: '🏫 Directeurs', principal: '🏛️ Principaux', coordo_rep: '🎯 Coordo', ien: '📋 IEN', ia_dasen: '🏢 IA-DASEN', recteur: '⭐ Recteurs' }
+                return (
+                  <optgroup key={role} label={roleLabel[role] || role}>
+                    {profils.slice(0, 10).map(p => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
+                    ))}
+                    {profils.length > 10 && <option disabled>… et {profils.length - 10} autres</option>}
+                  </optgroup>
+                )
+              })}
             </select>
-            <span className="imp-info">Vous voyez l'interface en tant qu'admin</span>
+            <span className="imp-info">Admin</span>
           </>
         ) : (
           <>

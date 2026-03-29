@@ -104,7 +104,7 @@ export default function MesClasses() {
     } else {
       const needsExplorer = ['admin', 'ia_dasen', 'recteur', 'ien', 'coordo_rep'].includes(profil.role)
 
-      if (needsExplorer && !profil.etablissement_id) {
+      if (needsExplorer) {
         // Admin : charger la liste des établissements pour l'entonnoir
         const { data: etabsData } = await supabase.from('etablissements')
           .select('id, nom, circonscription').order('nom')

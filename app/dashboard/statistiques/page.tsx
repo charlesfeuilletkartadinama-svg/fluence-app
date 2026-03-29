@@ -269,6 +269,10 @@ function Statistiques() {
   // Filtre niveau (direction)
   const [niveauFilter,   setNiveauFilter]   = useState<string>('tous')
   const [niveaux,        setNiveaux]        = useState<string[]>([])
+  // Direction : vue établissement
+  const [dirVue,         setDirVue]         = useState<'etablissement' | 'classe'>('etablissement')
+  const [dirEtabStats,   setDirEtabStats]   = useState<{ classeId: string; classeNom: string; niveau: string; nbEleves: number; nbEvalues: number; moyenne: number | null; pctFragiles: number; groupes: number[] }[]>([])
+  const [dirEtabPeriode, setDirEtabPeriode] = useState('')
 
   // Coordo réseau
   const [vueReseau,      setVueReseau]      = useState(false)
@@ -458,6 +462,57 @@ function Statistiques() {
 
   // ── Statistiques réseau (coordo) ────────────────────────────────────────
 
+  async function calculerEtablissement(periodeCode?: string) {
+    if (!profil?.etablissement_id) return
+    setReseauLoading(true)
+    const { data: cls } = await supabase.from('classes').select('id, nom, niveau')
+      .eq('etablissement_id', profil.etablissement_id).order('niveau')
+    const classeIds = (cls || []).map(c => c.id)
+    if (classeIds.length === 0) { setReseauLoading(false); return }
+
+    const { data: elevesData } = await supabase.from('eleves').select('id, classe_id')
+      .in('classe_id', classeIds).eq('actif', true)
+    const eleveIds = (elevesData || []).map(e => e.id)
+
+    const code = periodeCode || dirEtabPeriode || periodes[periodes.length - 1]?.code || ''
+    if (!dirEtabPeriode && code) setDirEtabPeriode(code)
+
+    const { data: periIds } = await supabase.from('periodes').select('id').eq('code', code).eq('actif', true)
+    const allPeriIds = (periIds || []).map(p => p.id)
+
+    let passData: any[] = []
+    if (allPeriIds.length > 0 && eleveIds.length > 0) {
+      const { data } = await supabase.from('passations').select('eleve_id, score, non_evalue').in('periode_id', allPeriIds).in('eleve_id', eleveIds)
+      passData = data || []
+    }
+
+    const stats = (cls || []).map(c => {
+      const elevesC = (elevesData || []).filter(e => e.classe_id === c.id)
+      const idsC = new Set(elevesC.map(e => e.id))
+      const passC = passData.filter(p => idsC.has(p.eleve_id))
+      const evalues = passC.filter(p => !p.non_evalue && p.score > 0)
+      const scores = evalues.map(p => p.score as number)
+      const norme = normes.find(n => n.niveau === c.niveau)
+      const fragiles = norme ? scores.filter(s => s < norme.seuil_min).length : 0
+      const groupes = [0, 0, 0, 0]
+      if (norme) {
+        for (const s of scores) {
+          const g = classerEleve(s, norme)
+          groupes[g - 1]++
+        }
+      }
+      return {
+        classeId: c.id, classeNom: c.nom, niveau: c.niveau,
+        nbEleves: elevesC.length, nbEvalues: evalues.length,
+        moyenne: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+        pctFragiles: evalues.length > 0 ? Math.round(fragiles / evalues.length * 100) : 0,
+        groupes,
+      }
+    })
+    setDirEtabStats(stats)
+    setReseauLoading(false)
+  }
+
   async function calculerReseau(
     etabsList: {id: string; nom: string}[],
     codeParam: string,
@@ -642,6 +697,21 @@ function Statistiques() {
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Toggle établissement / classe (direction) */}
+            {profil && ['directeur', 'principal'].includes(profil.role) && (
+              <div style={{ display: 'flex', background: 'white', borderRadius: 10, padding: 3, border: '1.5px solid var(--border-main)', gap: 2 }}>
+                <button
+                  onClick={() => { setDirVue('etablissement'); if (!dirEtabStats.length) calculerEtablissement() }}
+                  style={{ padding: '8px 16px', borderRadius: 7, border: 'none', fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: dirVue === 'etablissement' ? 'var(--primary-dark)' : 'transparent', color: dirVue === 'etablissement' ? 'white' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                  Vue établissement
+                </button>
+                <button
+                  onClick={() => setDirVue('classe')}
+                  style={{ padding: '8px 16px', borderRadius: 7, border: 'none', fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: dirVue === 'classe' ? 'var(--primary-dark)' : 'transparent', color: dirVue === 'classe' ? 'white' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                  Vue classe
+                </button>
+              </div>
+            )}
             {/* Toggle réseau / classe (coordo uniquement) */}
             {vueReseau && (
               <div style={{ display: 'flex', background: 'white', borderRadius: 10, padding: 3, border: '1.5px solid var(--border-main)', gap: 2 }}>
@@ -657,8 +727,8 @@ function Statistiques() {
                 </button>
               </div>
             )}
-            {/* Sélecteur de classe (masqué en mode réseau) */}
-            {(!vueReseau || viewMode === 'classe') && (
+            {/* Sélecteur de classe (masqué en mode réseau ou vue établissement) */}
+            {(!vueReseau || viewMode === 'classe') && dirVue !== 'etablissement' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div>
                   <label className={styles.label} style={{ display: 'block', marginBottom: 6 }}>Classe</label>
@@ -734,6 +804,82 @@ function Statistiques() {
         </div>
 
         {/* ════ VUE RÉSEAU (coordo) ════ */}
+        {/* ── Vue établissement (direction) ── */}
+        {profil && ['directeur', 'principal'].includes(profil.role) && dirVue === 'etablissement' && (
+          <div style={{ padding: '0 32px 32px' }}>
+            {/* Sélecteur période */}
+            {periodes.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>Période :</span>
+                {periodes.map(p => (
+                  <button key={p.code} onClick={() => { setDirEtabPeriode(p.code); calculerEtablissement(p.code) }}
+                    style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', borderColor: dirEtabPeriode === p.code ? 'var(--primary-dark)' : 'var(--border-main)', background: dirEtabPeriode === p.code ? 'var(--primary-dark)' : 'white', color: dirEtabPeriode === p.code ? 'white' : 'var(--text-secondary)' }}>
+                    {p.code}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {reseauLoading ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-tertiary)' }}>Chargement…</div>
+            ) : (
+              <div className={styles.table}>
+                <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border-main)' }}>
+                  <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, color: 'var(--primary-dark)', margin: 0 }}>Classes · {dirEtabPeriode}</h2>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead className={styles.tableHead}>
+                      <tr>
+                        <th className={styles.tableHeaderCell}>Classe</th>
+                        <th className={styles.tableHeaderCell}>Niveau</th>
+                        <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Élèves</th>
+                        <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Évalués</th>
+                        <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Moyenne</th>
+                        <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Fragiles</th>
+                        <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Groupes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dirEtabStats.map(c => {
+                        const totalG = c.groupes.reduce((s, n) => s + n, 0)
+                        const pctEval = c.nbEleves > 0 ? Math.round(c.nbEvalues / c.nbEleves * 100) : 0
+                        return (
+                          <tr key={c.classeId} className={`${styles.tableRow} ${styles.tableRowClickable}`}
+                            onClick={() => { setDirVue('classe'); setClasseId(c.classeId) }}>
+                            <td className={styles.tableCell} style={{ fontWeight: 700, color: 'var(--primary-dark)' }}>{c.classeNom}</td>
+                            <td className={styles.tableCell}>{c.niveau}</td>
+                            <td style={{ textAlign: 'center', padding: '12px 16px' }}>{c.nbEleves}</td>
+                            <td style={{ textAlign: 'center', padding: '12px 16px' }}>
+                              <span style={{ fontWeight: 600, color: pctEval >= 80 ? '#16a34a' : pctEval >= 50 ? '#d97706' : '#dc2626' }}>{c.nbEvalues} ({pctEval}%)</span>
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '12px 16px', fontWeight: 700, color: 'var(--primary-dark)' }}>{c.moyenne ?? '—'}</td>
+                            <td style={{ textAlign: 'center', padding: '12px 16px' }}>
+                              {c.pctFragiles > 0 ? <span style={{ fontWeight: 700, color: c.pctFragiles > 40 ? '#dc2626' : c.pctFragiles > 20 ? '#d97706' : '#16a34a' }}>{c.pctFragiles}%</span> : '—'}
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              {totalG > 0 && (
+                                <div style={{ display: 'flex', height: 16, borderRadius: 4, overflow: 'hidden', minWidth: 80 }}>
+                                  {[{ c: '#DC2626' }, { c: '#D97706' }, { c: '#2563EB' }, { c: '#16A34A' }].map((g, i) => (
+                                    c.groupes[i] > 0 ? <div key={i} style={{ width: `${Math.round(c.groupes[i] / totalG * 100)}%`, background: g.c, minWidth: 2 }} /> : null
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ padding: '10px 24px', background: 'var(--bg-gray)', fontSize: 12, color: 'var(--text-tertiary)', borderTop: '1px solid var(--border-light)' }}>
+                  Cliquez sur une classe pour voir le détail par élève
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {vueReseau && viewMode === 'reseau' && (
           <>
             {/* Barre de contrôle : toggle etab/niveau + onglets période */}
@@ -791,8 +937,17 @@ function Statistiques() {
                         const fragiles = e.g1 + e.g2
                         const pctFrag  = total > 0 ? Math.round(fragiles / total * 100) : 0
                         return (
-                          <tr key={e.id} className={styles.tableRow}>
-                            <td className={styles.tableCell} style={{ fontWeight: 600, color: 'var(--primary-dark)' }}>{e.nom}</td>
+                          <tr key={e.id} className={`${styles.tableRow} ${styles.tableRowClickable}`}
+                            onClick={async () => {
+                              // Drill-down : charger les classes de cet établissement
+                              const { data: cls } = await supabase.from('classes').select('id, nom, niveau').eq('etablissement_id', e.id).order('niveau')
+                              if (cls && cls.length > 0) {
+                                setClasses(cls.map((c: any) => ({ id: c.id, nom: c.nom, niveau: c.niveau })))
+                                setClasseId(cls[0].id)
+                                setViewMode('classe')
+                              }
+                            }}>
+                            <td className={styles.tableCell} style={{ fontWeight: 600, color: 'var(--primary-dark)', cursor: 'pointer' }}>{e.nom}</td>
                             <td style={{ textAlign: 'center', padding: '12px 16px' }}>{e.nbEleves}</td>
                             <td style={{ textAlign: 'center', padding: '12px 16px' }}>
                               <span style={{ fontWeight: 600, color: pctEval >= 80 ? '#16A34A' : pctEval >= 50 ? '#D97706' : '#DC2626' }}>
@@ -1076,7 +1231,10 @@ function Statistiques() {
                           <th className={styles.tableHeaderCell}>Élève</th>
                           <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Score</th>
                           <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Groupe</th>
-                          <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Compréhension</th>
+                          <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Comp.</th>
+                          {['Q1','Q2','Q3','Q4','Q5','Q6'].map(q => (
+                            <th key={q} className={styles.tableHeaderCell} style={{ textAlign: 'center', padding: '8px 4px', fontSize: 10 }}>{q}</th>
+                          ))}
                           <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Mode</th>
                         </tr>
                       </thead>
@@ -1107,12 +1265,19 @@ function Statistiques() {
                                   <span style={{ background: g.bg, color: g.color, padding: '3px 9px', borderRadius: 8, fontSize: 11, fontWeight: 700 }}>{g.label}</span>
                                 ) : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}
                               </td>
-                              <td style={{ textAlign: 'center', padding: '12px 16px' }}>
+                              <td style={{ textAlign: 'center', padding: '12px 8px' }}>
                                 {d && d.comp >= 0 ? (() => {
                                   const cc = compColor(d.comp)
-                                  return <span style={{ ...cc, padding: '3px 9px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>{d.comp}%</span>
-                                })() : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}
+                                  return <span style={{ ...cc, padding: '2px 6px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{d.comp}%</span>
+                                })() : <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>—</span>}
                               </td>
+                              {[0,1,2,3,4,5].map(qi => (
+                                <td key={qi} style={{ textAlign: 'center', padding: '12px 2px' }}>
+                                  {d?.qs[qi] === true ? <span style={{ color: '#16a34a', fontWeight: 800, fontSize: 13 }}>✓</span>
+                                    : d?.qs[qi] === false ? <span style={{ color: '#dc2626', fontWeight: 800, fontSize: 13 }}>✗</span>
+                                    : <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>—</span>}
+                                </td>
+                              ))}
                               <td style={{ textAlign: 'center', padding: '12px 16px' }}>
                                 {d ? (
                                   <span style={{ background: 'var(--bg-gray)', color: 'var(--text-secondary)', padding: '3px 8px', borderRadius: 6, fontSize: 11 }}>

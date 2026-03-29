@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NotificationCenter from "./components/NotificationCenter";
+import OnboardingGuide from "./components/OnboardingGuide";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,12 +25,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="fr" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `
+          try { const t = localStorage.getItem('fluence-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch {}
+        `}} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
         <NotificationCenter />
+        <OnboardingGuide />
       </body>
     </html>
   );

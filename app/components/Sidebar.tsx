@@ -174,6 +174,14 @@ export default function Sidebar() {
             </div>
           </a>
         )}
+        <button className={styles.logoutBtn} onClick={() => {
+          const html = document.documentElement
+          const current = html.getAttribute('data-theme')
+          html.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark')
+          localStorage.setItem('fluence-theme', current === 'dark' ? 'light' : 'dark')
+        }} style={{ marginBottom: 4 }}>
+          <span>🌙</span> Thème sombre
+        </button>
         <button className={styles.logoutBtn} onClick={handleLogout}>
           <span>↩</span> Se déconnecter
         </button>

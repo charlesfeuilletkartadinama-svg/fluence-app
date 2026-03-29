@@ -31,6 +31,34 @@
   /* Transitions */
   --transition-fast: 0.15s ease;
   --transition-normal: 0.2s ease;
+
+  /* Fonts */
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: 'DM Serif Display', Georgia, serif;
+}
+
+/* ── Thème sombre ─────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --primary-dark: #B8CCE8;
+  --primary-light: #4A7FD4;
+  --accent-gold: #E0C068;
+
+  --bg-gray: #1E1E2E;
+  --bg-darker: #181825;
+  --bg-light: #11111B;
+
+  --border-main: #313244;
+  --border-light: #2A2A3C;
+
+  --text-secondary: #A6ADC8;
+  --text-tertiary: #6C7086;
+
+  color-scheme: dark;
+}
+
+[data-theme="dark"] body {
+  background: #11111B;
+  color: #CDD6F4;
 }
 
 * {

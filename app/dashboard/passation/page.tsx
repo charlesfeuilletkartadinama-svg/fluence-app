@@ -8,6 +8,7 @@ import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import type { Periode, Classe, TestSession, QcmQuestion } from '@/app/lib/types'
 import { playEndBeep } from '@/app/lib/useBeep'
+import { saveOffline, hasOfflineData, syncOfflinePassations } from '@/app/lib/offlineStorage'
 import { periodeVerrouillee } from '@/app/lib/fluenceUtils'
 
 type Eleve = {
@@ -373,10 +374,11 @@ function PassationContent() {
     setSaving(true)
     setErreurSauvegarde('')
     let errMsg = ''
+    let savedOfflineCount = 0
 
     for (const eleve of eleves) {
       if (!eleve.fait) continue
-      const { error } = await supabase.from('passations').upsert({
+      const passData = {
         eleve_id:      eleve.id,
         periode_id:    periode.id,
         hors_periode:  false,
@@ -391,16 +393,44 @@ function PassationContent() {
         q4: eleve.q4 === true ? 'Correct' : eleve.q4 === false ? 'Incorrect' : null,
         q5: eleve.q5 === true ? 'Correct' : eleve.q5 === false ? 'Incorrect' : null,
         q6: eleve.q6 === true ? 'Correct' : eleve.q6 === false ? 'Incorrect' : null,
-      }, { onConflict: 'eleve_id,periode_id,hors_periode' })
-      if (error && !errMsg) {
-        errMsg = `${error.message}${error.details ? ' — ' + error.details : ''}`
-        console.error('[passation] upsert error:', error.message, error.details, error.hint, error.code)
+      }
+      const { error } = await supabase.from('passations').upsert(passData, { onConflict: 'eleve_id,periode_id,hors_periode' })
+      if (error) {
+        // Sauvegarder hors-ligne si erreur réseau
+        saveOffline({ ...passData, saved_at: new Date().toISOString() } as any)
+        savedOfflineCount++
+        if (!errMsg) errMsg = `${error.message}${error.details ? ' — ' + error.details : ''}`
       }
     }
     setSaving(false)
-    if (errMsg) setErreurSauvegarde(errMsg)
+    if (savedOfflineCount > 0 && !navigator.onLine) {
+      setErreurSauvegarde(`${savedOfflineCount} passation(s) sauvegardée(s) hors-ligne. Elles seront synchronisées quand la connexion sera rétablie.`)
+    } else if (errMsg) {
+      setErreurSauvegarde(errMsg)
+    }
     setEtape('done')
   }
+
+  // Synchroniser les données hors-ligne au chargement
+  useEffect(() => {
+    if (!profil || !navigator.onLine) return
+    if (hasOfflineData()) {
+      syncOfflinePassations(supabase).then(({ synced, errors }) => {
+        if (synced > 0) {
+          setErreurSauvegarde(`${synced} passation(s) hors-ligne synchronisée(s) avec succès.`)
+        }
+      })
+    }
+    const onOnline = () => {
+      if (hasOfflineData()) {
+        syncOfflinePassations(supabase).then(({ synced }) => {
+          if (synced > 0) setErreurSauvegarde(`${synced} passation(s) synchronisée(s).`)
+        })
+      }
+    }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [profil])
 
   const eleve = eleves[eleveIdx]
   const nbFaits = eleves.filter(e => e.fait).length

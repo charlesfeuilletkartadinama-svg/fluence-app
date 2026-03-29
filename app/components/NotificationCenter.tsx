@@ -2,12 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { useNotifications, type Notification } from '@/app/lib/useNotifications'
+import { useRealtimeNotifications } from '@/app/lib/useRealtimeNotifications'
 
 export default function NotificationCenter() {
   const { notifications, removeNotification } = useNotifications()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
+
+  // Activer les notifications temps réel
+  useRealtimeNotifications()
 
   if (!mounted) return null
 

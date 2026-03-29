@@ -1316,6 +1316,8 @@ function UtilisateursTab({ supabase, etablissements }: { supabase: any; etabliss
   const [roleFilter, setRoleFilter]   = useState('')
   const [editRoleId, setEditRoleId]   = useState<string | null>(null)
   const [editRoleVal, setEditRoleVal] = useState('')
+  const [page, setPage]               = useState(0)
+  const PAGE_SIZE = 25
 
   useEffect(() => {
     supabase.from('profils')
@@ -1366,7 +1368,7 @@ function UtilisateursTab({ supabase, etablissements }: { supabase: any; etabliss
       <div style={{ position: 'relative', marginBottom: 16 }}>
         <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
         <input type="text" placeholder="Rechercher un utilisateur…" value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => { setSearch(e.target.value); setPage(0) }}
           style={{ ...A.input, width: '100%', paddingLeft: 36, boxSizing: 'border-box' as const }} />
         {search && (
           <button onClick={() => setSearch('')}
@@ -1390,7 +1392,7 @@ function UtilisateursTab({ supabase, etablissements }: { supabase: any; etabliss
           <tbody>
             {filtered.length === 0 ? (
               <tr><td colSpan={4} style={{ ...A.tdC, padding: 40, color: 'var(--text-tertiary)' }}>Aucun utilisateur trouvé</td></tr>
-            ) : filtered.map(u => (
+            ) : filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(u => (
               <tr key={u.id}>
                 <td style={A.tdBold}>{u.prenom} {u.nom}</td>
                 <td style={A.td}>
@@ -1431,6 +1433,18 @@ function UtilisateursTab({ supabase, etablissements }: { supabase: any; etabliss
           </tbody>
         </table>
       </div>
+      {/* Pagination */}
+      {filtered.length > PAGE_SIZE && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 16 }}>
+          <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+            style={{ ...A.btnGhost, opacity: page === 0 ? 0.4 : 1 }}>← Précédent</button>
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+            Page {page + 1} / {Math.ceil(filtered.length / PAGE_SIZE)}
+          </span>
+          <button onClick={() => setPage(p => Math.min(Math.ceil(filtered.length / PAGE_SIZE) - 1, p + 1))} disabled={(page + 1) * PAGE_SIZE >= filtered.length}
+            style={{ ...A.btnGhost, opacity: (page + 1) * PAGE_SIZE >= filtered.length ? 0.4 : 1 }}>Suivant →</button>
+        </div>
+      )}
     </div>
   )
 }

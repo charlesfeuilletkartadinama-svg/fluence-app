@@ -82,8 +82,15 @@ export default function Sidebar() {
       : []),
   ]
 
+  const [mobileOpen, setMobileOpen] = useState(false)
+
   return (
-    <aside className={styles.sidebar}>
+    <>
+      <button className={styles.burgerBtn} onClick={() => setMobileOpen(!mobileOpen)}>
+        {mobileOpen ? '✕' : '☰'}
+      </button>
+      {mobileOpen && <div className={`${styles.overlay} ${styles.visible}`} onClick={() => setMobileOpen(false)} />}
+    <aside className={`${styles.sidebar} ${mobileOpen ? styles.open : ''}`}>
       <div className={styles.sidebarLogo}>
         <svg width="130" viewBox="0 0 220 44" xmlns="http://www.w3.org/2000/svg">
           <text className={styles.sbLw} x="0" y="34">Fluence</text>
@@ -146,6 +153,7 @@ export default function Sidebar() {
             (item.href !== '/dashboard' && pathname.startsWith(item.href))
           return (
             <a key={item.href} href={item.href}
+              onClick={() => setMobileOpen(false)}
               className={`${styles.navItem} ${isActive ? styles.active : ''}`}>
               <div className={styles.navIcon}>{item.icon}</div>
               <span>{item.label}</span>
@@ -171,5 +179,6 @@ export default function Sidebar() {
         </button>
       </div>
     </aside>
+    </>
   )
 }

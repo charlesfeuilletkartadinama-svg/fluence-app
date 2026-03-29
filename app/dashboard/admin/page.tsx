@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
+import { logAction } from '@/app/lib/auditLog'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
@@ -148,8 +149,8 @@ export default function Admin() {
 
   async function supprimerPeriode(code: string) {
     if (!window.confirm(`Supprimer toutes les périodes "${code}" ? Les passations liées seront aussi supprimées.`)) return
-    // Supprimer toutes les périodes avec ce code (tous établissements)
     await supabase.from('periodes').delete().eq('code', code)
+    logAction('supprimer_periode', { code })
     chargerDonnees()
   }
 
@@ -182,13 +183,16 @@ export default function Admin() {
 
   async function supprimerEtablissement(id: string) {
     if (!window.confirm('Supprimer cet établissement ? Cette action est irréversible.')) return
+    const etab = etablissements.find(e => e.id === id)
     await supabase.from('etablissements').delete().eq('id', id)
+    logAction('supprimer_etablissement', { id, nom: etab?.nom })
     setEtablissements(prev => prev.filter(e => e.id !== id))
   }
 
   async function supprimerAffectation(id: string) {
     if (!window.confirm('Supprimer cette affectation ?')) return
     await supabase.from('coordo_etablissements').delete().eq('id', id)
+    logAction('supprimer_affectation_coordo', { id })
     setCoordoEtabs(prev => prev.filter(c => c.id !== id))
   }
 

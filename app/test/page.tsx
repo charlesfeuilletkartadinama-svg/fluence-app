@@ -61,6 +61,14 @@ export default function TestEleve() {
     const code = codeInput.trim().toUpperCase()
     if (!code) { setErreur('Veuillez entrer un code.'); return }
 
+    // Rate limiting : hash simple de l'IP (côté client on utilise un identifiant de session)
+    const ipHash = 'client_' + (navigator.userAgent + screen.width).split('').reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0).toString(36)
+    const { data: allowed } = await supabase.rpc('check_test_rate_limit', { p_ip_hash: ipHash })
+    if (allowed === false) {
+      setErreur('Trop de tentatives. Réessaie dans quelques minutes.')
+      return
+    }
+
     const { data: session, error } = await supabase
       .from('test_sessions')
       .select('id, code, classe_id, periode_id, active, expires_at')

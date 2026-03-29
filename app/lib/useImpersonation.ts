@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { logAction } from './auditLog'
 
 type RoleImpersonne = {
   role: string
@@ -36,8 +37,10 @@ export const useImpersonation = create<ImpersonationStore>((set) => ({
       if (r) {
         const toStore: StoredImpersonation = { ...r, expiresAt: Date.now() + EXPIRY_MS }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore))
+        logAction('impersonation_start', { role: r.role, label: r.label, etablissement_id: r.etablissement_id })
       } else {
         localStorage.removeItem(STORAGE_KEY)
+        logAction('impersonation_stop', {})
       }
     }
   },

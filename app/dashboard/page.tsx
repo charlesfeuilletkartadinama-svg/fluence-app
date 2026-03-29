@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import styles from './page.module.css'
+import { ROLE_LABELS } from '@/app/lib/types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,15 @@ type EnseignantSansSaisie = {
   classes: string[]
 }
 
+type AdminOverview = {
+  nbEtablissements: number
+  nbUtilisateurs: number
+  periodesActives: number
+  invitationsActives: number
+  usersByRole: Record<string, number>
+  periodesDetail: { code: string; label: string; actif: boolean; saisie_ouverte: boolean; type: string | null }[]
+}
+
 type NiveauStat = {
   niveau: string
   nbEleves: number
@@ -95,6 +105,7 @@ export default function Dashboard() {
   const [periodesEns, setPeriodesEns]         = useState<{id:string, code:string}[]>([])
   const [periodeEnsId, setPeriodeEnsId]       = useState('')
   const [loading, setLoading]                 = useState(true)
+  const [adminOverview, setAdminOverview]     = useState<AdminOverview | null>(null)
   const { profil, loading: profilLoading } = useProfil()
   const router   = useRouter()
   const supabase = createClient()
@@ -578,6 +589,30 @@ export default function Dashboard() {
       periode:      p.periode?.code || '',
       created_at:   p.created_at,
     })))
+
+    // Admin overview
+    const [etabRes, profilsRes, periRes, invRes] = await Promise.all([
+      supabase.from('etablissements').select('id', { count: 'exact', head: true }),
+      supabase.from('profils').select('role'),
+      supabase.from('periodes').select('code, label, actif, saisie_ouverte, type').order('code'),
+      supabase.from('invitations').select('actif'),
+    ])
+    const rolesCounts: Record<string, number> = {}
+    ;(profilsRes.data || []).forEach((u: any) => { rolesCounts[u.role] = (rolesCounts[u.role] || 0) + 1 })
+    // Dédupliquer périodes par code
+    const seenPCodes = new Set<string>()
+    const periDedup = (periRes.data || []).filter((p: any) => {
+      if (seenPCodes.has(p.code)) return false
+      seenPCodes.add(p.code); return true
+    })
+    setAdminOverview({
+      nbEtablissements: etabRes.count || 0,
+      nbUtilisateurs: Object.values(rolesCounts).reduce((s, n) => s + n, 0),
+      periodesActives: periDedup.filter((p: any) => p.actif).length,
+      invitationsActives: (invRes.data || []).filter((i: any) => i.actif).length,
+      usersByRole: rolesCounts,
+      periodesDetail: periDedup,
+    })
   }
 
   const isEnseignant = profil?.role === 'enseignant'
@@ -1118,6 +1153,74 @@ export default function Dashboard() {
                   </div>
                 </a>
               </div>
+            )}
+
+            {/* ── Vue d'ensemble admin ── */}
+            {!isEnseignant && !isDirection && !isReseau && adminOverview && (
+              <>
+                {/* Stats cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+                  {[
+                    { label: 'Établissements', value: adminOverview.nbEtablissements, icon: '🏫', bg: '#dbeafe', color: '#1d4ed8' },
+                    { label: 'Utilisateurs', value: adminOverview.nbUtilisateurs, icon: '👥', bg: '#dcfce7', color: '#16a34a' },
+                    { label: 'Périodes actives', value: adminOverview.periodesActives, icon: '📅', bg: '#fef9c3', color: '#854d0e' },
+                    { label: 'Invitations actives', value: adminOverview.invitationsActives, icon: '🔑', bg: '#f3e8ff', color: '#7e22ce' },
+                  ].map(c => (
+                    <div key={c.label} style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16, fontFamily: 'var(--font-sans)' }}>
+                      <div style={{ width: 48, height: 48, borderRadius: 12, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{c.icon}</div>
+                      <div>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--primary-dark)', lineHeight: 1 }}>{c.value}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{c.label}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+                  {/* Utilisateurs par rôle */}
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Utilisateurs par rôle</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {Object.entries(adminOverview.usersByRole).sort((a, b) => b[1] - a[1]).map(([role, count]) => (
+                        <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{ width: 120, fontSize: 13, color: 'var(--text-secondary)', flexShrink: 0 }}>{ROLE_LABELS[role] || role}</div>
+                          <div style={{ flex: 1, height: 8, background: 'var(--bg-gray)', borderRadius: 4, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${Math.round((count / adminOverview.nbUtilisateurs) * 100)}%`, background: 'var(--primary-dark)', borderRadius: 4 }} />
+                          </div>
+                          <div style={{ width: 24, fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', textAlign: 'right' as const }}>{count}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* État des périodes */}
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>État des périodes</h3>
+                    {adminOverview.periodesDetail.length === 0 ? (
+                      <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune période configurée.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {adminOverview.periodesDetail.map(p => (
+                          <div key={p.code} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: 'var(--bg-gray)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--primary-dark)' }}>{p.code}</span>
+                              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.label}</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: p.actif ? '#dbeafe' : 'white', color: p.actif ? '#1d4ed8' : 'var(--text-tertiary)', border: `1px solid ${p.actif ? '#bfdbfe' : 'var(--border-light)'}` }}>
+                                {p.actif ? 'Active' : 'Inactive'}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: p.saisie_ouverte ? '#dcfce7' : 'white', color: p.saisie_ouverte ? '#16a34a' : 'var(--text-tertiary)', border: `1px solid ${p.saisie_ouverte ? '#bbf7d0' : 'var(--border-light)'}` }}>
+                                {p.saisie_ouverte ? 'Saisie ouverte' : 'Saisie fermée'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
 
             {/* ── Activité récente ── */}

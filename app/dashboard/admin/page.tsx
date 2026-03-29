@@ -35,12 +35,12 @@ export default function Admin() {
 
   const ONGLETS = isReseau
     ? ['Mon réseau', 'Périodes', 'Normes', 'QCM']
-    : ['Vue d\'ensemble', 'Établissements', 'Géographie', 'Périodes', 'Normes', 'Utilisateurs', 'Invitations', 'Affectations', 'QCM', 'Structure']
+    : ['Établissements', 'Géographie', 'Périodes', 'Normes', 'Utilisateurs', 'Invitations', 'Affectations', 'QCM', 'Structure']
 
-  const periodesOnglet  = isReseau ? 1 : 3
-  const normesOnglet    = isReseau ? 2 : 4
-  const qcmOnglet       = isReseau ? 3 : 8
-  const structureOnglet = 9
+  const periodesOnglet  = isReseau ? 1 : 2
+  const normesOnglet    = isReseau ? 2 : 3
+  const qcmOnglet       = isReseau ? 3 : 7
+  const structureOnglet = 8
 
   // GeoData dynamique (construit depuis Supabase)
   const geoData: Record<string, Record<string, string[]>> = {}
@@ -299,7 +299,7 @@ export default function Admin() {
         )}
 
         {/* ── Vue d'ensemble ── */}
-        {!isReseau && onglet === 0 && (
+        {false && onglet === -1 && (
           <VueEnsembleTab
             supabase={supabase}
             etablissements={etablissements}
@@ -309,7 +309,7 @@ export default function Admin() {
         )}
 
         {/* ── Établissements ── */}
-        {!isReseau && onglet === 1 && (
+        {!isReseau && onglet === 0 && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', margin: 0 }}>
@@ -411,7 +411,7 @@ export default function Admin() {
         )}
 
         {/* ── Géographie ── */}
-        {!isReseau && onglet === 2 && (
+        {!isReseau && onglet === 1 && (
           <GeographieTab
             supabase={supabase}
             departements={departements} setDepartements={setDepartements}
@@ -421,12 +421,12 @@ export default function Admin() {
         )}
 
         {/* ── Utilisateurs ── */}
-        {!isReseau && onglet === 5 && (
+        {!isReseau && onglet === 4 && (
           <UtilisateursTab supabase={supabase} etablissements={etablissements} />
         )}
 
         {/* ── Invitations ── */}
-        {!isReseau && onglet === 6 && (
+        {!isReseau && onglet === 5 && (
           <InvitationsTab
             etablissements={etablissements}
             invitations={invitations}
@@ -438,7 +438,7 @@ export default function Admin() {
         )}
 
         {/* ── Affectations ── */}
-        {!isReseau && onglet === 7 && (
+        {!isReseau && onglet === 6 && (
           <AffectationsTab
             supabase={supabase}
             etablissements={etablissements}

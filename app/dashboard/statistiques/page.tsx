@@ -372,7 +372,7 @@ function Statistiques() {
       const initCode = per[per.length - 1]?.code || ''
       setReseauPeriode(initCode)
       if (etabs.length > 0 && initCode) {
-        await calculerReseau(etabs, initCode, normesData || [])
+        await calculerReseau(etabs, initCode, normesData || [], anneeUtilisee)
       }
     }
 
@@ -531,132 +531,58 @@ function Statistiques() {
     etabsList: {id: string; nom: string}[],
     codeParam: string,
     normesParam: Norme[],
+    anneeOverride?: string,
   ) {
     setReseauLoading(true)
     setReseauPeriode(codeParam)
+    const anneeUtilisee = anneeOverride || statsAnnee
 
     const etabIds = etabsList.map(e => e.id)
-    const { data: perData } = await supabase.from('periodes').select('id').eq('code', codeParam).eq('annee_scolaire', statsAnnee)
-    const periodeIds = (perData || []).map(p => p.id)
 
-    const { data: classesData } = await supabase
-      .from('classes').select('id, nom, niveau, etablissement_id')
-      .in('etablissement_id', etabIds)
-    const classeIds = (classesData || []).map((c: any) => c.id)
-    const classeMap: Record<string, any> = {}
-    ;(classesData || []).forEach((c: any) => { classeMap[c.id] = c })
+    // Appel à la fonction SQL pré-agrégée
+    const { data: raw, error } = await supabase.rpc('get_stats_reseau', {
+      p_annee: anneeUtilisee,
+      p_code: codeParam,
+      p_etab_ids: etabIds,
+    })
 
-    const { data: elevesData } = await supabase
-      .from('eleves').select('id, classe_id')
-      .in('classe_id', classeIds).eq('actif', true)
-    const eleveIds = (elevesData || []).map((e: any) => e.id)
-    const eleveToClasse: Record<string, any> = {}
-    ;(elevesData || []).forEach((e: any) => { eleveToClasse[e.id] = classeMap[e.classe_id] })
-
-    let passData: any[] = []
-    if (periodeIds.length > 0 && eleveIds.length > 0) {
-      const { data } = await supabase
-        .from('passations').select('eleve_id, score, non_evalue')
-        .in('periode_id', periodeIds).in('eleve_id', eleveIds)
-      passData = data || []
+    if (error || !raw) {
+      console.error('Erreur stats réseau:', error)
+      setReseauLoading(false)
+      return
     }
 
-    // Charger type_reseau pour filtre REP
-    const { data: etabsTypeData } = await supabase.from('etablissements').select('id, type_reseau').in('id', etabIds)
-    const etabTypeMap: Record<string, string> = {}
-    for (const e of (etabsTypeData || [])) etabTypeMap[e.id] = e.type_reseau || 'Hors REP'
-
-    // Stats par établissement
-    const etabsS: EtabReseauStat[] = etabsList.map(etab => {
-      const etabClasses  = (classesData || []).filter((c: any) => c.etablissement_id === etab.id)
-      const etabClassIds = new Set(etabClasses.map((c: any) => c.id))
-      const etabEleves   = (elevesData || []).filter((e: any) => etabClassIds.has(e.classe_id))
-      const etabEleveIds = new Set(etabEleves.map((e: any) => e.id))
-      const etabPass     = passData.filter(p => etabEleveIds.has(p.eleve_id))
-      const evalues      = etabPass.filter(p => !p.non_evalue && p.score != null && p.score > 0)
-      const ne           = etabPass.filter(p => p.non_evalue)
-      const scores       = evalues.map(p => p.score as number)
-      let g1 = 0, g2 = 0, g3 = 0, g4 = 0
-      evalues.forEach((p: any) => {
-        const cl  = eleveToClasse[p.eleve_id]
-        const nrm = normesParam.find(n => n.niveau === cl?.niveau)
-        const g   = classerEleve(p.score, nrm)
-        if (g === 1) g1++; else if (g === 2) g2++; else if (g === 3) g3++; else g4++
-      })
-      return {
-        id: etab.id, nom: etab.nom, type_reseau: etabTypeMap[etab.id],
-        nbEleves:  etabEleves.length,
-        nbEvalues: evalues.length,
-        nbNE:      ne.length,
-        nbNR:      Math.max(0, etabEleves.length - etabPass.length),
-        moyenne:   scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
-        g1, g2, g3, g4,
-      }
-    })
+    const d = raw as any
+    const etabsS: EtabReseauStat[] = ((d.etabs || []) as any[]).map((e: any) => ({
+      id: e.etab_id, nom: e.etab_nom, type_reseau: e.type_reseau,
+      nbEleves: e.nb_eleves, nbEvalues: e.nb_evalues, nbNE: e.nb_ne,
+      nbNR: Math.max(0, e.nb_eleves - e.nb_evalues - e.nb_ne),
+      moyenne: e.moyenne, g1: e.g1, g2: e.g2, g3: e.g3, g4: e.g4,
+    }))
     setEtabsReseau(etabsS)
 
-    // Stats par niveau (global réseau)
-    type NivData = { nbEleves: number; scores: number[]; g1: number; g2: number; g3: number; g4: number }
-    const niveauxMap: Record<string, NivData> = {}
-    ;(elevesData || []).forEach((e: any) => {
-      const niv = classeMap[e.classe_id]?.niveau || 'Autre'
-      if (!niveauxMap[niv]) niveauxMap[niv] = { nbEleves: 0, scores: [], g1: 0, g2: 0, g3: 0, g4: 0 }
-      niveauxMap[niv].nbEleves++
-    })
-    passData.filter(p => !p.non_evalue && p.score != null && p.score > 0).forEach((p: any) => {
-      const niv = eleveToClasse[p.eleve_id]?.niveau || 'Autre'
-      if (niveauxMap[niv]) {
-        niveauxMap[niv].scores.push(p.score)
-        const nrm = normesParam.find(n => n.niveau === niv)
-        const g   = classerEleve(p.score, nrm)
-        if (g === 1) niveauxMap[niv].g1++
-        else if (g === 2) niveauxMap[niv].g2++
-        else if (g === 3) niveauxMap[niv].g3++
-        else niveauxMap[niv].g4++
-      }
-    })
-    const niveauxS: NiveauReseauStat[] = Object.entries(niveauxMap)
-      .map(([niv, d]) => ({
-        niveau:    niv,
-        nbEleves:  d.nbEleves,
-        nbEvalues: d.scores.length,
-        moyenne:   d.scores.length > 0 ? Math.round(d.scores.reduce((a, b) => a + b, 0) / d.scores.length) : null,
-        g1: d.g1, g2: d.g2, g3: d.g3, g4: d.g4,
-      }))
-      .sort((a, b) => a.niveau.localeCompare(b.niveau))
+    const niveauxS: NiveauReseauStat[] = ((d.niveaux || []) as any[]).map((n: any) => ({
+      niveau: n.niveau, nbEleves: n.nb_eleves, nbEvalues: n.nb_evalues,
+      moyenne: n.moyenne, g1: n.g1, g2: n.g2, g3: n.g3, g4: n.g4,
+    }))
     setNiveauxReseau(niveauxS)
 
-    // Stats par circonscription (IA-DASEN/Recteur)
+    // Circo stats (pour admin/ia_dasen/recteur)
     if (profil && ['ia_dasen', 'recteur', 'admin'].includes(profil.role)) {
       const { data: etabsFull } = await supabase.from('etablissements').select('id, circonscription, type_reseau').in('id', etabIds)
-      const etabFullMap: Record<string, any> = {}
-      for (const e of (etabsFull || [])) etabFullMap[e.id] = e
-
-      const circoData: Record<string, { nbEleves: number; scores: number[]; g1: number; g2: number; g3: number; g4: number }> = {}
-      for (const e of (elevesData || [])) {
-        const cl = classeMap[e.classe_id]
-        const etab = cl ? etabFullMap[cl.etablissement_id] : null
+      // Agréger les stats étab par circo
+      const circoMap: Record<string, { nbEleves: number; nbEvalues: number; scores: number[]; g1: number; g2: number; g3: number; g4: number }> = {}
+      for (const es of etabsS) {
+        const etab = (etabsFull || []).find((e: any) => e.id === es.id)
         const circo = etab?.circonscription || 'Non définie'
-        if (!circoData[circo]) circoData[circo] = { nbEleves: 0, scores: [], g1: 0, g2: 0, g3: 0, g4: 0 }
-        circoData[circo].nbEleves++
+        if (!circoMap[circo]) circoMap[circo] = { nbEleves: 0, nbEvalues: 0, scores: [], g1: 0, g2: 0, g3: 0, g4: 0 }
+        circoMap[circo].nbEleves += es.nbEleves
+        circoMap[circo].nbEvalues += es.nbEvalues
+        if (es.moyenne != null) circoMap[circo].scores.push(es.moyenne)
+        circoMap[circo].g1 += es.g1; circoMap[circo].g2 += es.g2; circoMap[circo].g3 += es.g3; circoMap[circo].g4 += es.g4
       }
-      for (const p of passData) {
-        if (p.non_evalue || !p.score) continue
-        const cl = eleveToClasse[p.eleve_id]
-        const etab = cl ? etabFullMap[cl.etablissement_id] : null
-        const circo = etab?.circonscription || 'Non définie'
-        if (circoData[circo]) {
-          circoData[circo].scores.push(p.score)
-          const nrm = normesParam.find(n => n.niveau === cl?.niveau)
-          const g = classerEleve(p.score, nrm)
-          if (g === 1) circoData[circo].g1++
-          else if (g === 2) circoData[circo].g2++
-          else if (g === 3) circoData[circo].g3++
-          else circoData[circo].g4++
-        }
-      }
-      setCircosReseau(Object.entries(circoData).map(([circo, d]) => ({
-        circo, nbEleves: d.nbEleves, nbEvalues: d.scores.length,
+      setCircosReseau(Object.entries(circoMap).map(([circo, d]) => ({
+        circo, nbEleves: d.nbEleves, nbEvalues: d.nbEvalues,
         moyenne: d.scores.length > 0 ? Math.round(d.scores.reduce((a, b) => a + b, 0) / d.scores.length) : null,
         g1: d.g1, g2: d.g2, g3: d.g3, g4: d.g4,
       })).sort((a, b) => (b.moyenne || 0) - (a.moyenne || 0)))
@@ -664,6 +590,7 @@ function Statistiques() {
 
     setReseauLoading(false)
   }
+
 
   // ── Recherche élève ────────────────────────────────────────────────────
 

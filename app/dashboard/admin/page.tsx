@@ -1243,19 +1243,19 @@ function PeriodeRow({ periode, isReseau, onToggleActif, onToggleSaisie, onUpdate
         ) : (
           <input value={label} onChange={e => setLabel(e.target.value)}
             onBlur={() => onUpdateLabel?.(label)}
-            style={{ ...A.input, padding: '6px 10px', fontSize: 13, width: 160 }} />
+            style={{ ...A.input, padding: '5px 8px', fontSize: 12, width: 120 }} />
         )}
       </td>
       <td style={A.td}>
         {isReseau ? (
           <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
-            {periode.type === 'evaluation_nationale' ? 'Éval. nationale' : 'Classique'}
+            {periode.type === 'evaluation_nationale' ? 'Éval. nat.' : 'Classique'}
           </span>
         ) : (
           <select value={periode.type || 'regular'} onChange={e => onUpdateType(e.target.value)}
-            style={{ ...A.input, padding: '6px 10px', fontSize: 12, width: 160 }}>
+            style={{ ...A.input, padding: '5px 6px', fontSize: 11, width: 120 }}>
             <option value="regular">Classique</option>
-            <option value="evaluation_nationale">Éval. nationale</option>
+            <option value="evaluation_nationale">Éval. nat.</option>
           </select>
         )}
       </td>
@@ -1263,14 +1263,14 @@ function PeriodeRow({ periode, isReseau, onToggleActif, onToggleSaisie, onUpdate
         <input type="date" value={debut}
           onChange={e => setDebut(e.target.value)}
           onBlur={() => onUpdateDates(debut || null, fin || null)}
-          style={{ ...A.input, padding: '6px 10px', fontSize: 13, width: 140 }}
+          style={{ ...A.input, padding: '5px 6px', fontSize: 12, width: 120 }}
           disabled={isReseau} />
       </td>
       <td style={A.td}>
         <input type="date" value={fin}
           onChange={e => setFin(e.target.value)}
           onBlur={() => onUpdateDates(debut || null, fin || null)}
-          style={{ ...A.input, padding: '6px 10px', fontSize: 13, width: 140 }}
+          style={{ ...A.input, padding: '5px 6px', fontSize: 12, width: 120 }}
           disabled={isReseau} />
       </td>
       <td style={A.tdC}>

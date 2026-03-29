@@ -65,6 +65,23 @@ type AdminOverview = {
   invitationsActives: number
   usersByRole: Record<string, number>
   periodesDetail: { code: string; label: string; actif: boolean; saisie_ouverte: boolean; type: string | null }[]
+  // Pilotage pédagogique
+  nbElevesTotal: number
+  nbElevesEvalues: number
+  scoreMoyenGlobal: number | null
+  scoreParNiveau: { niveau: string; moyenne: number | null; nbEleves: number; nbEvalues: number }[]
+  groupesRepartition: { label: string; count: number; color: string }[]
+  evolutionPeriodes: { code: string; moyenne: number | null }[]
+  // Suivi opérationnel
+  etabsSansActivite: { nom: string; ville: string | null }[]
+  enseignantsSansSaisie: { nom: string; prenom: string; etablissement: string }[]
+  topEtabs: { nom: string; moyenne: number; pctFragiles: number }[]
+  bottomEtabs: { nom: string; moyenne: number; pctFragiles: number }[]
+  // QCM
+  qcmConfigures: number
+  qcmNiveauxTotal: number
+  qcmElevesComplete: number
+  qcmElevesTotal: number
 }
 
 type NiveauStat = {
@@ -590,28 +607,205 @@ export default function Dashboard() {
       created_at:   p.created_at,
     })))
 
-    // Admin overview
-    const [etabRes, profilsRes, periRes, invRes] = await Promise.all([
-      supabase.from('etablissements').select('id', { count: 'exact', head: true }),
-      supabase.from('profils').select('role'),
-      supabase.from('periodes').select('code, label, actif, saisie_ouverte, type').order('code'),
+    // ── Admin overview complet ──
+    const [etabsFullRes, profilsRes, periFullRes, invRes, normesRes, qcmTestsRes] = await Promise.all([
+      supabase.from('etablissements').select('id, nom, ville'),
+      supabase.from('profils').select('id, role, nom, prenom, etablissement_id'),
+      supabase.from('periodes').select('id, code, label, actif, saisie_ouverte, type, etablissement_id').order('code'),
       supabase.from('invitations').select('actif'),
+      supabase.from('config_normes').select('niveau, seuil_min, seuil_attendu'),
+      supabase.from('qcm_tests').select('id, niveau, periode_id'),
     ])
+    const allEtabs = etabsFullRes.data || []
+    const allProfils = profilsRes.data || []
+    const allPeriodes = periFullRes.data || []
+    const allNormes = normesRes.data || []
+
+    // Rôles
     const rolesCounts: Record<string, number> = {}
-    ;(profilsRes.data || []).forEach((u: any) => { rolesCounts[u.role] = (rolesCounts[u.role] || 0) + 1 })
+    allProfils.forEach((u: any) => { rolesCounts[u.role] = (rolesCounts[u.role] || 0) + 1 })
+
     // Dédupliquer périodes par code
     const seenPCodes = new Set<string>()
-    const periDedup = (periRes.data || []).filter((p: any) => {
+    const periDedup = allPeriodes.filter((p: any) => {
       if (seenPCodes.has(p.code)) return false
       seenPCodes.add(p.code); return true
     })
+
+    // Période active courante (la dernière active)
+    const periodeActive = periDedup.find((p: any) => p.actif && p.type !== 'evaluation_nationale')
+
+    // Charger TOUS les élèves et passations
+    const { data: allEleves } = await supabase.from('eleves')
+      .select('id, classe_id, classe:classes(niveau, etablissement_id, nom)')
+      .eq('actif', true)
+
+    const { data: allPassations } = await supabase.from('passations')
+      .select('eleve_id, score, non_evalue, q1, q2, q3, q4, q5, q6, periode:periodes(code, type)')
+
+    const elevesArr = allEleves || []
+    const passArr = allPassations || []
+
+    // Score par niveau (période active)
+    const niveauxMap: Record<string, { scores: number[]; nbEleves: number; nbEvalues: number }> = {}
+    const NIVEAUX_ORDRE = ['CP', 'CE1', 'CE2', 'CM1', 'CM2', '6eme', '5eme', '4eme', '3eme']
+    for (const e of elevesArr) {
+      const niv = (e as any).classe?.niveau || 'Autre'
+      if (!niveauxMap[niv]) niveauxMap[niv] = { scores: [], nbEleves: 0, nbEvalues: 0 }
+      niveauxMap[niv].nbEleves++
+      const p = passArr.find((pa: any) => pa.eleve_id === e.id && (pa as any).periode?.code === periodeActive?.code)
+      if (p && !p.non_evalue && p.score && p.score > 0) {
+        niveauxMap[niv].scores.push(p.score as number)
+        niveauxMap[niv].nbEvalues++
+      }
+    }
+    const scoreParNiveau = Object.entries(niveauxMap)
+      .map(([niveau, d]) => ({
+        niveau,
+        moyenne: d.scores.length > 0 ? Math.round(d.scores.reduce((a, b) => a + b, 0) / d.scores.length) : null,
+        nbEleves: d.nbEleves,
+        nbEvalues: d.nbEvalues,
+      }))
+      .sort((a, b) => {
+        const ia = NIVEAUX_ORDRE.indexOf(a.niveau), ib = NIVEAUX_ORDRE.indexOf(b.niveau)
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+      })
+
+    // Groupes de besoin (période active)
+    const normeDefault: Record<string, { min: number; attendu: number }> = {}
+    for (const n of allNormes) normeDefault[(n as any).niveau] = { min: (n as any).seuil_min, attendu: (n as any).seuil_attendu }
+    // Fallback norms
+    const defaultNorms: Record<string, { min: number; attendu: number }> = {
+      CP: { min: 40, attendu: 55 }, CE1: { min: 65, attendu: 80 }, CE2: { min: 80, attendu: 90 },
+      CM1: { min: 90, attendu: 100 }, CM2: { min: 100, attendu: 110 }, '6eme': { min: 110, attendu: 120 },
+    }
+    let gTresFragile = 0, gFragile = 0, gEnCours = 0, gAttendu = 0
+    for (const e of elevesArr) {
+      const niv = (e as any).classe?.niveau || ''
+      const p = passArr.find((pa: any) => pa.eleve_id === e.id && (pa as any).periode?.code === periodeActive?.code)
+      if (!p || p.non_evalue || !p.score) continue
+      const norme = normeDefault[niv] || defaultNorms[niv]
+      if (!norme) continue
+      const s = p.score as number
+      if (s < norme.min * 0.7) gTresFragile++
+      else if (s < norme.min) gFragile++
+      else if (s < norme.attendu) gEnCours++
+      else gAttendu++
+    }
+    const groupesRepartition = [
+      { label: 'Très fragile', count: gTresFragile, color: '#DC2626' },
+      { label: 'Fragile', count: gFragile, color: '#D97706' },
+      { label: "En cours d'acq.", count: gEnCours, color: '#2563EB' },
+      { label: 'Attendu', count: gAttendu, color: '#16A34A' },
+    ]
+
+    // Évolution entre périodes
+    const periCodesActifs = periDedup.filter((p: any) => p.type !== 'evaluation_nationale').map((p: any) => p.code)
+    const evolutionPeriodes = periCodesActifs.map(code => {
+      const scoresP = passArr
+        .filter((pa: any) => (pa as any).periode?.code === code && !pa.non_evalue && pa.score && pa.score > 0)
+        .map((pa: any) => pa.score as number)
+      return { code, moyenne: scoresP.length > 0 ? Math.round(scoresP.reduce((a, b) => a + b, 0) / scoresP.length) : null }
+    })
+
+    // Établissements sans activité (période active)
+    const etabsAvecActivite = new Set<string>()
+    for (const pa of passArr) {
+      if ((pa as any).periode?.code === periodeActive?.code) {
+        const el = elevesArr.find(e => e.id === pa.eleve_id)
+        if (el) etabsAvecActivite.add((el as any).classe?.etablissement_id)
+      }
+    }
+    const etabsSansActivite = allEtabs.filter(e => !etabsAvecActivite.has(e.id)).map(e => ({ nom: e.nom, ville: e.ville }))
+
+    // Enseignants sans saisie (période active)
+    const enseignants = allProfils.filter((p: any) => p.role === 'enseignant')
+    const ensAvecSaisie = new Set<string>()
+    // On ne peut pas facilement savoir quel enseignant a saisi sans enseignant_id dans passations
+    // Simplification : on regarde les enseignants dont aucun élève de leurs classes n'a de passation
+    const { data: ecData } = await supabase.from('enseignant_classes').select('enseignant_id, classe_id')
+    const ecMap: Record<string, string[]> = {}
+    for (const ec of (ecData || [])) {
+      if (!ecMap[(ec as any).enseignant_id]) ecMap[(ec as any).enseignant_id] = []
+      ecMap[(ec as any).enseignant_id].push((ec as any).classe_id)
+    }
+    const enseignantsSansSaisie: { nom: string; prenom: string; etablissement: string }[] = []
+    for (const ens of enseignants) {
+      const classeIds = ecMap[ens.id] || []
+      if (classeIds.length === 0) continue
+      const eleveIds = elevesArr.filter(e => classeIds.includes(e.classe_id)).map(e => e.id)
+      const aPassation = passArr.some((pa: any) => eleveIds.includes(pa.eleve_id) && (pa as any).periode?.code === periodeActive?.code)
+      if (!aPassation) {
+        const etab = allEtabs.find(e => e.id === ens.etablissement_id)
+        enseignantsSansSaisie.push({ nom: ens.nom, prenom: ens.prenom, etablissement: etab?.nom || '—' })
+      }
+    }
+
+    // Top / Bottom établissements
+    const etabScores: Record<string, { nom: string; scores: number[]; nbEleves: number; nbFragiles: number }> = {}
+    for (const e of elevesArr) {
+      const etabId = (e as any).classe?.etablissement_id
+      if (!etabId) continue
+      if (!etabScores[etabId]) {
+        const etab = allEtabs.find(et => et.id === etabId)
+        etabScores[etabId] = { nom: etab?.nom || '?', scores: [], nbEleves: 0, nbFragiles: 0 }
+      }
+      etabScores[etabId].nbEleves++
+      const p = passArr.find((pa: any) => pa.eleve_id === e.id && (pa as any).periode?.code === periodeActive?.code)
+      if (p && !p.non_evalue && p.score && p.score > 0) {
+        etabScores[etabId].scores.push(p.score as number)
+        const niv = (e as any).classe?.niveau || ''
+        const norme = normeDefault[niv] || defaultNorms[niv]
+        if (norme && (p.score as number) < norme.min) etabScores[etabId].nbFragiles++
+      }
+    }
+    const etabRanking = Object.values(etabScores)
+      .filter(e => e.scores.length > 0)
+      .map(e => ({
+        nom: e.nom,
+        moyenne: Math.round(e.scores.reduce((a, b) => a + b, 0) / e.scores.length),
+        pctFragiles: Math.round(e.nbFragiles / e.scores.length * 100),
+      }))
+      .sort((a, b) => b.moyenne - a.moyenne)
+    const topEtabs = etabRanking.slice(0, 5)
+    const bottomEtabs = etabRanking.slice(-5).reverse()
+
+    // QCM stats
+    const qcmTests = qcmTestsRes.data || []
+    const qcmConfigures = qcmTests.length
+    const qcmNiveauxPossibles = NIVEAUX_ORDRE.length
+    // Élèves avec QCM complété (au moins q1 renseigné)
+    const qcmComplete = passArr.filter((pa: any) =>
+      (pa as any).periode?.code === periodeActive?.code && pa.q1 !== null
+    ).length
+    const nbElevesEvaluesTotal = elevesArr.length
+
+    // Totaux évalués
+    const nbElevesEvalues = passArr.filter((pa: any) =>
+      (pa as any).periode?.code === periodeActive?.code && !pa.non_evalue && pa.score && pa.score > 0
+    ).length
+
     setAdminOverview({
-      nbEtablissements: etabRes.count || 0,
+      nbEtablissements: allEtabs.length,
       nbUtilisateurs: Object.values(rolesCounts).reduce((s, n) => s + n, 0),
       periodesActives: periDedup.filter((p: any) => p.actif).length,
       invitationsActives: (invRes.data || []).filter((i: any) => i.actif).length,
       usersByRole: rolesCounts,
       periodesDetail: periDedup,
+      nbElevesTotal: elevesArr.length,
+      nbElevesEvalues,
+      scoreMoyenGlobal: moyenne,
+      scoreParNiveau,
+      groupesRepartition,
+      evolutionPeriodes,
+      etabsSansActivite,
+      enseignantsSansSaisie,
+      topEtabs,
+      bottomEtabs,
+      qcmConfigures,
+      qcmNiveauxTotal: qcmNiveauxPossibles,
+      qcmElevesComplete: qcmComplete,
+      qcmElevesTotal: nbElevesEvaluesTotal,
     })
   }
 
@@ -1156,15 +1350,21 @@ export default function Dashboard() {
             )}
 
             {/* ── Vue d'ensemble admin ── */}
-            {!isEnseignant && !isDirection && !isReseau && adminOverview && (
+            {!isEnseignant && !isDirection && !isReseau && adminOverview && (() => {
+              const ov = adminOverview
+              const cardS = { background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' } as const
+              const titleS = { fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' } as const
+              const pctEval = ov.nbElevesTotal > 0 ? Math.round(ov.nbElevesEvalues / ov.nbElevesTotal * 100) : 0
+              const totalGroupes = ov.groupesRepartition.reduce((s, g) => s + g.count, 0)
+              return (
               <>
-                {/* Stats cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+                {/* Row 1 : Stats principales */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
                   {[
-                    { label: 'Établissements', value: adminOverview.nbEtablissements, icon: '🏫', bg: '#dbeafe', color: '#1d4ed8' },
-                    { label: 'Utilisateurs', value: adminOverview.nbUtilisateurs, icon: '👥', bg: '#dcfce7', color: '#16a34a' },
-                    { label: 'Périodes actives', value: adminOverview.periodesActives, icon: '📅', bg: '#fef9c3', color: '#854d0e' },
-                    { label: 'Invitations actives', value: adminOverview.invitationsActives, icon: '🔑', bg: '#f3e8ff', color: '#7e22ce' },
+                    { label: 'Établissements', value: ov.nbEtablissements, icon: '🏫', bg: '#dbeafe', color: '#1d4ed8' },
+                    { label: 'Utilisateurs', value: ov.nbUtilisateurs, icon: '👥', bg: '#dcfce7', color: '#16a34a' },
+                    { label: 'Élèves inscrits', value: ov.nbElevesTotal, icon: '🎒', bg: '#fef9c3', color: '#854d0e' },
+                    { label: 'Taux d\'évaluation', value: `${pctEval}%`, icon: '📊', bg: pctEval >= 80 ? '#dcfce7' : pctEval >= 50 ? '#fef9c3' : '#fef2f2', color: pctEval >= 80 ? '#16a34a' : pctEval >= 50 ? '#854d0e' : '#dc2626' },
                   ].map(c => (
                     <div key={c.label} style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16, fontFamily: 'var(--font-sans)' }}>
                       <div style={{ width: 48, height: 48, borderRadius: 12, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{c.icon}</div>
@@ -1176,52 +1376,238 @@ export default function Dashboard() {
                   ))}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+                {/* Row 2 : Groupes de besoin + Évolution */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  {/* Répartition groupes de besoin */}
+                  <div style={cardS}>
+                    <h3 style={titleS}>Groupes de besoin</h3>
+                    {totalGroupes === 0 ? (
+                      <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune donnée pour la période active.</p>
+                    ) : (
+                      <>
+                        {/* Barre empilée */}
+                        <div style={{ display: 'flex', height: 28, borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+                          {ov.groupesRepartition.filter(g => g.count > 0).map(g => (
+                            <div key={g.label} style={{ width: `${Math.round(g.count / totalGroupes * 100)}%`, background: g.color, minWidth: 2 }} title={`${g.label}: ${g.count}`} />
+                          ))}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                          {ov.groupesRepartition.map(g => (
+                            <div key={g.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div style={{ width: 12, height: 12, borderRadius: 3, background: g.color, flexShrink: 0 }} />
+                              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{g.label}</span>
+                              <span style={{ fontSize: 13, fontWeight: 800, color: g.color, marginLeft: 'auto' }}>{g.count}</span>
+                              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>({totalGroupes > 0 ? Math.round(g.count / totalGroupes * 100) : 0}%)</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Évolution entre périodes */}
+                  <div style={cardS}>
+                    <h3 style={titleS}>Évolution par période</h3>
+                    {ov.evolutionPeriodes.length === 0 ? (
+                      <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune période.</p>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', height: 120 }}>
+                        {ov.evolutionPeriodes.map(p => {
+                          const maxMoy = Math.max(...ov.evolutionPeriodes.filter(x => x.moyenne !== null).map(x => x.moyenne!), 1)
+                          const h = p.moyenne !== null ? Math.max(20, Math.round(p.moyenne / maxMoy * 100)) : 0
+                          return (
+                            <div key={p.code} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                              {p.moyenne !== null && <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-dark)' }}>{p.moyenne}</span>}
+                              <div style={{ width: '100%', maxWidth: 60, height: h, background: p.moyenne !== null ? 'var(--primary-dark)' : 'var(--bg-gray)', borderRadius: 8, transition: 'height 0.3s' }} />
+                              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>{p.code}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Row 3 : Score par niveau */}
+                <div style={{ ...cardS, marginBottom: 16 }}>
+                  <h3 style={titleS}>Score moyen par niveau</h3>
+                  {ov.scoreParNiveau.length === 0 ? (
+                    <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune donnée.</p>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1.5px solid var(--border-light)' }}>
+                          <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase' }}>Niveau</th>
+                          <th style={{ padding: '8px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase' }}>Élèves</th>
+                          <th style={{ padding: '8px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase' }}>Évalués</th>
+                          <th style={{ padding: '8px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase' }}>Couverture</th>
+                          <th style={{ padding: '8px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase' }}>Moy. (m/min)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ov.scoreParNiveau.map(n => {
+                          const pct = n.nbEleves > 0 ? Math.round(n.nbEvalues / n.nbEleves * 100) : 0
+                          return (
+                            <tr key={n.niveau} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                              <td style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--primary-dark)' }}>{n.niveau}</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>{n.nbEleves}</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>{n.nbEvalues}</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                                <span style={{ fontWeight: 700, color: pct >= 80 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626' }}>{pct}%</span>
+                              </td>
+                              <td style={{ padding: '10px 16px', textAlign: 'center', fontWeight: 800, fontSize: 15, color: 'var(--primary-dark)' }}>
+                                {n.moyenne !== null ? n.moyenne : '—'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                {/* Row 4 : Top/Bottom + Utilisateurs par rôle */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  {/* Top établissements */}
+                  <div style={cardS}>
+                    <h3 style={{ ...titleS, color: '#16a34a' }}>Top 5 établissements</h3>
+                    {ov.topEtabs.length === 0 ? (
+                      <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune donnée.</p>
+                    ) : ov.topEtabs.map((e, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: i < ov.topEtabs.length - 1 ? '1px solid var(--border-light)' : 'none' }}>
+                        <span style={{ fontWeight: 800, fontSize: 16, color: '#16a34a', width: 24, textAlign: 'center' }}>{i + 1}</span>
+                        <span style={{ flex: 1, fontSize: 13, color: 'var(--text-secondary)' }}>{e.nom}</span>
+                        <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--primary-dark)' }}>{e.moyenne} m/min</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Bottom établissements */}
+                  <div style={cardS}>
+                    <h3 style={{ ...titleS, color: '#dc2626' }}>5 établissements les plus fragiles</h3>
+                    {ov.bottomEtabs.length === 0 ? (
+                      <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune donnée.</p>
+                    ) : ov.bottomEtabs.map((e, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: i < ov.bottomEtabs.length - 1 ? '1px solid var(--border-light)' : 'none' }}>
+                        <span style={{ fontWeight: 800, fontSize: 14, color: '#dc2626', width: 50 }}>{e.pctFragiles}%</span>
+                        <span style={{ flex: 1, fontSize: 13, color: 'var(--text-secondary)' }}>{e.nom}</span>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-tertiary)' }}>{e.moyenne} m/min</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Row 5 : Alertes opérationnelles + QCM */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  {/* Établissements sans activité */}
+                  <div style={cardS}>
+                    <h3 style={titleS}>
+                      Établissements sans activité
+                      {ov.etabsSansActivite.length > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: '#dc2626', marginLeft: 8 }}>({ov.etabsSansActivite.length})</span>}
+                    </h3>
+                    {ov.etabsSansActivite.length === 0 ? (
+                      <p style={{ fontSize: 13, color: '#16a34a', fontWeight: 600 }}>Tous les établissements ont de l'activité.</p>
+                    ) : (
+                      <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {ov.etabsSansActivite.map((e, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, background: '#fef2f2' }}>
+                            <span style={{ color: '#dc2626', fontSize: 14 }}>!</span>
+                            <span style={{ fontSize: 13, color: '#7f1d1d' }}>{e.nom}</span>
+                            {e.ville && <span style={{ fontSize: 11, color: '#dc2626' }}>({e.ville})</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* QCM */}
+                  <div style={cardS}>
+                    <h3 style={titleS}>Compréhension (QCM)</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                      <div style={{ background: 'var(--bg-gray)', borderRadius: 12, padding: 16, textAlign: 'center' }}>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--primary-dark)' }}>{ov.qcmConfigures}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>Tests configurés</div>
+                      </div>
+                      <div style={{ background: 'var(--bg-gray)', borderRadius: 12, padding: 16, textAlign: 'center' }}>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--primary-dark)' }}>
+                          {ov.qcmElevesTotal > 0 ? Math.round(ov.qcmElevesComplete / ov.qcmElevesTotal * 100) : 0}%
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>Complétion QCM</div>
+                      </div>
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: 0 }}>
+                      {ov.qcmElevesComplete} élèves ont passé le QCM sur {ov.qcmElevesTotal} inscrits
+                    </p>
+                  </div>
+                </div>
+
+                {/* Row 6 : Enseignants sans saisie + Utilisateurs par rôle */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  {/* Enseignants sans saisie */}
+                  <div style={cardS}>
+                    <h3 style={titleS}>
+                      Enseignants sans saisie
+                      {ov.enseignantsSansSaisie.length > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: '#d97706', marginLeft: 8 }}>({ov.enseignantsSansSaisie.length})</span>}
+                    </h3>
+                    {ov.enseignantsSansSaisie.length === 0 ? (
+                      <p style={{ fontSize: 13, color: '#16a34a', fontWeight: 600 }}>Tous les enseignants ont saisi.</p>
+                    ) : (
+                      <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {ov.enseignantsSansSaisie.slice(0, 20).map((e, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: 8, background: '#fff7ed' }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>{e.prenom} {e.nom}</span>
+                            <span style={{ fontSize: 11, color: '#d97706' }}>{e.etablissement}</span>
+                          </div>
+                        ))}
+                        {ov.enseignantsSansSaisie.length > 20 && (
+                          <p style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center' }}>+ {ov.enseignantsSansSaisie.length - 20} autres</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Utilisateurs par rôle */}
-                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Utilisateurs par rôle</h3>
+                  <div style={cardS}>
+                    <h3 style={titleS}>Utilisateurs par rôle</h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {Object.entries(adminOverview.usersByRole).sort((a, b) => b[1] - a[1]).map(([role, count]) => (
+                      {Object.entries(ov.usersByRole).sort((a, b) => b[1] - a[1]).map(([role, count]) => (
                         <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div style={{ width: 120, fontSize: 13, color: 'var(--text-secondary)', flexShrink: 0 }}>{ROLE_LABELS[role] || role}</div>
                           <div style={{ flex: 1, height: 8, background: 'var(--bg-gray)', borderRadius: 4, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${Math.round((count / adminOverview.nbUtilisateurs) * 100)}%`, background: 'var(--primary-dark)', borderRadius: 4 }} />
+                            <div style={{ height: '100%', width: `${Math.round((count / ov.nbUtilisateurs) * 100)}%`, background: 'var(--primary-dark)', borderRadius: 4 }} />
                           </div>
                           <div style={{ width: 24, fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', textAlign: 'right' as const }}>{count}</div>
                         </div>
                       ))}
                     </div>
                   </div>
+                </div>
 
-                  {/* État des périodes */}
-                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>État des périodes</h3>
-                    {adminOverview.periodesDetail.length === 0 ? (
-                      <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune période configurée.</p>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {adminOverview.periodesDetail.map(p => (
-                          <div key={p.code} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: 'var(--bg-gray)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--primary-dark)' }}>{p.code}</span>
-                              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.label}</span>
-                            </div>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: p.actif ? '#dbeafe' : 'white', color: p.actif ? '#1d4ed8' : 'var(--text-tertiary)', border: `1px solid ${p.actif ? '#bfdbfe' : 'var(--border-light)'}` }}>
-                                {p.actif ? 'Active' : 'Inactive'}
-                              </span>
-                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: p.saisie_ouverte ? '#dcfce7' : 'white', color: p.saisie_ouverte ? '#16a34a' : 'var(--text-tertiary)', border: `1px solid ${p.saisie_ouverte ? '#bbf7d0' : 'var(--border-light)'}` }}>
-                                {p.saisie_ouverte ? 'Saisie ouverte' : 'Saisie fermée'}
-                              </span>
-                            </div>
+                {/* Row 7 : État des périodes */}
+                <div style={{ ...cardS, marginBottom: 16 }}>
+                  <h3 style={titleS}>État des périodes</h3>
+                  {ov.periodesDetail.length === 0 ? (
+                    <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune période configurée.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {ov.periodesDetail.map(p => (
+                        <div key={p.code} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, background: 'var(--bg-gray)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--primary-dark)' }}>{p.code}</span>
+                            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.label}</span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: p.actif ? '#dbeafe' : 'white', color: p.actif ? '#1d4ed8' : 'var(--text-tertiary)', border: `1px solid ${p.actif ? '#bfdbfe' : 'var(--border-light)'}` }}>{p.actif ? 'Active' : 'Inactive'}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: p.saisie_ouverte ? '#dcfce7' : 'white', color: p.saisie_ouverte ? '#16a34a' : 'var(--text-tertiary)', border: `1px solid ${p.saisie_ouverte ? '#bbf7d0' : 'var(--border-light)'}` }}>{p.saisie_ouverte ? 'Saisie ouverte' : 'Saisie fermée'}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </>
-            )}
+              )
+            })()}
 
             {/* ── Activité récente ── */}
             <div>

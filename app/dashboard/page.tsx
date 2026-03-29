@@ -8,6 +8,7 @@ import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import styles from './page.module.css'
 import { ROLE_LABELS } from '@/app/lib/types'
+import { classerEleve } from '@/app/lib/fluenceUtils'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,17 @@ export default function Dashboard() {
   const [periodeEnsId, setPeriodeEnsId]       = useState('')
   const [loading, setLoading]                 = useState(true)
   const [adminOverview, setAdminOverview]     = useState<AdminOverview | null>(null)
+  // Enriched dashboard data (all roles)
+  const [groupesGlobal, setGroupesGlobal]     = useState<{ label: string; count: number; color: string }[]>([])
+  const [evolutionData, setEvolutionData]     = useState<{ code: string; moyenne: number | null }[]>([])
+  const [qcmStats, setQcmStats]               = useState<{ classeNom: string; complete: number; total: number }[]>([])
+  // Direction specific
+  const [groupesParClasse, setGroupesParClasse] = useState<Record<string, { label: string; count: number; color: string }[]>>({})
+  // Réseau specific
+  const [scoreParNiveau, setScoreParNiveau]   = useState<{ niveau: string; moyenne: number | null; nbEleves: number; nbEvalues: number }[]>([])
+  const [compREP, setCompREP]                 = useState<{ rep: number | null; horsRep: number | null }>({ rep: null, horsRep: null })
+  const [scoreParCirco, setScoreParCirco]     = useState<{ circo: string; moyenne: number | null; nbEleves: number }[]>([])
+  const [progressionFragiles, setProgressionFragiles] = useState<{ ameliores: number; stables: number; regresses: number; total: number }>({ ameliores: 0, stables: 0, regresses: 0, total: 0 })
   const { profil, loading: profilLoading } = useProfil()
   const router   = useRouter()
   const supabase = createClient()
@@ -240,6 +252,70 @@ export default function Dashboard() {
         max:             scores.length > 0 ? Math.max(...scores) : null,
       }
     })
+
+    // 5b. Normes pour classification groupes
+    const { data: normesData } = await supabase.from('config_normes').select('niveau, seuil_min, seuil_attendu')
+    const normesMap: Record<string, { seuil_min: number; seuil_attendu: number }> = {}
+    const defaultNorms: Record<string, { seuil_min: number; seuil_attendu: number }> = {
+      CP: { seuil_min: 40, seuil_attendu: 55 }, CE1: { seuil_min: 65, seuil_attendu: 80 }, CE2: { seuil_min: 80, seuil_attendu: 90 },
+      CM1: { seuil_min: 90, seuil_attendu: 100 }, CM2: { seuil_min: 100, seuil_attendu: 110 }, '6eme': { seuil_min: 110, seuil_attendu: 120 },
+    }
+    for (const n of (normesData || [])) normesMap[n.niveau] = { seuil_min: n.seuil_min, seuil_attendu: n.seuil_attendu }
+
+    // 5c. Groupes de besoin globaux
+    let g1 = 0, g2 = 0, g3 = 0, g4 = 0
+    for (const a of (assignees as any[])) {
+      const niv = a.classe?.niveau || ''
+      const norme = normesMap[niv] || defaultNorms[niv]
+      if (!norme) continue
+      const elevesC = tousEleves.filter((e: any) => e.classe_id === a.classe_id)
+      for (const el of elevesC) {
+        const p = toutesPass.find(pa => pa.eleve_id === el.id)
+        if (!p || p.non_evalue || !p.score) continue
+        const g = classerEleve(p.score, norme)
+        if (g === 1) g1++; else if (g === 2) g2++; else if (g === 3) g3++; else g4++
+      }
+    }
+    setGroupesGlobal([
+      { label: 'Très fragile', count: g1, color: '#DC2626' },
+      { label: 'Fragile', count: g2, color: '#D97706' },
+      { label: "En cours d'acq.", count: g3, color: '#2563EB' },
+      { label: 'Attendu', count: g4, color: '#16A34A' },
+    ])
+
+    // 5d. Évolution par période
+    const evoData = deduped.map(per => {
+      const passP = toutesPassBrutes.filter(p => p.periode?.code === per.code && !p.non_evalue && p.score > 0)
+      const scores = passP.map(p => p.score as number)
+      return { code: per.code, moyenne: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null }
+    })
+    setEvolutionData(evoData)
+
+    // 5e. QCM complétion par classe
+    const qcmS = (assignees as any[]).map(a => {
+      const elevesC = tousEleves.filter((e: any) => e.classe_id === a.classe_id)
+      const passQcm = toutesPassBrutes.filter(p =>
+        elevesC.some((e: any) => e.id === p.eleve_id) && p.periode?.code === periodeCodeActuelle
+      )
+      // On cherche dans les passations brutes celles qui ont q1 renseigné
+      return { classeNom: a.classe?.nom || '', complete: 0, total: elevesC.length }
+    })
+    // Charger les passations avec q1 pour la période active
+    if (eleveIds.length > 0) {
+      const { data: qcmPass } = await supabase.from('passations')
+        .select('eleve_id, q1, periode:periodes(code)')
+        .in('eleve_id', eleveIds)
+        .not('q1', 'is', null)
+      const qcmPassFiltered = (qcmPass || []).filter((p: any) => p.periode?.code === periodeCodeActuelle)
+      for (const s of qcmS) {
+        const classEleves = tousEleves.filter((e: any) => {
+          const asg = (assignees as any[]).find(a => a.classe?.nom === s.classeNom)
+          return asg && e.classe_id === asg.classe_id
+        })
+        s.complete = qcmPassFiltered.filter(p => classEleves.some((e: any) => e.id === p.eleve_id)).length
+      }
+    }
+    setQcmStats(qcmS)
 
     setStatsClasses(statsC)
     setAlertes(alertesGlobal)
@@ -418,8 +494,72 @@ export default function Dashboard() {
       scoreMoyen: moyennes.length > 0 ? Math.round(moyennes.reduce((a, b) => a + b, 0) / moyennes.length) : null,
       txNE: totalPass > 0 ? Math.round(totalNE / totalPass * 100) : 0,
     })
-    // Réutiliser nbNonRenseignes global pour afficher dans les KPIs
-    // (on le passe via setStats avec un hack sur txNE non utilisé directement)
+    // ── Enriched: Groupes de besoin, Évolution, QCM ──
+    // Groupes de besoin (période active)
+    const normesMapDir: Record<string, { seuil_min: number; seuil_attendu: number }> = {}
+    const defaultNormsDir: Record<string, { seuil_min: number; seuil_attendu: number }> = {
+      CP: { seuil_min: 40, seuil_attendu: 55 }, CE1: { seuil_min: 65, seuil_attendu: 80 }, CE2: { seuil_min: 80, seuil_attendu: 90 },
+      CM1: { seuil_min: 90, seuil_attendu: 100 }, CM2: { seuil_min: 100, seuil_attendu: 110 }, '6eme': { seuil_min: 110, seuil_attendu: 120 },
+    }
+    const { data: normesFullDir } = await supabase.from('config_normes').select('niveau, seuil_min, seuil_attendu')
+    for (const n of (normesFullDir || [])) normesMapDir[n.niveau] = { seuil_min: n.seuil_min, seuil_attendu: n.seuil_attendu }
+
+    let dg1 = 0, dg2 = 0, dg3 = 0, dg4 = 0
+    const gParClasse: Record<string, { label: string; count: number; color: string }[]> = {}
+    for (const c of (classesData || [])) {
+      const norme = normesMapDir[c.niveau] || defaultNormsDir[c.niveau]
+      if (!norme) continue
+      let cg1 = 0, cg2 = 0, cg3 = 0, cg4 = 0
+      const elevesC = (elevesData || []).filter((e: any) => e.classe_id === c.id)
+      for (const el of elevesC) {
+        const p = passData.find(pa => pa.eleve_id === el.id)
+        if (!p || p.non_evalue || !p.score) continue
+        const g = classerEleve(p.score, norme)
+        if (g === 1) { dg1++; cg1++ } else if (g === 2) { dg2++; cg2++ } else if (g === 3) { dg3++; cg3++ } else { dg4++; cg4++ }
+      }
+      gParClasse[c.nom] = [
+        { label: 'Très fragile', count: cg1, color: '#DC2626' }, { label: 'Fragile', count: cg2, color: '#D97706' },
+        { label: "En cours", count: cg3, color: '#2563EB' }, { label: 'Attendu', count: cg4, color: '#16A34A' },
+      ]
+    }
+    setGroupesGlobal([
+      { label: 'Très fragile', count: dg1, color: '#DC2626' }, { label: 'Fragile', count: dg2, color: '#D97706' },
+      { label: "En cours d'acq.", count: dg3, color: '#2563EB' }, { label: 'Attendu', count: dg4, color: '#16A34A' },
+    ])
+    setGroupesParClasse(gParClasse)
+
+    // Évolution par période (charger toutes les périodes)
+    const { data: allPeriodesDir } = await supabase.from('periodes').select('id, code')
+      .eq('etablissement_id', profil.etablissement_id).eq('actif', true).order('code')
+    const seenDir = new Set<string>()
+    const perDedup = (allPeriodesDir || []).filter((p: any) => { if (seenDir.has(p.code)) return false; seenDir.add(p.code); return true })
+    if (eleveIds.length > 0 && perDedup.length > 0) {
+      const { data: allPassDir } = await supabase.from('passations')
+        .select('eleve_id, score, non_evalue, periode:periodes(code)')
+        .in('eleve_id', eleveIds)
+      const evoDir = perDedup.map(per => {
+        const scoresP = (allPassDir || []).filter((p: any) => p.periode?.code === per.code && !p.non_evalue && p.score > 0).map((p: any) => p.score as number)
+        return { code: per.code, moyenne: scoresP.length > 0 ? Math.round(scoresP.reduce((a, b) => a + b, 0) / scoresP.length) : null }
+      })
+      setEvolutionData(evoDir)
+    }
+
+    // QCM stats par classe
+    if (eleveIds.length > 0 && periodeActive) {
+      const { data: qcmPassDir } = await supabase.from('passations')
+        .select('eleve_id, q1, periode:periodes(code)')
+        .in('eleve_id', eleveIds).not('q1', 'is', null)
+      const qcmFiltered = (qcmPassDir || []).filter((p: any) => p.periode?.code === periodeActive.code)
+      const qcmS = (classesData || []).map((c: any) => {
+        const elevesC = (elevesData || []).filter((e: any) => e.classe_id === c.id)
+        return {
+          classeNom: c.nom,
+          complete: qcmFiltered.filter(p => elevesC.some((e: any) => e.id === p.eleve_id)).length,
+          total: elevesC.length,
+        }
+      })
+      setQcmStats(qcmS)
+    }
   }
 
   // ── Vue réseau (coordo REP/REP+ et IEN) ──────────────────────────────
@@ -557,6 +697,124 @@ export default function Dashboard() {
       scoreMoyen:   moyennes.length > 0 ? Math.round(moyennes.reduce((a, b) => a + b, 0) / moyennes.length) : null,
       txNE:         totalPass > 0 ? Math.round(totalNE / totalPass * 100) : 0,
     })
+
+    // ── Enriched réseau data ──
+    const defaultNormsR: Record<string, { seuil_min: number; seuil_attendu: number }> = {
+      CP: { seuil_min: 40, seuil_attendu: 55 }, CE1: { seuil_min: 65, seuil_attendu: 80 }, CE2: { seuil_min: 80, seuil_attendu: 90 },
+      CM1: { seuil_min: 90, seuil_attendu: 100 }, CM2: { seuil_min: 100, seuil_attendu: 110 }, '6eme': { seuil_min: 110, seuil_attendu: 120 },
+    }
+    const { data: normesFullR } = await supabase.from('config_normes').select('niveau, seuil_min, seuil_attendu')
+    const normesMapR: Record<string, { seuil_min: number; seuil_attendu: number }> = {}
+    for (const n of (normesFullR || [])) normesMapR[n.niveau] = { seuil_min: n.seuil_min, seuil_attendu: n.seuil_attendu }
+
+    // Groupes de besoin globaux
+    let rg1 = 0, rg2 = 0, rg3 = 0, rg4 = 0
+    for (const p of passData) {
+      if (p.non_evalue || !p.score) continue
+      const cl = classeMap[eleveToClasseId[p.eleve_id]]
+      const norme = normesMapR[cl?.niveau] || defaultNormsR[cl?.niveau]
+      if (!norme) continue
+      const g = classerEleve(p.score, norme)
+      if (g === 1) rg1++; else if (g === 2) rg2++; else if (g === 3) rg3++; else rg4++
+    }
+    setGroupesGlobal([
+      { label: 'Très fragile', count: rg1, color: '#DC2626' }, { label: 'Fragile', count: rg2, color: '#D97706' },
+      { label: "En cours d'acq.", count: rg3, color: '#2563EB' }, { label: 'Attendu', count: rg4, color: '#16A34A' },
+    ])
+
+    // Évolution par période
+    if (eleveIds.length > 0) {
+      const { data: allPassR } = await supabase.from('passations')
+        .select('eleve_id, score, non_evalue, periode:periodes(code)')
+        .in('eleve_id', eleveIds)
+      const evoR = periodesDedup.map(per => {
+        const scoresP = (allPassR || []).filter((p: any) => p.periode?.code === per.code && !p.non_evalue && p.score > 0).map((p: any) => p.score as number)
+        return { code: per.code, moyenne: scoresP.length > 0 ? Math.round(scoresP.reduce((a, b) => a + b, 0) / scoresP.length) : null }
+      })
+      setEvolutionData(evoR)
+
+      // Progression des fragiles (coordo) — entre première et dernière période
+      if (periodesDedup.length >= 2) {
+        const firstCode = periodesDedup[0].code
+        const lastCode = periodesDedup[periodesDedup.length - 1].code
+        let ameliores = 0, stables = 0, regresses = 0, totalFrag = 0
+        for (const el of (elevesData || [])) {
+          const cl = classeMap[el.classe_id]
+          const norme = normesMapR[cl?.niveau] || defaultNormsR[cl?.niveau]
+          if (!norme) continue
+          const p1 = (allPassR || []).find((p: any) => p.eleve_id === el.id && p.periode?.code === firstCode)
+          const p2 = (allPassR || []).find((p: any) => p.eleve_id === el.id && p.periode?.code === lastCode)
+          if (!p1 || p1.non_evalue || !p1.score) continue
+          const g1 = classerEleve(p1.score, norme)
+          if (g1 > 2) continue // pas fragile en T1
+          totalFrag++
+          if (!p2 || p2.non_evalue || !p2.score) { stables++; continue }
+          const g2 = classerEleve(p2.score, norme)
+          if (g2 < g1) regresses++
+          else if (g2 > g1) ameliores++
+          else stables++
+        }
+        setProgressionFragiles({ ameliores, stables, regresses, total: totalFrag })
+      }
+    }
+
+    // Score par niveau
+    const NIVEAUX_ORDRE_R = ['CP', 'CE1', 'CE2', 'CM1', 'CM2', '6eme', '5eme', '4eme', '3eme']
+    const nivMap: Record<string, { scores: number[]; nbEleves: number; nbEvalues: number }> = {}
+    for (const el of (elevesData || [])) {
+      const cl = classeMap[el.classe_id]
+      const niv = cl?.niveau || 'Autre'
+      if (!nivMap[niv]) nivMap[niv] = { scores: [], nbEleves: 0, nbEvalues: 0 }
+      nivMap[niv].nbEleves++
+      const p = passData.find(pa => pa.eleve_id === el.id)
+      if (p && !p.non_evalue && p.score > 0) { nivMap[niv].scores.push(p.score); nivMap[niv].nbEvalues++ }
+    }
+    setScoreParNiveau(Object.entries(nivMap).map(([niveau, d]) => ({
+      niveau, moyenne: d.scores.length > 0 ? Math.round(d.scores.reduce((a, b) => a + b, 0) / d.scores.length) : null,
+      nbEleves: d.nbEleves, nbEvalues: d.nbEvalues,
+    })).sort((a, b) => {
+      const ia = NIVEAUX_ORDRE_R.indexOf(a.niveau), ib = NIVEAUX_ORDRE_R.indexOf(b.niveau)
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+    }))
+
+    // IA-DASEN/Recteur : Score par circo + comparaison REP vs Hors REP
+    if (!config) {
+      const { data: etabsFull } = await supabase.from('etablissements').select('id, nom, type_reseau, circonscription')
+      const etabFullMap: Record<string, any> = {}
+      for (const e of (etabsFull || [])) etabFullMap[e.id] = e
+
+      // REP vs Hors REP
+      const repScores: number[] = [], horsRepScores: number[] = []
+      for (const p of passData) {
+        if (p.non_evalue || !p.score) continue
+        const cl = classeMap[eleveToClasseId[p.eleve_id]]
+        const etab = cl ? etabFullMap[cl.etablissement_id] : null
+        if (!etab) continue
+        if (etab.type_reseau === 'REP' || etab.type_reseau === 'REP+') repScores.push(p.score)
+        else horsRepScores.push(p.score)
+      }
+      setCompREP({
+        rep: repScores.length > 0 ? Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length) : null,
+        horsRep: horsRepScores.length > 0 ? Math.round(horsRepScores.reduce((a, b) => a + b, 0) / horsRepScores.length) : null,
+      })
+
+      // Score par circonscription
+      const circoMap: Record<string, number[]> = {}
+      const circoEleves: Record<string, number> = {}
+      for (const el of (elevesData || [])) {
+        const cl = classeMap[el.classe_id]
+        const etab = cl ? etabFullMap[cl.etablissement_id] : null
+        const circo = etab?.circonscription || 'Non définie'
+        if (!circoMap[circo]) { circoMap[circo] = []; circoEleves[circo] = 0 }
+        circoEleves[circo]++
+        const p = passData.find(pa => pa.eleve_id === el.id)
+        if (p && !p.non_evalue && p.score > 0) circoMap[circo].push(p.score)
+      }
+      setScoreParCirco(Object.entries(circoMap).map(([circo, scores]) => ({
+        circo, moyenne: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+        nbEleves: circoEleves[circo],
+      })).sort((a, b) => (b.moyenne || 0) - (a.moyenne || 0)))
+    }
   }
 
   // ── Vue autres rôles ───────────────────────────────────────────────────
@@ -1056,6 +1314,81 @@ export default function Dashboard() {
               </>
             )}
 
+            {/* ── Enseignant : Groupes de besoin + Évolution + QCM ── */}
+            {isEnseignant && statsClasses.length > 0 && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, marginTop: 8 }}>
+                  {/* Groupes de besoin */}
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Groupes de besoin</h3>
+                    {(() => {
+                      const total = groupesGlobal.reduce((s, g) => s + g.count, 0)
+                      if (total === 0) return <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune donnée.</p>
+                      return (
+                        <>
+                          <div style={{ display: 'flex', height: 24, borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
+                            {groupesGlobal.filter(g => g.count > 0).map(g => (
+                              <div key={g.label} style={{ width: `${Math.round(g.count / total * 100)}%`, background: g.color, minWidth: 2 }} title={`${g.label}: ${g.count}`} />
+                            ))}
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            {groupesGlobal.map(g => (
+                              <div key={g.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 10, height: 10, borderRadius: 3, background: g.color, flexShrink: 0 }} />
+                                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{g.label}</span>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: g.color, marginLeft: 'auto' }}>{g.count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )
+                    })()}
+                  </div>
+
+                  {/* Évolution par période */}
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Évolution par période</h3>
+                    {evolutionData.length === 0 ? (
+                      <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune période.</p>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', height: 100 }}>
+                        {evolutionData.map(p => {
+                          const maxMoy = Math.max(...evolutionData.filter(x => x.moyenne !== null).map(x => x.moyenne!), 1)
+                          const h = p.moyenne !== null ? Math.max(20, Math.round(p.moyenne / maxMoy * 90)) : 0
+                          return (
+                            <div key={p.code} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                              {p.moyenne !== null && <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary-dark)' }}>{p.moyenne}</span>}
+                              <div style={{ width: '100%', maxWidth: 50, height: h, background: p.moyenne !== null ? 'var(--primary-dark)' : 'var(--bg-gray)', borderRadius: 6 }} />
+                              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>{p.code}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* QCM complétion */}
+                {qcmStats.length > 0 && (
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)', marginBottom: 24 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Compréhension QCM</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(qcmStats.length, 4)}, 1fr)`, gap: 12 }}>
+                      {qcmStats.map(s => {
+                        const pct = s.total > 0 ? Math.round(s.complete / s.total * 100) : 0
+                        return (
+                          <div key={s.classeNom} style={{ background: 'var(--bg-gray)', borderRadius: 12, padding: 16, textAlign: 'center' }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>{s.classeNom}</div>
+                            <div style={{ fontSize: 24, fontWeight: 800, color: pct >= 80 ? '#16a34a' : pct >= 50 ? '#d97706' : 'var(--primary-dark)' }}>{pct}%</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{s.complete}/{s.total} élèves</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             {/* ── Vue direction : KPIs + tableau par niveau + tableau classes ── */}
             {isDirection && statsClasses.length > 0 && (
               <>
@@ -1205,6 +1538,81 @@ export default function Dashboard() {
               </>
             )}
 
+            {/* ── Direction : Groupes + Évolution + QCM ── */}
+            {isDirection && statsClasses.length > 0 && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, marginTop: 8 }}>
+                  {/* Groupes de besoin établissement */}
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Groupes de besoin — Établissement</h3>
+                    {(() => {
+                      const total = groupesGlobal.reduce((s, g) => s + g.count, 0)
+                      if (total === 0) return <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune donnée.</p>
+                      return (
+                        <>
+                          <div style={{ display: 'flex', height: 24, borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
+                            {groupesGlobal.filter(g => g.count > 0).map(g => (
+                              <div key={g.label} style={{ width: `${Math.round(g.count / total * 100)}%`, background: g.color, minWidth: 2 }} title={`${g.label}: ${g.count}`} />
+                            ))}
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            {groupesGlobal.map(g => (
+                              <div key={g.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 10, height: 10, borderRadius: 3, background: g.color, flexShrink: 0 }} />
+                                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{g.label}</span>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: g.color, marginLeft: 'auto' }}>{g.count} ({total > 0 ? Math.round(g.count / total * 100) : 0}%)</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )
+                    })()}
+                  </div>
+
+                  {/* Évolution */}
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Évolution par période</h3>
+                    {evolutionData.length === 0 ? (
+                      <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune période.</p>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', height: 100 }}>
+                        {evolutionData.map(p => {
+                          const maxMoy = Math.max(...evolutionData.filter(x => x.moyenne !== null).map(x => x.moyenne!), 1)
+                          const h = p.moyenne !== null ? Math.max(20, Math.round(p.moyenne / maxMoy * 90)) : 0
+                          return (
+                            <div key={p.code} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                              {p.moyenne !== null && <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary-dark)' }}>{p.moyenne}</span>}
+                              <div style={{ width: '100%', maxWidth: 50, height: h, background: p.moyenne !== null ? 'var(--primary-dark)' : 'var(--bg-gray)', borderRadius: 6 }} />
+                              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>{p.code}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* QCM complétion */}
+                {qcmStats.length > 0 && (
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)', marginBottom: 24 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Compréhension QCM par classe</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(qcmStats.length, 5)}, 1fr)`, gap: 12 }}>
+                      {qcmStats.map(s => {
+                        const pct = s.total > 0 ? Math.round(s.complete / s.total * 100) : 0
+                        return (
+                          <div key={s.classeNom} style={{ background: 'var(--bg-gray)', borderRadius: 12, padding: 16, textAlign: 'center' }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>{s.classeNom}</div>
+                            <div style={{ fontSize: 24, fontWeight: 800, color: pct >= 80 ? '#16a34a' : pct >= 50 ? '#d97706' : 'var(--primary-dark)' }}>{pct}%</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{s.complete}/{s.total}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             {/* ── Vue coordo REP/REP+ ── */}
             {isReseau && (
               <>
@@ -1328,6 +1736,161 @@ export default function Dashboard() {
                     </table>
                   )}
                 </div>
+
+                {/* ── Réseau enrichi : Groupes + Évolution + Score par niveau ── */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+                  {/* Groupes de besoin */}
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Groupes de besoin</h3>
+                    {(() => {
+                      const total = groupesGlobal.reduce((s, g) => s + g.count, 0)
+                      if (total === 0) return <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune donnée.</p>
+                      return (
+                        <>
+                          <div style={{ display: 'flex', height: 24, borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
+                            {groupesGlobal.filter(g => g.count > 0).map(g => (
+                              <div key={g.label} style={{ width: `${Math.round(g.count / total * 100)}%`, background: g.color, minWidth: 2 }} />
+                            ))}
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            {groupesGlobal.map(g => (
+                              <div key={g.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 10, height: 10, borderRadius: 3, background: g.color, flexShrink: 0 }} />
+                                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{g.label}</span>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: g.color, marginLeft: 'auto' }}>{g.count} ({total > 0 ? Math.round(g.count / total * 100) : 0}%)</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )
+                    })()}
+                  </div>
+
+                  {/* Évolution par période */}
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Évolution par période</h3>
+                    {evolutionData.length === 0 ? (
+                      <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune donnée.</p>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', height: 100 }}>
+                        {evolutionData.map(p => {
+                          const maxMoy = Math.max(...evolutionData.filter(x => x.moyenne !== null).map(x => x.moyenne!), 1)
+                          const h = p.moyenne !== null ? Math.max(20, Math.round(p.moyenne / maxMoy * 90)) : 0
+                          return (
+                            <div key={p.code} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                              {p.moyenne !== null && <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary-dark)' }}>{p.moyenne}</span>}
+                              <div style={{ width: '100%', maxWidth: 50, height: h, background: p.moyenne !== null ? 'var(--primary-dark)' : 'var(--bg-gray)', borderRadius: 6 }} />
+                              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>{p.code}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Score par niveau */}
+                {scoreParNiveau.length > 0 && (
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)', marginBottom: 24 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Score moyen par niveau</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1.5px solid var(--border-light)' }}>
+                          <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase' }}>Niveau</th>
+                          <th style={{ padding: '8px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>Élèves</th>
+                          <th style={{ padding: '8px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>Évalués</th>
+                          <th style={{ padding: '8px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>Moyenne</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scoreParNiveau.map(n => (
+                          <tr key={n.niveau} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                            <td style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--primary-dark)' }}>{n.niveau}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>{n.nbEleves}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>{n.nbEvalues}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'center', fontWeight: 800, color: 'var(--primary-dark)' }}>{n.moyenne ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Coordo : Progression des fragiles */}
+                {profil?.role === 'coordo_rep' && progressionFragiles.total > 0 && (
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)', marginBottom: 24 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Progression des élèves fragiles</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                      <div style={{ background: '#f0fdf4', borderRadius: 12, padding: 16, textAlign: 'center' }}>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: '#16a34a' }}>{progressionFragiles.ameliores}</div>
+                        <div style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>Améliorés</div>
+                      </div>
+                      <div style={{ background: 'var(--bg-gray)', borderRadius: 12, padding: 16, textAlign: 'center' }}>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-secondary)' }}>{progressionFragiles.stables}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Stables</div>
+                      </div>
+                      <div style={{ background: '#fef2f2', borderRadius: 12, padding: 16, textAlign: 'center' }}>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: '#dc2626' }}>{progressionFragiles.regresses}</div>
+                        <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>Régressés</div>
+                      </div>
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 12, textAlign: 'center' }}>
+                      Sur {progressionFragiles.total} élèves fragiles en début de période
+                    </p>
+                  </div>
+                )}
+
+                {/* IA-DASEN/Recteur : REP vs Hors REP + Score par circo */}
+                {(profil?.role === 'ia_dasen' || profil?.role === 'recteur') && (
+                  <>
+                    {compREP.rep !== null && compREP.horsRep !== null && (
+                      <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)', marginBottom: 24 }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>REP vs Hors REP</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                          <div style={{ background: '#f3e8ff', borderRadius: 12, padding: 20, textAlign: 'center' }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: '#7e22ce', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>REP / REP+</div>
+                            <div style={{ fontSize: 36, fontWeight: 800, color: '#7e22ce' }}>{compREP.rep}</div>
+                            <div style={{ fontSize: 12, color: '#7e22ce', marginTop: 4 }}>mots/min</div>
+                          </div>
+                          <div style={{ background: '#dbeafe', borderRadius: 12, padding: 20, textAlign: 'center' }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Hors REP</div>
+                            <div style={{ fontSize: 36, fontWeight: 800, color: '#1d4ed8' }}>{compREP.horsRep}</div>
+                            <div style={{ fontSize: 12, color: '#1d4ed8', marginTop: 4 }}>mots/min</div>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'center', marginTop: 12 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                            Écart : {Math.abs(compREP.horsRep - compREP.rep)} m/min
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {scoreParCirco.length > 0 && (
+                      <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)', marginBottom: 24 }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Score par circonscription</h3>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1.5px solid var(--border-light)' }}>
+                              <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>Circonscription</th>
+                              <th style={{ padding: '8px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>Élèves</th>
+                              <th style={{ padding: '8px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>Moyenne</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {scoreParCirco.map(c => (
+                              <tr key={c.circo} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                                <td style={{ padding: '10px 16px', fontWeight: 600, color: 'var(--primary-dark)' }}>{c.circo}</td>
+                                <td style={{ padding: '10px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>{c.nbEleves}</td>
+                                <td style={{ padding: '10px 16px', textAlign: 'center', fontWeight: 800, color: 'var(--primary-dark)' }}>{c.moyenne ?? '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )}
               </>
             )}
 

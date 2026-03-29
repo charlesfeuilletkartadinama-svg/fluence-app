@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import styles from './eleve.module.css'
+import type { Norme } from '@/app/lib/types'
+import { GROUPES_CONFIG as GROUPES } from '@/app/lib/types'
+import { classerEleve as _classerEleve } from '@/app/lib/fluenceUtils'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -29,26 +32,11 @@ type Passation = {
   periode: { id: string; code: string; label: string }
 }
 
-type Norme = { niveau: string; periode_id: string; seuil_min: number; seuil_attendu: number }
-
-// ── Constants ─────────────────────────────────────────────────────────────
-
-const GROUPES = [
-  { id: 1, label: 'Très fragile',    color: '#DC2626', bg: 'rgba(220,38,38,0.08)'  },
-  { id: 2, label: 'Fragile',         color: '#D97706', bg: 'rgba(217,119,6,0.08)'  },
-  { id: 3, label: "En cours d'acq.", color: '#2563EB', bg: 'rgba(37,99,235,0.08)'  },
-  { id: 4, label: 'Attendu',         color: '#16A34A', bg: 'rgba(22,163,74,0.08)'  },
-]
-
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function classerEleve(score: number, norme: Norme | undefined): 1 | 2 | 3 | 4 {
   if (!norme) return 4
-  const s70 = Math.round(norme.seuil_min * 0.70)
-  if (score < s70)              return 1
-  if (score < norme.seuil_min)  return 2
-  if (score < norme.seuil_attendu) return 3
-  return 4
+  return _classerEleve(score, norme)
 }
 
 function compPct(qs: (string | null)[]): number {

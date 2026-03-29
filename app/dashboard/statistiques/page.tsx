@@ -7,12 +7,10 @@ import { useProfil } from '@/app/lib/useProfil'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import styles from './statistiques.module.css'
+import type { Classe, Periode, Norme } from '@/app/lib/types'
+import { classerEleve as _classerEleve } from '@/app/lib/fluenceUtils'
 
 // ── Types ──────────────────────────────────────────────────────────────────
-
-type Classe  = { id: string; nom: string; niveau: string }
-type Periode = { id: string; code: string; label: string }
-type Norme   = { niveau: string; periode_id: string; seuil_min: number; seuil_attendu: number }
 
 type PassData = {
   score:  number | null
@@ -77,11 +75,7 @@ const GROUPES = [
 
 function classerEleve(score: number, norme: Norme | undefined): 1 | 2 | 3 | 4 {
   if (!norme) return 4
-  const seuil70 = Math.round(norme.seuil_min * 0.70)
-  if (score < seuil70)            return 1
-  if (score < norme.seuil_min)    return 2
-  if (score < norme.seuil_attendu) return 3
-  return 4
+  return _classerEleve(score, norme)
 }
 
 function calcCompPct(qs: (string | null)[]): number {

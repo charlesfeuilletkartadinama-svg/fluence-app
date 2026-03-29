@@ -56,10 +56,13 @@ export default function Home() {
     if (authErr || !authData.user) {
       setErreur(authErr?.message || 'Erreur lors de la création du compte.'); setLoading(false); return
     }
-    await supabase.from('profils').insert({
+    const { error: profErr } = await supabase.from('profils').insert({
       id: authData.user.id, nom: nom.toUpperCase(), prenom,
       role: invitation.role, etablissement_id: invitation.etablissement_id,
     })
+    if (profErr) {
+      setErreur('Compte créé mais erreur profil. Contactez votre administrateur.'); setLoading(false); return
+    }
     router.push('/dashboard')
   }
 

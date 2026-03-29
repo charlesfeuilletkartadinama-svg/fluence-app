@@ -6,20 +6,10 @@ import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
+import type { Classe, Periode, Norme } from '@/app/lib/types'
+import { classerEleve } from '@/app/lib/fluenceUtils'
 
 // ── Types ──────────────────────────────────────────────────────────────────
-
-type Classe = {
-  id: string
-  nom: string
-  niveau: string
-}
-
-type Periode = {
-  id: string
-  code: string
-  label: string
-}
 
 type EleveScore = {
   id: string
@@ -35,12 +25,6 @@ type EleveScore = {
   q6: string | null
 }
 
-type Norme = {
-  niveau: string
-  seuil_min: number
-  seuil_attendu: number
-}
-
 type Groupe = {
   id: 1 | 2 | 3 | 4
   label: string
@@ -52,13 +36,6 @@ type Groupe = {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function classerEleve(score: number, norme: Norme): 1 | 2 | 3 | 4 {
-  const seuilTresFrag = Math.round(norme.seuil_min * 0.70)
-  if (score < seuilTresFrag)              return 1
-  if (score < norme.seuil_min)            return 2
-  if (score < norme.seuil_attendu)        return 3
-  return 4
-}
 
 function scoreComprehension(eleve: EleveScore): string {
   const reponses = [eleve.q1, eleve.q2, eleve.q3, eleve.q4, eleve.q5, eleve.q6]

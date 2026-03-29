@@ -6,39 +6,8 @@ import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
-
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-type Etablissement = {
-  id: string; nom: string; type: string; type_reseau: string
-  ville: string | null; departement: string | null; circonscription: string | null
-}
-type Periode = {
-  id: string; code: string; label: string; actif: boolean
-  etablissement_id: string; date_debut: string | null; date_fin: string | null
-  saisie_ouverte: boolean; type: string | null
-}
-type Norme = { id: string; niveau: string; seuil_min: number; seuil_attendu: number; periode_id: string | null }
-type CoorDoEtab = {
-  id: string; coordo_id: string; etablissement_id: string
-  coordo: { nom: string; prenom: string } | null; etablissement: { nom: string } | null
-}
-type IenEtab = {
-  id: string; ien_id: string; etablissement_id: string
-  ien: { nom: string; prenom: string } | null; etablissement: { nom: string } | null
-}
-type ProfilOption = { id: string; nom: string; prenom: string; role: string }
-type Invitation = {
-  id: string; code: string; role: string; etablissement_id: string | null; actif: boolean
-}
-type UserRow = { id: string; nom: string; prenom: string; role: string; etablissement_id: string | null }
-
-// ── Constantes ─────────────────────────────────────────────────────────────────
-
-const ROLE_LABELS: Record<string, string> = {
-  enseignant: 'Enseignant', directeur: 'Directeur', principal: 'Principal',
-  coordo_rep: 'Coordo REP+', ien: 'IEN', ia_dasen: 'IA-DASEN', recteur: 'Recteur', admin: 'Admin',
-}
+import type { Etablissement, Periode, Norme, CoorDoEtab, IenEtab, ProfilOption, Invitation, UserRow, Departement, Circonscription, Ville } from '@/app/lib/types'
+import { ROLE_LABELS } from '@/app/lib/types'
 
 // ── Composant principal ────────────────────────────────────────────────────────
 
@@ -51,6 +20,9 @@ export default function Admin() {
   const [invitations, setInvitations]         = useState<Invitation[]>([])
   const [monReseau, setMonReseau]             = useState<Etablissement[]>([])
   const [loading, setLoading]                 = useState(true)
+  const [departements, setDepartements]       = useState<Departement[]>([])
+  const [circonscriptions, setCirconscriptions] = useState<Circonscription[]>([])
+  const [villes, setVilles]                   = useState<Ville[]>([])
   const [editingEtabId, setEditingEtabId]     = useState<string | null>(null)
   const [newPeriodeCode, setNewPeriodeCode]   = useState('')
   const [newPeriodeLabel, setNewPeriodeLabel] = useState('')
@@ -63,10 +35,21 @@ export default function Admin() {
 
   const ONGLETS = isReseau
     ? ['Mon réseau', 'Périodes', 'Normes']
-    : ['Vue d\'ensemble', 'Établissements', 'Périodes', 'Normes', 'Utilisateurs', 'Invitations', 'Affectations']
+    : ['Vue d\'ensemble', 'Établissements', 'Géographie', 'Périodes', 'Normes', 'Utilisateurs', 'Invitations', 'Affectations']
 
-  const periodesOnglet = isReseau ? 1 : 2
-  const normesOnglet   = isReseau ? 2 : 3
+  const periodesOnglet = isReseau ? 1 : 3
+  const normesOnglet   = isReseau ? 2 : 4
+
+  // GeoData dynamique (construit depuis Supabase)
+  const geoData: Record<string, Record<string, string[]>> = {}
+  for (const dept of departements) {
+    geoData[dept.nom] = {}
+    for (const circo of circonscriptions.filter(c => c.departement_id === dept.id)) {
+      geoData[dept.nom][circo.nom] = villes
+        .filter(v => v.circonscription_id === circo.id)
+        .map(v => v.nom)
+    }
+  }
 
   useEffect(() => {
     if (!profilLoading && profil) {
@@ -104,7 +87,7 @@ export default function Admin() {
       return
     }
 
-    const [etabRes, periRes, ceRes, ienRes, invRes] = await Promise.all([
+    const [etabRes, periRes, ceRes, ienRes, invRes, deptRes, circoRes, villeRes] = await Promise.all([
       supabase.from('etablissements')
         .select('id, nom, type, type_reseau, ville, departement, circonscription').order('nom'),
       supabase.from('periodes')
@@ -115,12 +98,18 @@ export default function Admin() {
         .select('id, ien_id, etablissement_id, ien:profils(nom, prenom), etablissement:etablissements(nom)').order('ien_id'),
       supabase.from('invitations')
         .select('id, code, role, etablissement_id, actif').order('code'),
+      supabase.from('departements').select('id, nom').order('nom'),
+      supabase.from('circonscriptions').select('id, nom, departement_id').order('nom'),
+      supabase.from('villes').select('id, nom, circonscription_id').order('nom'),
     ])
     setEtablissements(etabRes.data || [])
     setPeriodes(periRes.data || [])
     setCoordoEtabs((ceRes.data || []) as unknown as CoorDoEtab[])
     setIenEtabs((ienRes.data || []) as unknown as IenEtab[])
     setInvitations((invRes.data || []) as unknown as Invitation[])
+    setDepartements(deptRes.data || [])
+    setCirconscriptions(circoRes.data || [])
+    setVilles(villeRes.data || [])
     setLoading(false)
   }
 
@@ -316,6 +305,7 @@ export default function Admin() {
                     <EtablissementRow
                       key={e.id}
                       e={e}
+                      geoData={geoData}
                       editing={editingEtabId === e.id}
                       onEdit={() => setEditingEtabId(e.id)}
                       onCancel={() => setEditingEtabId(null)}
@@ -371,8 +361,8 @@ export default function Admin() {
                   {periodes.map(p => (
                     <PeriodeRow key={p.id} periode={p}
                       isReseau={isReseau}
-                      onToggleActif={() => togglePeriode(p.id, p.actif)}
-                      onToggleSaisie={() => toggleSaisie(p.id, p.saisie_ouverte)}
+                      onToggleActif={() => togglePeriode(p.id, !!p.actif)}
+                      onToggleSaisie={() => toggleSaisie(p.id, !!p.saisie_ouverte)}
                       onUpdateDates={(d, f) => updateDates(p.id, d, f)}
                       onUpdateType={t => updateTypePeriode(p.id, t)}
                     />
@@ -388,13 +378,23 @@ export default function Admin() {
           <NormesTab supabase={supabase} periodes={periodes} profil={profil} />
         )}
 
+        {/* ── Géographie ── */}
+        {!isReseau && onglet === 2 && (
+          <GeographieTab
+            supabase={supabase}
+            departements={departements} setDepartements={setDepartements}
+            circonscriptions={circonscriptions} setCirconscriptions={setCirconscriptions}
+            villes={villes} setVilles={setVilles}
+          />
+        )}
+
         {/* ── Utilisateurs ── */}
-        {!isReseau && onglet === 4 && (
+        {!isReseau && onglet === 5 && (
           <UtilisateursTab supabase={supabase} etablissements={etablissements} />
         )}
 
         {/* ── Invitations ── */}
-        {!isReseau && onglet === 5 && (
+        {!isReseau && onglet === 6 && (
           <InvitationsTab
             etablissements={etablissements}
             invitations={invitations}
@@ -406,7 +406,7 @@ export default function Admin() {
         )}
 
         {/* ── Affectations ── */}
-        {!isReseau && onglet === 6 && (
+        {!isReseau && onglet === 7 && (
           <AffectationsTab
             supabase={supabase}
             etablissements={etablissements}
@@ -441,24 +441,11 @@ const A = {
   emptyState:   { background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 40, textAlign: 'center' as const, fontSize: 14, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' },
 }
 
-// ── Données géographiques Guyane ───────────────────────────────────────────────
-
-const GEO_DATA: Record<string, Record<string, string[]>> = {
-  'Guyane (973)': {
-    'Cayenne 1': ['Cayenne'],
-    'Cayenne 2': ['Rémire-Montjoly', 'Matoury', 'Montsinéry-Tonnégrande'],
-    'Kourou': ['Kourou', 'Macouria', 'Sinnamary', 'Iracoubo'],
-    'Saint-Laurent-du-Maroni': ['Saint-Laurent-du-Maroni', 'Mana', 'Awala-Yalimapo'],
-    'Haut-Maroni': ['Maripasoula', 'Grand-Santi', 'Papaichton', 'Apatou'],
-    'Oyapock': ['Saint-Georges-de-l\'Oyapock', 'Camopi', 'Ouanary', 'Régina'],
-    'Roura': ['Roura', 'Cacao', 'Saint-Élie'],
-  },
-}
-
 // ── EtablissementRow ───────────────────────────────────────────────────────────
 
-function EtablissementRow({ e, editing, onEdit, onCancel, onSave, onDelete }: {
+function EtablissementRow({ e, geoData, editing, onEdit, onCancel, onSave, onDelete }: {
   e: Etablissement
+  geoData: Record<string, Record<string, string[]>>
   editing: boolean
   onEdit: () => void
   onCancel: () => void
@@ -473,9 +460,9 @@ function EtablissementRow({ e, editing, onEdit, onCancel, onSave, onDelete }: {
   const [ville,  setVille]  = useState(e.ville          || '')
   const [saving, setSaving] = useState(false)
 
-  const depts  = Object.keys(GEO_DATA)
-  const circos = dept ? Object.keys(GEO_DATA[dept] || {}) : []
-  const villes = dept && circo ? (GEO_DATA[dept]?.[circo] || []) : []
+  const depts  = Object.keys(geoData)
+  const circos = dept ? Object.keys(geoData[dept] || {}) : []
+  const villes = dept && circo ? (geoData[dept]?.[circo] || []) : []
 
   function onDeptChange(val: string) { setDept(val); setCirco(''); setVille('') }
   function onCircoChange(val: string) { setCirco(val); setVille('') }
@@ -576,6 +563,171 @@ function EtablissementRow({ e, editing, onEdit, onCancel, onSave, onDelete }: {
         </tr>
       )}
     </>
+  )
+}
+
+// ── GeographieTab ──────────────────────────────────────────────────────────────
+
+function GeographieTab({ supabase, departements, setDepartements, circonscriptions, setCirconscriptions, villes, setVilles }: {
+  supabase: any
+  departements: Departement[]
+  setDepartements: React.Dispatch<React.SetStateAction<Departement[]>>
+  circonscriptions: Circonscription[]
+  setCirconscriptions: React.Dispatch<React.SetStateAction<Circonscription[]>>
+  villes: Ville[]
+  setVilles: React.Dispatch<React.SetStateAction<Ville[]>>
+}) {
+  const [selDept,  setSelDept]  = useState('')
+  const [selCirco, setSelCirco] = useState('')
+  const [newDept,  setNewDept]  = useState('')
+  const [newCirco, setNewCirco] = useState('')
+  const [newVille, setNewVille] = useState('')
+  const [errDept,  setErrDept]  = useState('')
+  const [errCirco, setErrCirco] = useState('')
+  const [errVille, setErrVille] = useState('')
+
+  const visCircos = circonscriptions.filter(c => c.departement_id === selDept)
+  const visVilles = villes.filter(v => v.circonscription_id === selCirco)
+
+  async function ajouterDept() {
+    if (!newDept.trim()) return
+    setErrDept('')
+    const { data, error } = await supabase.from('departements').insert({ nom: newDept.trim() }).select().single()
+    if (error) { setErrDept('Ce département existe déjà.'); return }
+    if (data) { setDepartements(prev => [...prev, data]); setNewDept('') }
+  }
+  async function supprimerDept(id: string) {
+    if (!window.confirm('Supprimer ce département et toutes ses circonscriptions / villes ?')) return
+    await supabase.from('departements').delete().eq('id', id)
+    const ids = circonscriptions.filter(c => c.departement_id === id).map(c => c.id)
+    setVilles(prev => prev.filter(v => !ids.includes(v.circonscription_id)))
+    setCirconscriptions(prev => prev.filter(c => c.departement_id !== id))
+    setDepartements(prev => prev.filter(d => d.id !== id))
+    if (selDept === id) { setSelDept(''); setSelCirco('') }
+  }
+  async function ajouterCirco() {
+    if (!newCirco.trim() || !selDept) return
+    setErrCirco('')
+    const { data, error } = await supabase.from('circonscriptions').insert({ nom: newCirco.trim(), departement_id: selDept }).select().single()
+    if (error) { setErrCirco('Cette circonscription existe déjà.'); return }
+    if (data) { setCirconscriptions(prev => [...prev, data]); setNewCirco('') }
+  }
+  async function supprimerCirco(id: string) {
+    if (!window.confirm('Supprimer cette circonscription et toutes ses villes ?')) return
+    await supabase.from('circonscriptions').delete().eq('id', id)
+    setVilles(prev => prev.filter(v => v.circonscription_id !== id))
+    setCirconscriptions(prev => prev.filter(c => c.id !== id))
+    if (selCirco === id) setSelCirco('')
+  }
+  async function ajouterVille() {
+    if (!newVille.trim() || !selCirco) return
+    setErrVille('')
+    const { data, error } = await supabase.from('villes').insert({ nom: newVille.trim(), circonscription_id: selCirco }).select().single()
+    if (error) { setErrVille('Cette ville existe déjà.'); return }
+    if (data) { setVilles(prev => [...prev, data]); setNewVille('') }
+  }
+  async function supprimerVille(id: string) {
+    await supabase.from('villes').delete().eq('id', id)
+    setVilles(prev => prev.filter(v => v.id !== id))
+  }
+
+  const panel: React.CSSProperties = { background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }
+  const panelHead: React.CSSProperties = { padding: '12px 16px', borderBottom: '1.5px solid var(--border-light)', background: 'var(--bg-gray)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+  const panelTitle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'var(--font-sans)' }
+  const hint: React.CSSProperties = { fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }
+  const item = (sel: boolean): React.CSSProperties => ({
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid var(--border-light)',
+    background: sel ? 'var(--bg-light)' : 'white',
+    fontFamily: 'var(--font-sans)', fontSize: 13,
+    color: sel ? 'var(--primary-dark)' : 'var(--text-secondary)', fontWeight: sel ? 700 : 400,
+  })
+  const addRow: React.CSSProperties = { padding: '10px 12px', borderTop: '1.5px solid var(--border-light)', display: 'flex', gap: 8 }
+  const btnX: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontSize: 13, padding: '0 4px', lineHeight: 1 }
+  const empty: React.CSSProperties = { padding: '20px 16px', fontSize: 13, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)', textAlign: 'center' }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, alignItems: 'start' }}>
+
+      {/* Départements */}
+      <div style={panel}>
+        <div style={panelHead}>
+          <span style={panelTitle}>Départements ({departements.length})</span>
+        </div>
+        <div style={{ overflowY: 'auto', maxHeight: 420 }}>
+          {departements.length === 0 && <p style={empty}>Aucun département</p>}
+          {departements.map(d => (
+            <div key={d.id} style={item(selDept === d.id)} onClick={() => { setSelDept(d.id); setSelCirco('') }}>
+              <span>{d.nom}</span>
+              <button onClick={ev => { ev.stopPropagation(); supprimerDept(d.id) }} style={btnX}>✕</button>
+            </div>
+          ))}
+        </div>
+        <div style={addRow}>
+          <input value={newDept} onChange={e => setNewDept(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && ajouterDept()}
+            placeholder="Ex : Guyane (973)"
+            style={{ ...A.input, flex: 1, fontSize: 12 }} />
+          <button onClick={ajouterDept} disabled={!newDept.trim()} style={{ ...A.btnPrimary, padding: '7px 14px', opacity: newDept.trim() ? 1 : 0.4 }}>+</button>
+        </div>
+        {errDept && <p style={{ fontSize: 11, color: '#dc2626', fontFamily: 'var(--font-sans)', padding: '4px 12px', margin: 0 }}>{errDept}</p>}
+      </div>
+
+      {/* Circonscriptions */}
+      <div style={panel}>
+        <div style={panelHead}>
+          <span style={panelTitle}>Circonscriptions ({visCircos.length})</span>
+          {!selDept && <span style={hint}>← choisir un département</span>}
+        </div>
+        <div style={{ overflowY: 'auto', maxHeight: 420 }}>
+          {selDept && visCircos.length === 0 && <p style={empty}>Aucune circonscription</p>}
+          {visCircos.map(c => (
+            <div key={c.id} style={item(selCirco === c.id)} onClick={() => setSelCirco(c.id)}>
+              <span>{c.nom}</span>
+              <button onClick={ev => { ev.stopPropagation(); supprimerCirco(c.id) }} style={btnX}>✕</button>
+            </div>
+          ))}
+        </div>
+        {selDept && (
+          <div style={addRow}>
+            <input value={newCirco} onChange={e => setNewCirco(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && ajouterCirco()}
+              placeholder="Ex : Cayenne 1 – Saül"
+              style={{ ...A.input, flex: 1, fontSize: 12 }} />
+            <button onClick={ajouterCirco} disabled={!newCirco.trim()} style={{ ...A.btnPrimary, padding: '7px 14px', opacity: newCirco.trim() ? 1 : 0.4 }}>+</button>
+          </div>
+        )}
+        {errCirco && <p style={{ fontSize: 11, color: '#dc2626', fontFamily: 'var(--font-sans)', padding: '4px 12px', margin: 0 }}>{errCirco}</p>}
+      </div>
+
+      {/* Villes */}
+      <div style={panel}>
+        <div style={panelHead}>
+          <span style={panelTitle}>Villes / Communes ({visVilles.length})</span>
+          {!selCirco && <span style={hint}>← choisir une circo</span>}
+        </div>
+        <div style={{ overflowY: 'auto', maxHeight: 420 }}>
+          {selCirco && visVilles.length === 0 && <p style={empty}>Aucune ville</p>}
+          {visVilles.map(v => (
+            <div key={v.id} style={item(false)}>
+              <span>{v.nom}</span>
+              <button onClick={() => supprimerVille(v.id)} style={btnX}>✕</button>
+            </div>
+          ))}
+        </div>
+        {selCirco && (
+          <div style={addRow}>
+            <input value={newVille} onChange={e => setNewVille(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && ajouterVille()}
+              placeholder="Ex : Cayenne"
+              style={{ ...A.input, flex: 1, fontSize: 12 }} />
+            <button onClick={ajouterVille} disabled={!newVille.trim()} style={{ ...A.btnPrimary, padding: '7px 14px', opacity: newVille.trim() ? 1 : 0.4 }}>+</button>
+          </div>
+        )}
+        {errVille && <p style={{ fontSize: 11, color: '#dc2626', fontFamily: 'var(--font-sans)', padding: '4px 12px', margin: 0 }}>{errVille}</p>}
+      </div>
+
+    </div>
   )
 }
 

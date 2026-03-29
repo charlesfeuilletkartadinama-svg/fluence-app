@@ -119,6 +119,7 @@ export default function Dashboard() {
     } else if (['coordo_rep', 'ien', 'ia_dasen', 'recteur'].includes(profil.role)) {
       await chargerDonneesReseau()
     } else {
+      // admin et rôles futurs → vue statistiques globales
       await chargerStatsGlobales()
     }
     setLoading(false)

@@ -5,6 +5,7 @@ import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
+import type { Periode } from '@/app/lib/types'
 
 type EleveStatut = 'evalue' | 'ne' | 'absent' | 'non_renseigne'
 
@@ -22,8 +23,6 @@ type ClasseGroup = {
   niveau: string
   eleves: EleveRow[]
 }
-
-type Periode = { id: string; code: string; label: string }
 
 export default function MesEleves() {
   const [classes, setClasses]     = useState<ClasseGroup[]>([])

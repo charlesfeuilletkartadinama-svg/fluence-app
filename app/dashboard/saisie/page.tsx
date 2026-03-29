@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/app/lib/supabase'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
+import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import { useProfil } from '@/app/lib/useProfil'
+import type { Periode, Classe } from '@/app/lib/types'
+import { periodeVerrouillee } from '@/app/lib/fluenceUtils'
 
 type Eleve = {
   id: string
@@ -23,24 +24,6 @@ type Eleve = {
   q6: boolean | null
 }
 
-type Periode = {
-  id: string
-  code: string
-  label: string
-  date_fin: string | null
-  type: string | null
-}
-
-function periodeVerrouillee(p: Periode | null): boolean {
-  if (!p?.date_fin) return false
-  return p.date_fin < new Date().toISOString().split('T')[0]
-}
-
-type Classe = {
-  id: string
-  nom: string
-  niveau: string
-}
 
 function Saisie() {
   const [etape, setEtape]             = useState<'periode' | 'classe' | 'saisie' | 'recap' | 'done'>('periode')
@@ -52,22 +35,23 @@ function Saisie() {
   const [loading, setLoading]         = useState(true)
   const [saving, setSaving]           = useState(false)
   const [erreurSauvegarde, setErreurSauvegarde] = useState('')
-  const router       = useRouter()
-  const searchParams = useSearchParams()
-  const classeId     = searchParams.get('classe')
-  const supabase     = createClient()
-  const { profil }   = useProfil()
+  const router   = useRouter()
+  const supabase = createClient()
+  const { profil, loading: profilLoading } = useProfil()
 
   const isDirection = profil && ['directeur', 'principal'].includes(profil.role)
 
   useEffect(() => {
-    if (!profil) return
+    if (profilLoading) return
+    if (!profil) { setLoading(false); return }
     if (isDirection) chargerDonneesDirection()
     else if (profil.role === 'enseignant') chargerDonneesEnseignant()
-  }, [profil])
+    else setLoading(false)
+  }, [profil, profilLoading])
 
   async function chargerDonneesDirection() {
     if (!profil?.etablissement_id) { setLoading(false); return }
+    const classeId = new URLSearchParams(window.location.search).get('classe')
     const [{ data: periodesData }, { data: classesData }] = await Promise.all([
       supabase.from('periodes').select('id, code, label, date_fin, type')
         .eq('etablissement_id', profil.etablissement_id).eq('actif', true).order('code'),
@@ -85,6 +69,7 @@ function Saisie() {
 
   async function chargerDonneesEnseignant() {
     if (!profil) { setLoading(false); return }
+    const classeId = new URLSearchParams(window.location.search).get('classe')
     const { data } = await supabase
       .from('enseignant_classes')
       .select('classe:classes(id, nom, niveau, etablissement_id)')
@@ -99,7 +84,7 @@ function Saisie() {
     setPeriodes(periodesData || [])
 
     if (classes.length === 1) {
-      setClasse(classes[0])  // une seule classe : pré-sélectionner, pas de choix
+      setClasse(classes[0])
     } else {
       setClassesEtab(classes)
       if (classeId) {
@@ -111,7 +96,7 @@ function Saisie() {
   }
 
   async function selectionnerPeriode(p: Periode) {
-    if (profil?.role === 'enseignant' && periodeVerrouillee(p)) return
+    if (profil?.role === 'enseignant' && periodeVerrouillee(p?.date_fin)) return
     setPeriode(p)
     if (classe) {
       // Classe déjà connue : charger les élèves et aller directement à la saisie
@@ -155,7 +140,7 @@ function Saisie() {
 
   async function valider() {
     if (!profil) return
-    if (profil.role === 'enseignant' && periodeVerrouillee(periode)) return
+    if (profil.role === 'enseignant' && periodeVerrouillee(periode?.date_fin)) return
     setSaving(true)
     setErreurSauvegarde('')
     let ok = 0, err = 0
@@ -167,6 +152,7 @@ function Saisie() {
       const { error } = await supabase.from('passations').upsert({
         eleve_id:      eleve.id,
         periode_id:    periode.id,
+        hors_periode:  false,
         score:         (eleve.ne || eleve.absent) ? null : Number(eleve.score),
         non_evalue:    eleve.ne || eleve.absent,
         absent:        eleve.absent,
@@ -178,27 +164,26 @@ function Saisie() {
         q4: eleve.q4 === true ? 'Correct' : eleve.q4 === false ? 'Incorrect' : null,
         q5: eleve.q5 === true ? 'Correct' : eleve.q5 === false ? 'Incorrect' : null,
         q6: eleve.q6 === true ? 'Correct' : eleve.q6 === false ? 'Incorrect' : null,
-      }, { onConflict: 'eleve_id,periode_id' })
+      }, { onConflict: 'eleve_id,periode_id,hors_periode' })
 
-      if (error) err++
-      else ok++
+      if (error) {
+        err++
+        console.error('[saisie] upsert error:', error.message, error.details, error.hint, error.code)
+        if (err === 1) setErreurSauvegarde(`Erreur : ${error.message}${error.details ? ' — ' + error.details : ''}`)
+      } else ok++
     }
 
     setSaving(false)
-    if (err > 0) {
-      setErreurSauvegarde(`${err} enregistrement${err > 1 ? 's ont' : ' a'} échoué. Vérifiez votre connexion et réessayez.`)
+    if (err > 0 && ok > 0) {
+      setErreurSauvegarde(`${err} enregistrement${err > 1 ? 's ont' : ' a'} échoué sur ${ok + err}.`)
     }
     setEtape('done')
   }
 
-  if (loading) return <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32 }} className="text-slate-400">Chargement...</div>
+  if (loading) return <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }}>Chargement...</div>
 
   return (
-    <>
-      <Sidebar />
-      <ImpersonationBar />
-
-      <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, maxWidth: 900, minHeight: '100vh', background: 'var(--bg-light)' }}>
+    <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, maxWidth: 900, minHeight: '100vh', background: 'var(--bg-light)' }}>
 
         {/* ÉTAPE 0 : Choix de la période */}
         {etape === 'periode' && (
@@ -207,11 +192,21 @@ function Saisie() {
               <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode Saisie</h2>
               <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez une période</p>
             </div>
+            {periodes.length === 0 ? (
+              <div style={{ background: 'white', borderRadius: 16, padding: '48px 32px', border: '1.5px solid var(--border-light)', textAlign: 'center' }}>
+                <div style={{ fontSize: 40, marginBottom: 16 }}>🏫</div>
+                <p style={{ fontWeight: 700, fontSize: 16, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', marginBottom: 8 }}>Aucune période disponible</p>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+                  Ce profil n'est pas rattaché à un établissement.<br />
+                  Utilisez l'impersonation pour saisir en tant qu'enseignant ou directeur.
+                </p>
+              </div>
+            ) : (
             <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>Choisir une période</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {periodes.map(p => {
-                  const locked = profil?.role === 'enseignant' && periodeVerrouillee(p)
+                  const locked = profil?.role === 'enseignant' && periodeVerrouillee(p?.date_fin)
                   return (
                     <button key={p.id}
                       onClick={() => selectionnerPeriode(p)}
@@ -237,6 +232,7 @@ function Saisie() {
                 })}
               </div>
             </div>
+            )}
           </>
         )}
 
@@ -280,107 +276,97 @@ function Saisie() {
         {/* ÉTAPE 2 : Saisie */}
         {etape === 'saisie' && (
           <>
-            <div className="flex items-center justify-between mb-6">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
               <div>
-                <h2 className="text-2xl font-bold text-blue-900">
+                <h2 style={{ fontSize: 24, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
                   {classe?.nom} · {periode?.code}
                 </h2>
-                <p className="text-slate-500 mt-1">
+                <p style={{ color: 'var(--text-secondary)', marginTop: 4, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
                   {nbSaisis} / {eleves.length} élèves saisis
                 </p>
               </div>
-              <button onClick={() => setEtape('recap')}
-                disabled={nbSaisis === 0}
-                className="bg-blue-900 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-800 transition disabled:opacity-40">
+              <button onClick={() => setEtape('recap')} disabled={nbSaisis === 0} style={{
+                background: nbSaisis === 0 ? 'var(--text-tertiary)' : 'var(--primary-dark)',
+                color: 'white', border: 'none', padding: '11px 22px', borderRadius: 12,
+                fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 700,
+                cursor: nbSaisis === 0 ? 'not-allowed' : 'pointer',
+              }}>
                 Valider →
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {eleves.map((eleve, idx) => (
-                <div key={eleve.id}
-                  style={{
-                    background: eleve.absent ? '#fef2f2' : eleve.ne ? '#fff7ed' : eleve.score !== '' ? '#f0fdf4' : 'white',
-                    border: `1.5px solid ${eleve.absent ? '#fca5a5' : eleve.ne ? '#fed7aa' : eleve.score !== '' ? '#bbf7d0' : 'var(--border-light)'}`,
-                    borderRadius: 16, padding: '18px 24px', transition: 'all 0.15s',
-                  }}>
+                <div key={eleve.id} style={{
+                  background: eleve.absent ? '#fef2f2' : eleve.ne ? '#fff7ed' : eleve.score !== '' ? '#f0fdf4' : 'white',
+                  border: `1.5px solid ${eleve.absent ? '#fca5a5' : eleve.ne ? '#fed7aa' : eleve.score !== '' ? '#bbf7d0' : 'var(--border-light)'}`,
+                  borderRadius: 16, padding: '18px 24px', transition: 'all 0.15s',
+                }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16, minHeight: 48 }}>
-                    {/* Nom */}
                     <div style={{ flex: 1 }}>
                       <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{eleve.nom}</span>
                       <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 15 }}>{eleve.prenom}</span>
                     </div>
-
-                    {/* Score */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <input
-                        type="number"
-                        value={eleve.score}
+                      <input type="number" value={eleve.score}
                         onChange={e => updateEleve(idx, 'score', e.target.value)}
                         disabled={eleve.ne || eleve.absent}
-                        placeholder="—"
-                        min={0} max={500}
+                        placeholder="—" min={0} max={500}
                         style={{
                           width: 88, textAlign: 'center', border: '1.5px solid var(--border-main)',
                           borderRadius: 12, padding: '10px 12px', fontSize: 18, fontWeight: 700,
                           color: 'var(--primary-dark)', outline: 'none', fontFamily: 'var(--font-sans)',
-                          background: (eleve.ne || eleve.absent) ? 'var(--bg-gray)' : 'white', opacity: (eleve.ne || eleve.absent) ? 0.4 : 1,
+                          background: (eleve.ne || eleve.absent) ? 'var(--bg-gray)' : 'white',
+                          opacity: (eleve.ne || eleve.absent) ? 0.4 : 1,
                         }}
                       />
-                      <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>mots/min</span>
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: 12, fontFamily: 'var(--font-sans)' }}>mots/min</span>
                     </div>
-
-                    {/* N.É. */}
-                    <button
-                      onClick={() => setEleves(prev => prev.map((e, i) => i === idx ? { ...e, ne: !e.ne, absent: false, score: '' } : e))}
-                      style={{
-                        padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
-                        border: eleve.ne ? '2px solid #fb923c' : '2px solid var(--border-main)',
-                        background: eleve.ne ? '#fff7ed' : 'transparent',
-                        color: eleve.ne ? '#c2410c' : 'var(--text-tertiary)',
-                        cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
-                      }}>
-                      N.É.
-                    </button>
-
-                    {/* Absent */}
-                    <button
-                      onClick={() => setEleves(prev => prev.map((e, i) => i === idx ? { ...e, absent: !e.absent, ne: false, score: '' } : e))}
-                      style={{
-                        padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
-                        border: eleve.absent ? '2px solid #f87171' : '2px solid var(--border-main)',
-                        background: eleve.absent ? '#fef2f2' : 'transparent',
-                        color: eleve.absent ? '#dc2626' : 'var(--text-tertiary)',
-                        cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
-                      }}>
-                      Absent
-                    </button>
+                    <button onClick={() => setEleves(prev => prev.map((e, i) => i === idx ? { ...e, ne: !e.ne, absent: false, score: '' } : e))} style={{
+                      padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
+                      border: eleve.ne ? '2px solid #fb923c' : '2px solid var(--border-main)',
+                      background: eleve.ne ? '#fff7ed' : 'transparent',
+                      color: eleve.ne ? '#c2410c' : 'var(--text-tertiary)',
+                      cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
+                    }}>N.É.</button>
+                    <button onClick={() => setEleves(prev => prev.map((e, i) => i === idx ? { ...e, absent: !e.absent, ne: false, score: '' } : e))} style={{
+                      padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
+                      border: eleve.absent ? '2px solid #f87171' : '2px solid var(--border-main)',
+                      background: eleve.absent ? '#fef2f2' : 'transparent',
+                      color: eleve.absent ? '#dc2626' : 'var(--text-tertiary)',
+                      cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
+                    }}>Absent</button>
                   </div>
-
-                  {/* Questions compréhension */}
                   {!eleve.ne && !eleve.absent && eleve.score !== '' && periode?.type !== 'evaluation_nationale' && (
-                    <div className="mt-4 flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-slate-400 font-medium mr-1">Compréhension :</span>
-                      {(['q1','q2','q3','q4','q5','q6'] as const).map(q => (
-                        <button key={q}
-                          onClick={() => toggleQ(idx, q)}
-                          className={`w-10 h-10 rounded-xl text-xs font-bold border-2 transition
-                            ${(eleve as any)[q] === true  ? 'border-green-400 bg-green-100 text-green-700' :
-                              (eleve as any)[q] === false ? 'border-red-400 bg-red-100 text-red-700' :
-                              'border-slate-200 text-slate-400 hover:border-slate-300'}`}>
-                          {q.toUpperCase()}
-                        </button>
-                      ))}
+                    <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, fontFamily: 'var(--font-sans)', marginRight: 4 }}>Compréhension :</span>
+                      {(['q1','q2','q3','q4','q5','q6'] as const).map(q => {
+                        const val = (eleve as any)[q]
+                        return (
+                          <button key={q} onClick={() => toggleQ(idx, q)} style={{
+                            width: 40, height: 40, borderRadius: 10, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                            fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
+                            border: val === true ? '2px solid #22c55e' : val === false ? '2px solid #ef4444' : '2px solid var(--border-main)',
+                            background: val === true ? '#f0fdf4' : val === false ? '#fef2f2' : 'var(--bg-gray)',
+                            color: val === true ? '#16a34a' : val === false ? '#dc2626' : 'var(--text-tertiary)',
+                          }}>
+                            {q.toUpperCase()}
+                          </button>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 flex justify-end">
-              <button onClick={() => setEtape('recap')}
-                disabled={nbSaisis === 0}
-                className="bg-blue-900 text-white px-8 py-3 rounded-xl font-semibold hover:bg-blue-800 transition disabled:opacity-40">
+            <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setEtape('recap')} disabled={nbSaisis === 0} style={{
+                background: nbSaisis === 0 ? 'var(--text-tertiary)' : 'var(--primary-dark)',
+                color: 'white', border: 'none', padding: '13px 32px', borderRadius: 12,
+                fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700,
+                cursor: nbSaisis === 0 ? 'not-allowed' : 'pointer',
+              }}>
                 Voir le récapitulatif →
               </button>
             </div>
@@ -390,62 +376,48 @@ function Saisie() {
         {/* ÉTAPE 3 : Récap */}
         {etape === 'recap' && (
           <>
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-blue-900">Récapitulatif</h2>
-              <p className="text-slate-500 mt-1">{classe?.nom} · {periode?.code}</p>
+            <div style={{ marginBottom: 28 }}>
+              <h2 style={{ fontSize: 24, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Récapitulatif</h2>
+              <p style={{ color: 'var(--text-secondary)', marginTop: 4, fontSize: 14, fontFamily: 'var(--font-sans)' }}>{classe?.nom} · {periode?.code}</p>
             </div>
 
-            <div className="grid grid-cols-4 gap-4 mb-6">
-              <div className="bg-white rounded-2xl p-5 border border-slate-100 text-center">
-                <p className="text-3xl font-bold text-blue-900">{nbSaisis}</p>
-                <p className="text-sm text-slate-400 mt-1">Élèves saisis</p>
-              </div>
-              <div className="bg-white rounded-2xl p-5 border border-slate-100 text-center">
-                <p className="text-3xl font-bold text-blue-900">
-                  {scoreMoyen !== null ? `${scoreMoyen}` : '—'}
-                </p>
-                <p className="text-sm text-slate-400 mt-1">Score moyen</p>
-              </div>
-              <div className="bg-white rounded-2xl p-5 border border-slate-100 text-center">
-                <p className="text-3xl font-bold text-orange-500">
-                  {eleves.filter(e => e.ne).length}
-                </p>
-                <p className="text-sm text-slate-400 mt-1">Non évalués</p>
-              </div>
-              <div className="bg-white rounded-2xl p-5 border border-slate-100 text-center">
-                <p className="text-3xl font-bold text-red-500">
-                  {eleves.filter(e => e.absent).length}
-                </p>
-                <p className="text-sm text-slate-400 mt-1">Absents</p>
-              </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+              {[
+                { val: nbSaisis, label: 'Élèves saisis', color: 'var(--primary-dark)' },
+                { val: scoreMoyen !== null ? scoreMoyen : '—', label: 'Score moyen', color: 'var(--primary-dark)' },
+                { val: eleves.filter(e => e.ne).length, label: 'Non évalués', color: '#D97706' },
+                { val: eleves.filter(e => e.absent).length, label: 'Absents', color: '#DC2626' },
+              ].map(({ val, label, color }) => (
+                <div key={label} style={{ background: 'white', borderRadius: 16, padding: '20px 16px', border: '1.5px solid var(--border-light)', textAlign: 'center' }}>
+                  <p style={{ fontSize: 28, fontWeight: 800, color, fontFamily: 'var(--font-sans)', margin: '0 0 4px 0' }}>{val}</p>
+                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', margin: 0 }}>{label}</p>
+                </div>
+              ))}
             </div>
 
-            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden mb-6">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">ÉLÈVE</th>
-                    <th className="px-5 py-3 text-center text-xs font-semibold text-slate-500">SCORE</th>
-                    <th className="px-5 py-3 text-center text-xs font-semibold text-slate-500">STATUT</th>
+            <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden', marginBottom: 24 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-gray)' }}>
+                    <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>ÉLÈVE</th>
+                    <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>SCORE</th>
+                    <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>STATUT</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {eleves.filter(e => e.ne || e.absent || e.score !== '').map(e => (
-                    <tr key={e.id}>
-                      <td className="px-5 py-3 font-semibold text-blue-900">
-                        {e.nom} {e.prenom}
-                      </td>
-                      <td className="px-5 py-3 text-center font-bold text-blue-900">
+                <tbody>
+                  {eleves.filter(e => e.ne || e.absent || e.score !== '').map((e, i) => (
+                    <tr key={e.id} style={{ borderTop: '1px solid var(--border-light)' }}>
+                      <td style={{ padding: '12px 20px', fontWeight: 700, color: 'var(--primary-dark)' }}>{e.nom} {e.prenom}</td>
+                      <td style={{ padding: '12px 20px', textAlign: 'center', fontWeight: 700, color: 'var(--primary-dark)' }}>
                         {(e.ne || e.absent) ? '—' : `${e.score} m/min`}
                       </td>
-                      <td className="px-5 py-3 text-center">
-                        {e.absent ? (
-                          <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full">Absent</span>
-                        ) : e.ne ? (
-                          <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded-full">N.É.</span>
-                        ) : (
-                          <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full">✓</span>
-                        )}
+                      <td style={{ padding: '12px 20px', textAlign: 'center' }}>
+                        {e.absent
+                          ? <span style={{ background: '#fef2f2', color: '#dc2626', fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6 }}>Absent</span>
+                          : e.ne
+                            ? <span style={{ background: '#fff7ed', color: '#c2410c', fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6 }}>N.É.</span>
+                            : <span style={{ background: 'rgba(22,163,74,0.08)', color: '#16a34a', fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6 }}>✓</span>
+                        }
                       </td>
                     </tr>
                   ))}
@@ -453,13 +425,18 @@ function Saisie() {
               </table>
             </div>
 
-            <div className="flex gap-4">
-              <button onClick={() => setEtape('saisie')}
-                className="flex-1 border border-slate-200 text-slate-600 py-3 rounded-xl font-semibold text-sm hover:bg-slate-50 transition">
-                ← Modifier
-              </button>
-              <button onClick={valider} disabled={saving}
-                className="flex-1 bg-blue-900 text-white py-3 rounded-xl font-semibold text-sm hover:bg-blue-800 transition disabled:opacity-50">
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button onClick={() => setEtape('saisie')} style={{
+                flex: 1, border: '1.5px solid var(--border-main)', background: 'transparent',
+                color: 'var(--text-secondary)', padding: '13px 0', borderRadius: 12,
+                fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}>← Modifier</button>
+              <button onClick={valider} disabled={saving} style={{
+                flex: 1, background: saving ? 'var(--text-tertiary)' : 'var(--primary-dark)',
+                color: 'white', border: 'none', padding: '13px 0', borderRadius: 12,
+                fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700,
+                cursor: saving ? 'not-allowed' : 'pointer',
+              }}>
                 {saving ? 'Enregistrement...' : '✅ Confirmer et envoyer'}
               </button>
             </div>
@@ -468,45 +445,48 @@ function Saisie() {
 
         {/* ÉTAPE 4 : Terminé */}
         {etape === 'done' && (
-          <div className="bg-white rounded-2xl p-12 text-center border border-slate-100">
-            <div className="text-5xl mb-4">{erreurSauvegarde ? '⚠️' : '✅'}</div>
-            <h3 className="text-2xl font-bold text-blue-900 mb-2">
+          <div style={{ background: 'white', borderRadius: 20, padding: '48px 40px', textAlign: 'center', border: '1.5px solid var(--border-light)' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>{erreurSauvegarde ? '⚠️' : '✅'}</div>
+            <h3 style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', marginBottom: 8 }}>
               {erreurSauvegarde ? 'Enregistrement partiel' : 'Scores enregistrés !'}
             </h3>
             {erreurSauvegarde && (
-              <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm mb-4">
+              <div style={{ background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#dc2626', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
                 {erreurSauvegarde}
               </div>
             )}
-            <p className="text-slate-400 mb-8">
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, fontFamily: 'var(--font-sans)', marginBottom: 32 }}>
               {nbSaisis} élèves · Score moyen : {scoreMoyen !== null ? `${scoreMoyen} mots/min` : '—'}
             </p>
-            <div className="flex gap-4 justify-center">
-              <button onClick={() => router.push('/dashboard/eleves')}
-                className="border border-slate-200 text-slate-600 px-6 py-3 rounded-xl font-semibold text-sm hover:bg-slate-50 transition">
-                Voir mes classes
-              </button>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button onClick={() => router.push('/dashboard/eleves')} style={{
+                border: '1.5px solid var(--border-main)', background: 'transparent',
+                color: 'var(--text-secondary)', padding: '13px 24px', borderRadius: 12,
+                fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}>Voir mes classes</button>
               <button onClick={() => {
                 setPeriode(null)
                 setClasse(classesEtab.length > 1 ? null : classe)
                 setEleves(prev => prev.map(e => ({ ...e, score: '', ne: false, absent: false, q1: null, q2: null, q3: null, q4: null, q5: null, q6: null })))
                 setEtape('periode')
-              }}
-                className="bg-blue-900 text-white px-6 py-3 rounded-xl font-semibold text-sm hover:bg-blue-800 transition">
-                Nouvelle saisie
-              </button>
+              }} style={{
+                background: 'var(--primary-dark)', color: 'white', border: 'none',
+                padding: '13px 24px', borderRadius: 12,
+                fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}>Nouvelle saisie</button>
             </div>
           </div>
         )}
-      </div>
-    </>
+    </div>
   )
 }
 
 export default function SaisieWrapper() {
   return (
-    <Suspense fallback={<div className="ml-64 p-8 text-slate-400">Chargement...</div>}>
+    <>
+      <Sidebar />
+      <ImpersonationBar />
       <Saisie />
-    </Suspense>
+    </>
   )
 }

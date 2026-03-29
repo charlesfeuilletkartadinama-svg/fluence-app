@@ -5,13 +5,12 @@ import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
+import type { Classe, Periode } from '@/app/lib/types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type Classe     = { id: string; nom: string; niveau: string }
 type Enseignant = { id: string; nom: string; prenom: string; email: string; classes: string[] }
 type Invitation = { id: string; code: string; role: string; actif: boolean }
-type Periode    = { id: string; code: string; label: string; date_debut: string|null; date_fin: string|null; actif: boolean; type: string }
 type OngletConfig = 'structure' | 'passations'
 
 const NIVEAUX      = ['CP', 'CE1', 'CE2', 'CM1', 'CM2', 'ULIS', '6ème', '5ème', '4ème', '3ème', 'Autre']
@@ -549,7 +548,7 @@ export default function Configuration() {
                         <span style={{ fontSize: 11, fontWeight: 700, color: p.actif ? '#16A34A' : 'var(--text-tertiary)', background: p.actif ? 'rgba(22,163,74,0.1)' : 'var(--bg-gray)', padding: '3px 10px', borderRadius: 6 }}>
                           {p.actif ? 'Active' : 'Inactive'}
                         </span>
-                        <button onClick={() => toggleActifPeriode(p.id, p.actif)} style={{ background: 'none', border: '1.5px solid var(--border-light)', borderRadius: 7, padding: '4px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+                        <button onClick={() => toggleActifPeriode(p.id, !!p.actif)} style={{ background: 'none', border: '1.5px solid var(--border-light)', borderRadius: 7, padding: '4px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
                           {p.actif ? 'Désactiver' : 'Activer'}
                         </button>
                       </div>

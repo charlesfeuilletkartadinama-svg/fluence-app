@@ -1,25 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
-
 const TYPES_ETABLISSEMENT = ['école', 'collège', 'lycée']
 const TYPES_RESEAU = ['Hors REP', 'REP', 'REP+']
-
-const GEO_DATA: Record<string, Record<string, string[]>> = {
-  'Guyane (973)': {
-    'Cayenne 1': ['Cayenne'],
-    'Cayenne 2': ['Rémire-Montjoly', 'Matoury', 'Montsinéry-Tonnégrande'],
-    'Kourou': ['Kourou', 'Macouria', 'Sinnamary', 'Iracoubo'],
-    'Saint-Laurent-du-Maroni': ['Saint-Laurent-du-Maroni', 'Mana', 'Awala-Yalimapo'],
-    'Haut-Maroni': ['Maripasoula', 'Grand-Santi', 'Papaichton', 'Apatou'],
-    'Oyapock': ["Saint-Georges-de-l'Oyapock", 'Camopi', 'Ouanary', 'Régina'],
-    'Roura': ['Roura', 'Cacao', 'Saint-Élie'],
-  },
-}
 
 export default function NouvelEtablissement() {
   const [nom, setNom]                   = useState('')
@@ -30,12 +17,35 @@ export default function NouvelEtablissement() {
   const [ville, setVille]               = useState('')
   const [saving, setSaving]             = useState(false)
   const [erreur, setErreur]             = useState('')
+  const [geoData, setGeoData]           = useState<Record<string, Record<string, string[]>>>({})
   const router   = useRouter()
   const supabase = createClient()
 
-  const depts  = Object.keys(GEO_DATA)
-  const circos = dept ? Object.keys(GEO_DATA[dept] || {}) : []
-  const villes = dept && circo ? (GEO_DATA[dept]?.[circo] || []) : []
+  useEffect(() => {
+    async function chargerGeo() {
+      const [deptRes, circoRes, villeRes] = await Promise.all([
+        supabase.from('departements').select('id, nom').order('nom'),
+        supabase.from('circonscriptions').select('id, nom, departement_id').order('nom'),
+        supabase.from('villes').select('id, nom, circonscription_id').order('nom'),
+      ])
+      const depts = deptRes.data || []
+      const circos = circoRes.data || []
+      const villes = villeRes.data || []
+      const geo: Record<string, Record<string, string[]>> = {}
+      for (const d of depts) {
+        geo[d.nom] = {}
+        for (const c of circos.filter((c: any) => c.departement_id === d.id)) {
+          geo[d.nom][c.nom] = villes.filter((v: any) => v.circonscription_id === c.id).map((v: any) => v.nom)
+        }
+      }
+      setGeoData(geo)
+    }
+    chargerGeo()
+  }, [])
+
+  const depts  = Object.keys(geoData)
+  const circos = dept ? Object.keys(geoData[dept] || {}) : []
+  const villes = dept && circo ? (geoData[dept]?.[circo] || []) : []
 
   function onDeptChange(val: string) { setDept(val); setCirco(''); setVille('') }
   function onCircoChange(val: string) { setCirco(val); setVille('') }

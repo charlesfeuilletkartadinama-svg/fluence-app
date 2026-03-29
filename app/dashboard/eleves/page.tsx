@@ -65,12 +65,10 @@ export default function MesClasses() {
 
     if (isEnseignant) {
       // Charger les classes assignées à cet enseignant
-      console.log('[chargerDonnees] profil.id =', profil.id)
-      const { data: assignees, error: assigneesError } = await supabase
+      const { data: assignees } = await supabase
         .from('enseignant_classes')
         .select('classe_id, groupe_lecture, classe:classes(id, nom, niveau, etablissement:etablissements(nom))')
         .eq('enseignant_id', profil.id)
-      console.log('[chargerDonnees] assignees =', assignees, 'error =', assigneesError)
 
       if (!assignees || assignees.length === 0) {
         // Pas encore de classes → mode sélection
@@ -187,10 +185,8 @@ export default function MesClasses() {
 
     // Supprimer les anciennes assignations
     const { error: delError } = await supabase.from('enseignant_classes').delete().eq('enseignant_id', profil.id)
-    if (delError) { console.error('Delete error:', delError); setSaving(false); alert('Erreur suppression: ' + delError.message); return }
+    if (delError) { setSaving(false); return }
 
-    // Insérer les nouvelles (upsert pour éviter les conflits)
-    console.log('[sauvegarderSelections] profil.id =', profil.id, 'selections =', selections)
     const { error: insError } = await supabase.from('enseignant_classes').upsert(
       selections.map(s => ({
         enseignant_id:  profil.id,
@@ -199,7 +195,7 @@ export default function MesClasses() {
       })),
       { onConflict: 'enseignant_id,classe_id' }
     )
-    if (insError) { console.error('Insert error:', insError); setSaving(false); alert('Erreur sauvegarde: ' + insError.message); return }
+    if (insError) { setSaving(false); return }
 
     setSaving(false)
     setMode('liste')

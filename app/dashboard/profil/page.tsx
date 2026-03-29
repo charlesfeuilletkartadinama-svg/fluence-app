@@ -26,6 +26,10 @@ export default function Profil() {
   const [saving, setSaving]               = useState(false)
   const [erreur, setErreur]               = useState('')
   const [succes, setSucces]               = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteConfirm, setDeleteConfirm]     = useState('')
+  const [deleting, setDeleting]               = useState(false)
+  const [exportLoading, setExportLoading]     = useState(false)
   const { profil, profilReel }            = useProfil()
   const router      = useRouter()
   const supabase    = createClient()
@@ -100,6 +104,50 @@ export default function Profil() {
 
   function isSelected(classeId: string, groupe: string | null) {
     return selections.some(s => s.classeId === classeId && s.groupe === groupe)
+  }
+
+  async function exporterDonnees() {
+    if (!profil) return
+    setExportLoading(true)
+    const [profilRes, classesRes, passRes] = await Promise.all([
+      supabase.from('profils').select('id, nom, prenom, role, etablissement_id').eq('id', profil.id).maybeSingle(),
+      supabase.from('enseignant_classes').select('classe_id, groupe_lecture').eq('enseignant_id', profil.id),
+      supabase.from('passations').select('id, eleve_id, periode_id, score, non_evalue, mode, created_at').eq('enseignant_id', profil.id),
+    ])
+    const export_data = {
+      exported_at: new Date().toISOString(),
+      profil:      profilRes.data,
+      classes:     classesRes.data || [],
+      passations:  passRes.data    || [],
+    }
+    const blob = new Blob([JSON.stringify(export_data, null, 2)], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `fluence-mes-donnees-${new Date().toISOString().split('T')[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+
+    // Audit log
+    await supabase.from('audit_logs').insert({ action: 'export_donnees', utilisateur_id: profil.id })
+    setExportLoading(false)
+  }
+
+  async function supprimerCompte() {
+    setDeleting(true)
+    // Audit log avant suppression (après, l'ID n'existera plus)
+    if (profil?.id) {
+      await supabase.from('audit_logs').insert({ action: 'delete_account', utilisateur_id: profil.id })
+    }
+    const { error } = await supabase.rpc('delete_my_account')
+    if (error) {
+      setDeleting(false)
+      setShowDeleteModal(false)
+      setErreur('Erreur lors de la suppression : ' + error.message)
+      return
+    }
+    await supabase.auth.signOut()
+    router.push('/')
   }
 
   async function sauvegarder() {
@@ -300,6 +348,57 @@ export default function Profil() {
           font-size: 12px; color: #8A8680; margin-bottom: 16px;
         }
         .selection-count strong { color: #001845; }
+
+        .btn-secondary {
+          background: transparent; color: #4A4540;
+          border: 1.5px solid #E4E1DA; border-radius: 12px;
+          padding: 12px 24px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 14px; font-weight: 600;
+          cursor: pointer; transition: all 0.15s;
+        }
+        .btn-secondary:hover { border-color: #001845; color: #001845; }
+
+        .btn-danger {
+          background: transparent; color: #DC2626;
+          border: 1.5px solid #FCA5A5; border-radius: 12px;
+          padding: 12px 24px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 14px; font-weight: 600;
+          cursor: pointer; transition: all 0.15s;
+        }
+        .btn-danger:hover { background: #FEF2F2; }
+        .btn-danger-full {
+          background: #DC2626; color: white;
+          border: none; border-radius: 12px;
+          padding: 13px 24px; width: 100%;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 14px; font-weight: 700;
+          cursor: pointer; transition: all 0.15s;
+          margin-top: 12px;
+        }
+        .btn-danger-full:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .modal-backdrop {
+          position: fixed; inset: 0;
+          background: rgba(0,0,0,0.5); z-index: 1000;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .modal-box {
+          background: white; border-radius: 20px;
+          padding: 36px; max-width: 440px; width: 90%;
+        }
+        .modal-title { font-size: 18px; font-weight: 800; color: #001845; margin-bottom: 10px; }
+        .modal-sub   { font-size: 13px; color: #8A8680; line-height: 1.6; margin-bottom: 20px; }
+        .modal-input {
+          width: 100%; background: #F9F7F4;
+          border: 1.5px solid #E4E1DA; border-radius: 10px;
+          padding: 12px 16px; font-family: 'DM Sans', sans-serif;
+          font-size: 14px; color: #001845; outline: none;
+          box-sizing: border-box;
+        }
+        .modal-input:focus { border-color: #DC2626; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
       `}</style>
 
       <div className="profil-page">
@@ -391,8 +490,58 @@ export default function Profil() {
           <button className="btn-save" onClick={sauvegarder} disabled={saving}>
             {saving ? 'Enregistrement...' : '💾 Sauvegarder'}
           </button>
+
+          {/* ── Section RGPD ── */}
+          <div className="profil-section" style={{ marginTop: 32, borderColor: 'rgba(0,0,0,0.06)' }}>
+            <div className="section-label">Mes données personnelles</div>
+            <p style={{ fontSize: 13, color: '#8A8680', lineHeight: 1.7, marginBottom: 20 }}>
+              Conformément au RGPD, vous disposez d'un droit d'accès, de rectification et d'effacement de vos données.{' '}
+              <a href="/legal" style={{ color: '#001845', textDecoration: 'underline' }}>Mentions légales & politique de confidentialité →</a>
+            </p>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <button className="btn-secondary" onClick={exporterDonnees} disabled={exportLoading}>
+                {exportLoading ? 'Préparation...' : '⬇ Télécharger mes données'}
+              </button>
+              <button className="btn-danger" onClick={() => { setShowDeleteModal(true); setDeleteConfirm('') }}>
+                🗑 Supprimer mon compte
+              </button>
+            </div>
+          </div>
         </main>
       </div>
+
+      {/* ── Modale confirmation suppression ── */}
+      {showDeleteModal && (
+        <div className="modal-backdrop" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">⚠️ Supprimer mon compte</div>
+            <p className="modal-sub">
+              Cette action est <strong>irréversible</strong>. Votre profil sera supprimé définitivement.
+              Les scores de vos élèves seront conservés (données pédagogiques de l'établissement).
+              <br /><br />
+              Tapez <strong>SUPPRIMER</strong> pour confirmer.
+            </p>
+            <input
+              className="modal-input"
+              value={deleteConfirm}
+              onChange={e => setDeleteConfirm(e.target.value)}
+              placeholder="SUPPRIMER"
+              autoFocus
+            />
+            <button
+              className="btn-danger-full"
+              disabled={deleteConfirm !== 'SUPPRIMER' || deleting}
+              onClick={supprimerCompte}>
+              {deleting ? 'Suppression...' : 'Confirmer la suppression définitive'}
+            </button>
+            <div className="modal-actions">
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowDeleteModal(false)}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

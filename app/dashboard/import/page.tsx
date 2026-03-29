@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import styles from './import.module.css'
+import type { Classe } from '@/app/lib/types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -21,8 +22,6 @@ type EleveCSV = {
   _valid: boolean
   _erreur?: string
 }
-
-type Classe = { id: string; nom: string; niveau: string }
 
 // ── Parser CSV ────────────────────────────────────────────────────────────
 
@@ -135,6 +134,20 @@ export default function ImportCSV() {
     const classeMap: Record<string, string> = {}
     classes.forEach(c => { classeMap[c.nom.toLowerCase()] = c.id })
 
+    // Pré-charger tous les élèves existants des classes connues (évite N+1 dans la boucle)
+    const knownClasseIds = Object.values(classeMap)
+    const existingByIne: Record<string, string> = {}
+    const existingByNomPrenom: Record<string, string> = {}
+    if (knownClasseIds.length > 0) {
+      const { data: existingEleves } = await supabase
+        .from('eleves').select('id, nom, prenom, classe_id, numero_ine')
+        .in('classe_id', knownClasseIds)
+      ;(existingEleves || []).forEach((e: any) => {
+        if (e.numero_ine) existingByIne[e.numero_ine] = e.id
+        existingByNomPrenom[`${e.nom}|${e.prenom}|${e.classe_id}`] = e.id
+      })
+    }
+
     const total = eleves.filter(e => e._valid).length
     let done = 0
 
@@ -159,21 +172,12 @@ export default function ImportCSV() {
 
         if (!classeId) { nbErreurs++; continue }
 
-        // Chercher si l'élève existe déjà (par numero_ine ou nom+prenom+classe)
+        // Chercher si l'élève existe déjà — lookup en mémoire (pré-chargé avant la boucle)
         let existingId: string | null = null
-
-        if (eleve.numero_ine) {
-          const { data: byIne } = await supabase
-            .from('eleves').select('id').eq('numero_ine', eleve.numero_ine).maybeSingle()
-          if (byIne) existingId = byIne.id
-        }
-
-        if (!existingId) {
-          const { data: byNom } = await supabase
-            .from('eleves').select('id')
-            .eq('nom', eleve.nom).eq('prenom', eleve.prenom).eq('classe_id', classeId)
-            .maybeSingle()
-          if (byNom) existingId = byNom.id
+        if (eleve.numero_ine && existingByIne[eleve.numero_ine]) {
+          existingId = existingByIne[eleve.numero_ine]
+        } else {
+          existingId = existingByNomPrenom[`${eleve.nom}|${eleve.prenom}|${classeId}`] || null
         }
 
         const payload: any = {

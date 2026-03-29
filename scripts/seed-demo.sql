@@ -237,15 +237,15 @@ BEGIN
   END LOOP;
 
   -- ── Profils ────────────────────────────────────────────────
-  INSERT INTO profils (id, nom, prenom, role, etablissement_id, circonscription_id, academie_id)
+  INSERT INTO profils (id, nom, prenom, role, etablissement_id)
   VALUES
-    (v_recteur_id,    '[DEMO]', 'Recteur',    'recteur',    NULL,               NULL, NULL),
-    (v_admin_id,      '[DEMO]', 'Admin',      'admin',      NULL,               NULL, NULL),
-    (v_coordo_id,     '[DEMO]', 'Coordo',     'coordo_rep', NULL,               NULL, NULL),
-    (v_ien_id,        '[DEMO]', 'IEN',        'ien',        NULL,               NULL, NULL),
-    (v_directeur_id,  '[DEMO]', 'Directeur',  'directeur',  v_ecole_ids[1],     NULL, NULL),
-    (v_principal_id,  '[DEMO]', 'Principal',  'principal',  v_college_ids[1],   NULL, NULL),
-    (v_enseignant_id, '[DEMO]', 'Enseignant', 'enseignant', v_ecole_ids[1],     NULL, NULL);
+    (v_recteur_id,    '[DEMO]', 'Recteur',    'recteur',    NULL             ),
+    (v_admin_id,      '[DEMO]', 'Admin',      'admin',      NULL             ),
+    (v_coordo_id,     '[DEMO]', 'Coordo',     'coordo_rep', NULL             ),
+    (v_ien_id,        '[DEMO]', 'IEN',        'ien',        NULL             ),
+    (v_directeur_id,  '[DEMO]', 'Directeur',  'directeur',  v_ecole_ids[1]  ),
+    (v_principal_id,  '[DEMO]', 'Principal',  'principal',  v_college_ids[1]),
+    (v_enseignant_id, '[DEMO]', 'Enseignant', 'enseignant', v_ecole_ids[1]  );
 
   -- ── Écoles primaires (20) : 15 classes × ~22 élèves ────────
   v_first_classe := NULL;

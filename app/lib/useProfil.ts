@@ -27,7 +27,7 @@ export function useProfil() {
       if (!session?.user) { router.push('/'); return }
 
       const { data, error } = await supabase
-        .from('profils').select('*').eq('id', session.user.id).single()
+        .from('profils').select('id, nom, prenom, role, etablissement_id, circonscription_id, academie_id').eq('id', session.user.id).single()
 
       if (error || !data) { router.push('/dashboard/profil'); return }
 

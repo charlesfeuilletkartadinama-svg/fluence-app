@@ -3,10 +3,11 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
+import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
+import type { Periode, Classe } from '@/app/lib/types'
+import { periodeVerrouillee } from '@/app/lib/fluenceUtils'
 
 type Eleve = {
   id: string
@@ -26,14 +27,6 @@ type Eleve = {
   fait: boolean
 }
 
-type Periode = { id: string; code: string; label: string; date_fin: string | null; type: string | null }
-
-function periodeVerrouillee(p: Periode | null): boolean {
-  if (!p?.date_fin) return false
-  return p.date_fin < new Date().toISOString().split('T')[0]
-}
-
-type Classe = { id: string; nom: string; niveau: string; etablissement_id: string }
 
 function PassationContent() {
   const [etape, setEtape]           = useState<'periode'|'classe'|'liste'|'eleve'|'done'>('periode')
@@ -45,6 +38,7 @@ function PassationContent() {
   const [eleveIdx, setEleveIdx] = useState(0)
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
+  const [erreurSauvegarde, setErreurSauvegarde] = useState('')
 
   // Chrono
   const [chronoActif, setChronoActif]   = useState(false)
@@ -56,25 +50,38 @@ function PassationContent() {
   const [qs, setQs]                     = useState<(boolean|null)[]>(Array(6).fill(null))
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  const { profil } = useProfil()
-  const router       = useRouter()
-  const searchParams = useSearchParams()
-  const classeId     = searchParams.get('classe')
-  const supabase     = createClient()
+  const { profil, loading: profilLoading } = useProfil()
+  const router   = useRouter()
+  const supabase = createClient()
 
   useEffect(() => {
-    if (!profil) return
+    if (profilLoading) return
+    if (!profil) { setLoading(false); return }
     if (profil.role === 'enseignant') chargerDonneesEnseignant()
     else if (['directeur', 'principal'].includes(profil.role)) chargerDonneesDirection()
-  }, [profil])
+    else setLoading(false)
+  }, [profil, profilLoading])
 
   // Nettoyage chrono
   useEffect(() => {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [])
 
+  // Protection perte de données
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (eleves.some(el => el.fait)) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [eleves])
+
   async function chargerDonneesDirection() {
     if (!profil?.etablissement_id) { setLoading(false); return }
+    const classeId = new URLSearchParams(window.location.search).get('classe')
     const [{ data: periodesData }, { data: classesData }] = await Promise.all([
       supabase.from('periodes').select('id, code, label, date_fin, type')
         .eq('etablissement_id', profil.etablissement_id).eq('actif', true).order('code'),
@@ -92,6 +99,7 @@ function PassationContent() {
 
   async function chargerDonneesEnseignant() {
     if (!profil) { setLoading(false); return }
+    const classeId = new URLSearchParams(window.location.search).get('classe')
     const { data } = await supabase
       .from('enseignant_classes')
       .select('classe:classes(id, nom, niveau, etablissement_id)')
@@ -106,7 +114,7 @@ function PassationContent() {
     setPeriodes(periodesData || [])
 
     if (classes.length === 1) {
-      setClasse(classes[0])  // une seule classe : pré-sélectionner
+      setClasse(classes[0])
     } else {
       setClassesEtab(classes)
       if (classeId) {
@@ -118,7 +126,7 @@ function PassationContent() {
   }
 
   async function selectionnerPeriode(p: Periode) {
-    if (profil?.role === 'enseignant' && periodeVerrouillee(p)) return
+    if (profil?.role === 'enseignant' && periodeVerrouillee(p?.date_fin)) return
     setPeriode(p)
     if (classe) {
       // Classe déjà connue : charger les élèves et aller à la liste
@@ -236,14 +244,17 @@ function PassationContent() {
 
   async function enregistrerTout() {
     if (!profil || !periode) return
-    if (profil.role === 'enseignant' && periodeVerrouillee(periode)) return
+    if (profil.role === 'enseignant' && periodeVerrouillee(periode?.date_fin)) return
     setSaving(true)
+    setErreurSauvegarde('')
+    let errMsg = ''
 
     for (const eleve of eleves) {
       if (!eleve.fait) continue
-      await supabase.from('passations').upsert({
+      const { error } = await supabase.from('passations').upsert({
         eleve_id:      eleve.id,
         periode_id:    periode.id,
+        hors_periode:  false,
         score:         eleve.ne ? null : eleve.scoreActuel,
         non_evalue:    eleve.ne,
         absent:        eleve.absent,
@@ -256,8 +267,13 @@ function PassationContent() {
         q5: eleve.q5 === true ? 'Correct' : eleve.q5 === false ? 'Incorrect' : null,
         q6: eleve.q6 === true ? 'Correct' : eleve.q6 === false ? 'Incorrect' : null,
       }, { onConflict: 'eleve_id,periode_id,hors_periode' })
+      if (error && !errMsg) {
+        errMsg = `${error.message}${error.details ? ' — ' + error.details : ''}`
+        console.error('[passation] upsert error:', error.message, error.details, error.hint, error.code)
+      }
     }
     setSaving(false)
+    if (errMsg) setErreurSauvegarde(errMsg)
     setEtape('done')
   }
 
@@ -265,18 +281,10 @@ function PassationContent() {
   const nbFaits = eleves.filter(e => e.fait).length
   const scoreCalc = calculerScore()
 
-  if (loading) return (
-    <>
-      <Sidebar />
-      <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32 }} className="text-slate-400">Chargement...</div>
-    </>
-  )
+  if (loading) return <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }}>Chargement...</div>
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar />
-      <ImpersonationBar />
-
+    <div style={{ minHeight: '100vh', background: 'var(--bg-light)' }}>
       <div style={{ marginLeft: 'var(--sidebar-width)' }}>
 
         {/* ── Choix période ── */}
@@ -286,11 +294,21 @@ function PassationContent() {
               <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode passation</h2>
               <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez une période</p>
             </div>
+            {periodes.length === 0 ? (
+              <div style={{ background: 'white', borderRadius: 16, padding: '48px 32px', border: '1.5px solid var(--border-light)', textAlign: 'center' }}>
+                <div style={{ fontSize: 40, marginBottom: 16 }}>🏫</div>
+                <p style={{ fontWeight: 700, fontSize: 16, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', marginBottom: 8 }}>Aucune période disponible</p>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+                  Ce profil n'est pas rattaché à un établissement.<br />
+                  Utilisez l'impersonation pour passer en tant qu'enseignant ou directeur.
+                </p>
+              </div>
+            ) : (
             <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>Choisir une période</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {periodes.map(p => {
-                  const locked = profil?.role === 'enseignant' && periodeVerrouillee(p)
+                  const locked = profil?.role === 'enseignant' && periodeVerrouillee(p?.date_fin)
                   return (
                     <button key={p.id}
                       onClick={() => selectionnerPeriode(p)}
@@ -316,6 +334,7 @@ function PassationContent() {
                 })}
               </div>
             </div>
+            )}
           </div>
         )}
 
@@ -555,24 +574,39 @@ function PassationContent() {
 
         {/* ── Terminé ── */}
         {etape === 'done' && (
-          <div className="p-8 max-w-xl">
-            <div className="bg-white rounded-2xl p-12 text-center border border-slate-100">
-              <div className="text-5xl mb-4">🎉</div>
-              <h3 className="text-2xl font-bold text-blue-900 mb-2">Passation terminée !</h3>
-              <p className="text-slate-400 mb-2">{nbFaits} élèves enregistrés</p>
-              <p className="text-slate-400 text-sm mb-8">
+          <div style={{ padding: 32, maxWidth: 560 }}>
+            <div style={{ background: 'white', borderRadius: 20, padding: '48px 40px', textAlign: 'center', border: '1.5px solid var(--border-light)' }}>
+              <div style={{ fontSize: 52, marginBottom: 16 }}>{erreurSauvegarde ? '⚠️' : '🎉'}</div>
+              <h3 style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', marginBottom: 8 }}>
+                {erreurSauvegarde ? 'Enregistrement partiel' : 'Passation terminée !'}
+              </h3>
+              {erreurSauvegarde && (
+                <div style={{ background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#dc2626', fontFamily: 'var(--font-sans)', marginBottom: 16, textAlign: 'left' }}>
+                  {erreurSauvegarde}
+                </div>
+              )}
+              <p style={{ color: 'var(--text-secondary)', fontSize: 14, fontFamily: 'var(--font-sans)', marginBottom: 4 }}>
+                {nbFaits} élèves enregistrés
+              </p>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 13, fontFamily: 'var(--font-sans)', marginBottom: 32 }}>
                 Score moyen : {(() => {
                   const scores = eleves.filter(e => e.fait && !e.ne && e.scoreActuel).map(e => e.scoreActuel!)
                   return scores.length > 0 ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) + ' m/min' : '—'
                 })()}
               </p>
-              <div className="flex gap-3">
-                <button onClick={() => router.push('/dashboard/eleves')}
-                  className="flex-1 border border-slate-200 text-slate-600 py-3 rounded-xl font-semibold text-sm hover:bg-slate-50 transition">
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button onClick={() => router.push('/dashboard/eleves')} style={{
+                  flex: 1, border: '1.5px solid var(--border-main)', background: 'transparent',
+                  color: 'var(--text-secondary)', padding: '13px 0', borderRadius: 12,
+                  fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                }}>
                   Mes classes
                 </button>
-                <button onClick={() => router.push('/dashboard/statistiques')}
-                  className="flex-1 bg-blue-900 text-white py-3 rounded-xl font-semibold text-sm hover:bg-blue-800 transition">
+                <button onClick={() => router.push('/dashboard/statistiques')} style={{
+                  flex: 1, border: 'none', background: 'var(--primary-dark)',
+                  color: 'white', padding: '13px 0', borderRadius: 12,
+                  fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                }}>
                   Voir les stats →
                 </button>
               </div>
@@ -587,8 +621,10 @@ function PassationContent() {
 
 export default function Passation() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen text-slate-400">Chargement...</div>}>
+    <>
+      <Sidebar />
+      <ImpersonationBar />
       <PassationContent />
-    </Suspense>
+    </>
   )
 }

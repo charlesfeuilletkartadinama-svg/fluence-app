@@ -35,11 +35,12 @@ export default function Admin() {
 
   const ONGLETS = isReseau
     ? ['Mon réseau', 'Périodes', 'Normes', 'QCM']
-    : ['Vue d\'ensemble', 'Établissements', 'Géographie', 'Périodes', 'Normes', 'Utilisateurs', 'Invitations', 'Affectations', 'QCM']
+    : ['Vue d\'ensemble', 'Établissements', 'Géographie', 'Périodes', 'Normes', 'Utilisateurs', 'Invitations', 'Affectations', 'QCM', 'Structure']
 
-  const periodesOnglet = isReseau ? 1 : 3
-  const normesOnglet   = isReseau ? 2 : 4
-  const qcmOnglet      = isReseau ? 3 : 8
+  const periodesOnglet  = isReseau ? 1 : 3
+  const normesOnglet    = isReseau ? 2 : 4
+  const qcmOnglet       = isReseau ? 3 : 8
+  const structureOnglet = 9
 
   // GeoData dynamique (construit depuis Supabase)
   const geoData: Record<string, Record<string, string[]>> = {}
@@ -452,6 +453,11 @@ export default function Admin() {
         {/* ── QCM ── */}
         {onglet === qcmOnglet && (
           <QcmTab supabase={supabase} profil={profil} periodes={periodes} />
+        )}
+
+        {/* ── Structure ── */}
+        {!isReseau && onglet === structureOnglet && (
+          <StructureTab supabase={supabase} etablissements={etablissements} />
         )}
       </div>
     </div>
@@ -1709,6 +1715,202 @@ function QcmTab({ supabase, profil, periodes }: { supabase: any; profil: any; pe
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Structure Tab ─────────────────────────────────────────────────────────────
+
+type EnseignantRow = { id: string; nom: string; prenom: string; classes: string[] }
+
+function StructureTab({ supabase, etablissements }: { supabase: any; etablissements: Etablissement[] }) {
+  const [selectedEtab, setSelectedEtab] = useState('')
+  const [classes, setClasses]           = useState<{ id: string; nom: string; niveau: string }[]>([])
+  const [enseignants, setEnseignants]   = useState<EnseignantRow[]>([])
+  const [loadingStruct, setLoadingStruct] = useState(false)
+  const [nomClasse, setNomClasse]       = useState('')
+  const [niveauClasse, setNiveauClasse] = useState('CP')
+  const [adding, setAdding]             = useState(false)
+  const [assignModal, setAssignModal]   = useState<EnseignantRow | null>(null)
+  const [classesSel, setClassesSel]     = useState<string[]>([])
+  const [savingAssign, setSavingAssign] = useState(false)
+
+  const NIVEAUX = ['CP', 'CE1', 'CE2', 'CM1', 'CM2', 'ULIS', '6ème', '5ème', '4ème', '3ème', 'Autre']
+
+  async function chargerStructure(etabId: string) {
+    if (!etabId) return
+    setLoadingStruct(true)
+    const [cls, profs] = await Promise.all([
+      supabase.from('classes').select('id, nom, niveau').eq('etablissement_id', etabId).order('niveau'),
+      supabase.from('profils').select('id, nom, prenom').eq('etablissement_id', etabId).eq('role', 'enseignant'),
+    ])
+    setClasses(cls.data || [])
+    if (profs.data && profs.data.length > 0) {
+      const { data: ec } = await supabase.from('enseignant_classes')
+        .select('enseignant_id, classe_id').in('enseignant_id', profs.data.map((p: any) => p.id))
+      const ensMap: Record<string, string[]> = {}
+      ;(ec || []).forEach((r: any) => {
+        if (!ensMap[r.enseignant_id]) ensMap[r.enseignant_id] = []
+        ensMap[r.enseignant_id].push(r.classe_id)
+      })
+      setEnseignants(profs.data.map((p: any) => ({ ...p, classes: ensMap[p.id] || [] })))
+    } else { setEnseignants([]) }
+    setLoadingStruct(false)
+  }
+
+  async function ajouterClasse() {
+    if (!nomClasse.trim() || !selectedEtab) return
+    setAdding(true)
+    await supabase.from('classes').insert({ nom: nomClasse.trim(), niveau: niveauClasse, etablissement_id: selectedEtab })
+    setNomClasse('')
+    await chargerStructure(selectedEtab)
+    setAdding(false)
+  }
+
+  async function supprimerClasse(id: string, nom: string) {
+    const { count } = await supabase.from('eleves').select('*', { count: 'exact', head: true }).eq('classe_id', id)
+    if (count && count > 0) { alert(`"${nom}" contient ${count} élève(s). Supprimez d'abord les élèves.`); return }
+    if (!window.confirm(`Supprimer la classe "${nom}" ?`)) return
+    await supabase.from('classes').delete().eq('id', id)
+    await chargerStructure(selectedEtab)
+  }
+
+  async function sauvegarderAssign() {
+    if (!assignModal) return
+    setSavingAssign(true)
+    await supabase.from('enseignant_classes').delete().eq('enseignant_id', assignModal.id)
+    if (classesSel.length > 0) {
+      await supabase.from('enseignant_classes').insert(classesSel.map(cid => ({ enseignant_id: assignModal.id, classe_id: cid })))
+    }
+    setAssignModal(null); setSavingAssign(false)
+    await chargerStructure(selectedEtab)
+  }
+
+  return (
+    <div>
+      {/* Modal assignation */}
+      {assignModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'white', borderRadius: 20, padding: 32, width: 440, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary-dark)', marginBottom: 4, fontFamily: 'var(--font-sans)' }}>Assigner des classes</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, fontFamily: 'var(--font-sans)' }}>{assignModal.prenom} {assignModal.nom}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
+              {classes.map(c => {
+                const sel = classesSel.includes(c.id)
+                return (
+                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', borderRadius: 10, cursor: 'pointer', background: sel ? 'rgba(0,24,69,0.06)' : 'var(--bg-gray)', border: `1.5px solid ${sel ? 'var(--primary-dark)' : 'var(--border-light)'}`, fontFamily: 'var(--font-sans)' }}>
+                    <input type="checkbox" checked={sel} onChange={() => setClassesSel(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} style={{ accentColor: 'var(--primary-dark)', width: 16, height: 16 }} />
+                    <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--primary-dark)' }}>{c.nom}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.niveau}</span>
+                  </label>
+                )
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setAssignModal(null)} style={A.btnGhost}>Annuler</button>
+              <button onClick={sauvegarderAssign} disabled={savingAssign} style={{ ...A.btnPrimary, opacity: savingAssign ? 0.6 : 1 }}>{savingAssign ? 'Enregistrement…' : 'Enregistrer'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sélecteur d'établissement */}
+      <div style={{ ...A.card, display: 'flex', alignItems: 'center', gap: 16, padding: '16px 24px', marginBottom: 24, background: '#eff6ff', borderColor: '#bfdbfe' }}>
+        <span style={{ fontSize: 22 }}>🏫</span>
+        <div style={{ flex: 1 }}>
+          <label style={{ ...A.label, color: '#1d4ed8', marginBottom: 4 }}>Établissement</label>
+          <select value={selectedEtab} onChange={e => { setSelectedEtab(e.target.value); chargerStructure(e.target.value) }} style={{ ...A.select, width: '100%', fontWeight: 600 }}>
+            <option value="">— Choisir un établissement —</option>
+            {etablissements.map(e => (
+              <option key={e.id} value={e.id}>{e.nom} ({e.type}{e.ville ? ` · ${e.ville}` : ''})</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {!selectedEtab ? (
+        <div style={A.emptyState}>Sélectionnez un établissement pour gérer sa structure.</div>
+      ) : loadingStruct ? (
+        <div style={{ padding: 32, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }}>Chargement…</div>
+      ) : (
+        <>
+          {/* ── Classes ── */}
+          <h3 style={A.sectionTitle}>Classes ({classes.length})</h3>
+          <div style={{ ...A.card, marginBottom: 24 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
+              <input value={nomClasse} onChange={e => setNomClasse(e.target.value)} placeholder="Nom de la classe" style={{ ...A.input, flex: 1 }} />
+              <select value={niveauClasse} onChange={e => setNiveauClasse(e.target.value)} style={{ ...A.select, width: 120 }}>
+                {NIVEAUX.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <button onClick={ajouterClasse} disabled={adding || !nomClasse.trim()} style={{ ...A.btnPrimary, opacity: (adding || !nomClasse.trim()) ? 0.5 : 1 }}>
+                {adding ? '…' : '+ Ajouter'}
+              </button>
+            </div>
+            {classes.length === 0 ? (
+              <p style={{ fontSize: 13, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }}>Aucune classe.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  <th style={A.th}>Classe</th>
+                  <th style={A.th}>Niveau</th>
+                  <th style={A.thC}></th>
+                </tr></thead>
+                <tbody>
+                  {classes.map(c => (
+                    <tr key={c.id}>
+                      <td style={A.tdBold}>{c.nom}</td>
+                      <td style={A.td}>{c.niveau}</td>
+                      <td style={A.tdC}>
+                        <button onClick={() => supprimerClasse(c.id, c.nom)} style={A.btnDanger}>Supprimer</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* ── Enseignants ── */}
+          <h3 style={A.sectionTitle}>Enseignants ({enseignants.length})</h3>
+          <div style={A.card}>
+            {enseignants.length === 0 ? (
+              <p style={{ fontSize: 13, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }}>Aucun enseignant inscrit pour cet établissement.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  <th style={A.th}>Enseignant</th>
+                  <th style={A.th}>Classes assignées</th>
+                  <th style={A.thC}></th>
+                </tr></thead>
+                <tbody>
+                  {enseignants.map(ens => (
+                    <tr key={ens.id}>
+                      <td style={A.tdBold}>{ens.prenom} {ens.nom}</td>
+                      <td style={A.td}>
+                        {ens.classes.length === 0 ? (
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: 12, fontStyle: 'italic' }}>Aucune</span>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {ens.classes.map(cid => {
+                              const cl = classes.find(c => c.id === cid)
+                              return cl ? (
+                                <span key={cid} style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#dbeafe', color: '#1d4ed8', fontFamily: 'var(--font-sans)' }}>{cl.nom}</span>
+                              ) : null
+                            })}
+                          </div>
+                        )}
+                      </td>
+                      <td style={A.tdC}>
+                        <button onClick={() => { setAssignModal(ens); setClassesSel([...ens.classes]) }} style={A.btnGhost}>Assigner</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
       )}
     </div>
   )

@@ -344,6 +344,7 @@ export default function Configuration() {
         <>
 
         {/* ── Onglets principaux ── */}
+        {!isAdmin && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 32, background: 'white', borderRadius: 14, padding: 5, border: '1.5px solid var(--border-light)', width: 'fit-content' }}>
           {[
             { id: 'structure'  as OngletConfig, icon: '🏫', label: 'Structure établissement' },
@@ -360,6 +361,7 @@ export default function Configuration() {
             </button>
           ))}
         </div>
+        )}
 
         {/* ════════════════════════════════════════════
             ONGLET STRUCTURE

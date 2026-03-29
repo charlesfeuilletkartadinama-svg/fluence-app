@@ -36,7 +36,7 @@ export default function Sidebar() {
 
   const NAV = [
     { href: '/dashboard',              icon: '📊', label: 'Tableau de bord' },
-    ...((isDirection || profil?.role === 'admin')
+    ...(isDirection
       ? [{ href: '/dashboard/onboarding', icon: '⚙️', label: 'Configuration' }]
       : []),
     ...(isEnseignant ? [

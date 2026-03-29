@@ -46,6 +46,7 @@ type StatPeriode = {
 type EtabReseauStat = {
   id: string
   nom: string
+  type_reseau?: string
   nbEleves: number
   nbEvalues: number
   nbNE: number
@@ -277,7 +278,9 @@ function Statistiques() {
   // Coordo réseau
   const [vueReseau,      setVueReseau]      = useState(false)
   const [viewMode,       setViewMode]       = useState<'reseau' | 'classe'>('reseau')
-  const [reseauToggle,   setReseauToggle]   = useState<'etab' | 'niveau'>('etab')
+  const [reseauToggle,   setReseauToggle]   = useState<'etab' | 'niveau' | 'circo'>('etab')
+  const [reseauRepFilter, setReseauRepFilter] = useState<'tous' | 'rep' | 'horsrep'>('tous')
+  const [circosReseau,   setCircosReseau]   = useState<{ circo: string; nbEleves: number; nbEvalues: number; moyenne: number | null; g1: number; g2: number; g3: number; g4: number }[]>([])
   const [reseauPeriode,  setReseauPeriode]  = useState('')
   const [etabsReseau,    setEtabsReseau]    = useState<EtabReseauStat[]>([])
   const [niveauxReseau,  setNiveauxReseau]  = useState<NiveauReseauStat[]>([])
@@ -547,6 +550,11 @@ function Statistiques() {
       passData = data || []
     }
 
+    // Charger type_reseau pour filtre REP
+    const { data: etabsTypeData } = await supabase.from('etablissements').select('id, type_reseau').in('id', etabIds)
+    const etabTypeMap: Record<string, string> = {}
+    for (const e of (etabsTypeData || [])) etabTypeMap[e.id] = e.type_reseau || 'Hors REP'
+
     // Stats par établissement
     const etabsS: EtabReseauStat[] = etabsList.map(etab => {
       const etabClasses  = (classesData || []).filter((c: any) => c.etablissement_id === etab.id)
@@ -565,7 +573,7 @@ function Statistiques() {
         if (g === 1) g1++; else if (g === 2) g2++; else if (g === 3) g3++; else g4++
       })
       return {
-        id: etab.id, nom: etab.nom,
+        id: etab.id, nom: etab.nom, type_reseau: etabTypeMap[etab.id],
         nbEleves:  etabEleves.length,
         nbEvalues: evalues.length,
         nbNE:      ne.length,
@@ -606,6 +614,43 @@ function Statistiques() {
       }))
       .sort((a, b) => a.niveau.localeCompare(b.niveau))
     setNiveauxReseau(niveauxS)
+
+    // Stats par circonscription (IA-DASEN/Recteur)
+    if (profil && ['ia_dasen', 'recteur', 'admin'].includes(profil.role)) {
+      const { data: etabsFull } = await supabase.from('etablissements').select('id, circonscription, type_reseau').in('id', etabIds)
+      const etabFullMap: Record<string, any> = {}
+      for (const e of (etabsFull || [])) etabFullMap[e.id] = e
+
+      const circoData: Record<string, { nbEleves: number; scores: number[]; g1: number; g2: number; g3: number; g4: number }> = {}
+      for (const e of (elevesData || [])) {
+        const cl = classeMap[e.classe_id]
+        const etab = cl ? etabFullMap[cl.etablissement_id] : null
+        const circo = etab?.circonscription || 'Non définie'
+        if (!circoData[circo]) circoData[circo] = { nbEleves: 0, scores: [], g1: 0, g2: 0, g3: 0, g4: 0 }
+        circoData[circo].nbEleves++
+      }
+      for (const p of passData) {
+        if (p.non_evalue || !p.score) continue
+        const cl = eleveToClasse[p.eleve_id]
+        const etab = cl ? etabFullMap[cl.etablissement_id] : null
+        const circo = etab?.circonscription || 'Non définie'
+        if (circoData[circo]) {
+          circoData[circo].scores.push(p.score)
+          const nrm = normesParam.find(n => n.niveau === cl?.niveau)
+          const g = classerEleve(p.score, nrm)
+          if (g === 1) circoData[circo].g1++
+          else if (g === 2) circoData[circo].g2++
+          else if (g === 3) circoData[circo].g3++
+          else circoData[circo].g4++
+        }
+      }
+      setCircosReseau(Object.entries(circoData).map(([circo, d]) => ({
+        circo, nbEleves: d.nbEleves, nbEvalues: d.scores.length,
+        moyenne: d.scores.length > 0 ? Math.round(d.scores.reduce((a, b) => a + b, 0) / d.scores.length) : null,
+        g1: d.g1, g2: d.g2, g3: d.g3, g4: d.g4,
+      })).sort((a, b) => (b.moyenne || 0) - (a.moyenne || 0)))
+    }
+
     setReseauLoading(false)
   }
 
@@ -895,7 +940,29 @@ function Statistiques() {
                   onClick={() => setReseauToggle('niveau')}>
                   Par niveau
                 </button>
+                {profil && ['ia_dasen', 'recteur', 'admin'].includes(profil.role) && (
+                  <button
+                    className={`${styles.modeTab} ${reseauToggle === 'circo' ? styles.modeTabActive : ''}`}
+                    onClick={() => setReseauToggle('circo')}>
+                    Par circonscription
+                  </button>
+                )}
               </div>
+              {/* Filtre REP (IA-DASEN/Recteur) */}
+              {profil && ['ia_dasen', 'recteur', 'admin'].includes(profil.role) && reseauToggle === 'etab' && (
+                <div style={{ display: 'flex', gap: 4, marginLeft: 16 }}>
+                  {[
+                    { val: 'tous' as const, label: 'Tous' },
+                    { val: 'rep' as const, label: 'REP/REP+' },
+                    { val: 'horsrep' as const, label: 'Hors REP' },
+                  ].map(f => (
+                    <button key={f.val} onClick={() => setReseauRepFilter(f.val)}
+                      style={{ padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', borderColor: reseauRepFilter === f.val ? '#7e22ce' : 'var(--border-main)', background: reseauRepFilter === f.val ? '#f3e8ff' : 'white', color: reseauRepFilter === f.val ? '#7e22ce' : 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className={styles.periodeTabs}>
                 {periodes.map(p => (
                   <button key={p.code}
@@ -931,7 +998,11 @@ function Statistiques() {
                       </tr>
                     </thead>
                     <tbody>
-                      {etabsReseau.map(e => {
+                      {etabsReseau.filter(e => {
+                        if (reseauRepFilter === 'tous') return true
+                        if (reseauRepFilter === 'rep') return e.type_reseau === 'REP' || e.type_reseau === 'REP+'
+                        return e.type_reseau !== 'REP' && e.type_reseau !== 'REP+'
+                      }).map(e => {
                         const total    = e.nbEvalues || 1
                         const pctEval  = e.nbEleves > 0 ? Math.round((e.nbEvalues + e.nbNE) / e.nbEleves * 100) : 0
                         const fragiles = e.g1 + e.g2
@@ -1000,7 +1071,7 @@ function Statistiques() {
                 </div>
               </div>
 
-            ) : (
+            ) : reseauToggle === 'niveau' ? (
 
               /* ── Par niveau ── */
               <div className={styles.table}>
@@ -1065,7 +1136,67 @@ function Statistiques() {
                   </table>
                 </div>
               </div>
-            )}
+            ) : reseauToggle === 'circo' ? (
+
+              /* ── Par circonscription ── */
+              <div className={styles.table}>
+                <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border-main)' }}>
+                  <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, color: 'var(--primary-dark)' }}>
+                    Statistiques par circonscription · {reseauPeriode}
+                  </h2>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead className={styles.tableHead}>
+                      <tr>
+                        <th className={styles.tableHeaderCell}>Circonscription</th>
+                        <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Élèves</th>
+                        <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Évalués</th>
+                        <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Moyenne</th>
+                        <th className={styles.tableHeaderCell} style={{ textAlign: 'center' }}>Fragiles</th>
+                        <th className={styles.tableHeaderCell}>Groupes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {circosReseau.map(c => {
+                        const total = c.nbEvalues || 1
+                        const pctEval = c.nbEleves > 0 ? Math.round(c.nbEvalues / c.nbEleves * 100) : 0
+                        const fragiles = c.g1 + c.g2
+                        const pctFrag = total > 0 ? Math.round(fragiles / total * 100) : 0
+                        return (
+                          <tr key={c.circo} className={styles.tableRow}>
+                            <td className={styles.tableCell} style={{ fontWeight: 600, color: 'var(--primary-dark)' }}>{c.circo}</td>
+                            <td style={{ textAlign: 'center', padding: '12px 16px' }}>{c.nbEleves}</td>
+                            <td style={{ textAlign: 'center', padding: '12px 16px' }}>
+                              <span style={{ fontWeight: 600, color: pctEval >= 80 ? '#16A34A' : pctEval >= 50 ? '#D97706' : '#DC2626' }}>
+                                {c.nbEvalues} <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-secondary)' }}>({pctEval}%)</span>
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '12px 16px' }}>
+                              {c.moyenne != null ? <span style={{ fontWeight: 700, color: 'var(--primary-dark)' }}>{c.moyenne} <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-secondary)' }}>m/min</span></span> : '—'}
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '12px 16px' }}>
+                              <span style={{ fontWeight: 700, color: pctFrag > 40 ? '#DC2626' : pctFrag > 20 ? '#D97706' : '#16A34A' }}>{pctFrag}%</span>
+                            </td>
+                            <td style={{ padding: '12px 16px', minWidth: 140 }}>
+                              {total > 0 && (
+                                <div style={{ display: 'flex', gap: 2, height: 18, borderRadius: 4, overflow: 'hidden' }}>
+                                  {[{ n: c.g1, color: '#DC2626' }, { n: c.g2, color: '#D97706' }, { n: c.g3, color: '#2563EB' }, { n: c.g4, color: '#16A34A' }].map((g, i) => {
+                                    const pct = Math.round(g.n / total * 100)
+                                    return pct > 0 ? <div key={i} style={{ width: `${pct}%`, background: g.color, minWidth: 2 }} title={`${g.n} (${pct}%)`} /> : null
+                                  })}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            ) : null}
           </>
         )}
 

@@ -5,7 +5,7 @@ import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
-import type { Classe, Periode } from '@/app/lib/types'
+import type { Classe, Periode, Etablissement } from '@/app/lib/types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -68,18 +68,42 @@ export default function Configuration() {
   const [addingPer, setAddingPer]     = useState(false)
   const [editPer, setEditPer]         = useState<Periode|null>(null)
 
+  // Admin : sélecteur d'établissement
+  const [allEtabs, setAllEtabs]       = useState<Etablissement[]>([])
+  const [selectedEtabId, setSelectedEtabId] = useState('')
+
   const [loading, setLoading] = useState(true)
   const { profil } = useProfil()
   const supabase   = createClient()
   const router     = useRouter()
+  const isAdmin    = profil?.role === 'admin'
 
-  useEffect(() => { if (profil) charger() }, [profil])
+  // L'établissement actif : soit celui du profil, soit celui sélectionné par l'admin
+  const etabId: string = isAdmin ? selectedEtabId : (profil?.etablissement_id || '')
+
+  useEffect(() => {
+    if (!profil) return
+    if (isAdmin) {
+      // Charger la liste des établissements pour le sélecteur
+      supabase.from('etablissements').select('id, nom, type, type_reseau, ville, departement, circonscription').order('nom')
+        .then(({ data }) => {
+          setAllEtabs(data || [])
+          setLoading(false)
+        })
+    } else {
+      charger()
+    }
+  }, [profil])
+
+  useEffect(() => {
+    if (isAdmin && selectedEtabId) charger()
+  }, [selectedEtabId])
 
   // ── Chargement ──────────────────────────────────────────────────────────
 
   async function charger() {
-    if (!profil?.etablissement_id) { setLoading(false); return }
-    const etabId = profil.etablissement_id
+    if (!etabId) { setLoading(false); return }
+    setLoading(true)
 
     const [cls, inv, per, profs] = await Promise.all([
       supabase.from('classes').select('id, nom, niveau').eq('etablissement_id', etabId).order('niveau'),
@@ -109,11 +133,11 @@ export default function Configuration() {
   // ── Structure : Classes ─────────────────────────────────────────────────
 
   async function ajouterClasse() {
-    if (!nomClasse.trim() || !profil?.etablissement_id) return
+    if (!nomClasse.trim() || !etabId) return
     setAddingClass(true)
     await supabase.from('classes').insert({
       nom: nomClasse.trim(), niveau: niveauClasse,
-      etablissement_id: profil.etablissement_id, annee_scolaire: '2025-2026',
+      etablissement_id: etabId, annee_scolaire: '2025-2026',
     })
     setNomClasse('')
     await charger()
@@ -131,9 +155,9 @@ export default function Configuration() {
   // ── Structure : Enseignants ─────────────────────────────────────────────
 
   async function genererCode() {
-    if (!profil?.etablissement_id) return
+    if (!etabId) return
     const code = 'ENS-' + Math.random().toString(36).substring(2, 8).toUpperCase()
-    const { error } = await supabase.from('invitations').insert({ code, role: 'enseignant', etablissement_id: profil.etablissement_id, actif: true })
+    const { error } = await supabase.from('invitations').insert({ code, role: 'enseignant', etablissement_id: etabId, actif: true })
     if (!error) { setCodeGenere(code); await charger() }
   }
 
@@ -157,13 +181,13 @@ export default function Configuration() {
   // ── Passations ──────────────────────────────────────────────────────────
 
   async function ajouterPeriode() {
-    if (!newCode.trim() || !newLabel.trim() || !profil?.etablissement_id) return
+    if (!newCode.trim() || !newLabel.trim() || !etabId) return
     setAddingPer(true)
     await supabase.from('periodes').insert({
       code: newCode.trim(), label: newLabel.trim(),
       date_debut: newDebut || null, date_fin: newFin || null,
       type: newType, actif: true,
-      etablissement_id: profil.etablissement_id,
+      etablissement_id: etabId,
     })
     setNewCode('T1'); setNewLabel(''); setNewDebut(''); setNewFin(''); setNewType('regular')
     await charger(); setAddingPer(false)
@@ -282,6 +306,42 @@ export default function Configuration() {
             Structurez votre école et planifiez vos passations
           </p>
         </div>
+
+        {/* ── Sélecteur établissement (admin) ── */}
+        {isAdmin && (
+          <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 16, padding: '16px 24px', marginBottom: 24, background: '#eff6ff', borderColor: '#bfdbfe' }}>
+            <span style={{ fontSize: 22 }}>🏫</span>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', letterSpacing: 1, textTransform: 'uppercase' as const, fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 4 }}>
+                Établissement à configurer
+              </label>
+              <select
+                value={selectedEtabId}
+                onChange={e => { setSelectedEtabId(e.target.value); setEtape(1); setOnglet('structure') }}
+                style={{ width: '100%', border: '1.5px solid #bfdbfe', borderRadius: 10, padding: '8px 12px', fontSize: 14, fontFamily: 'var(--font-sans)', outline: 'none', background: 'white', fontWeight: 600, color: 'var(--primary-dark)' }}
+              >
+                <option value="">— Choisir un établissement —</option>
+                {allEtabs.map(e => (
+                  <option key={e.id} value={e.id}>{e.nom} ({e.type}{e.ville ? ` · ${e.ville}` : ''})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Si admin sans établissement sélectionné, ne pas afficher le reste */}
+        {isAdmin && !selectedEtabId ? (
+          <div style={{ ...card, textAlign: 'center' as const, padding: 48 }}>
+            <div style={{ fontSize: 40, marginBottom: 16 }}>👆</div>
+            <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', marginBottom: 8 }}>
+              Sélectionnez un établissement
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+              Choisissez l'établissement que vous souhaitez configurer dans le sélecteur ci-dessus.
+            </p>
+          </div>
+        ) : (
+        <>
 
         {/* ── Onglets principaux ── */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 32, background: 'white', borderRadius: 14, padding: 5, border: '1.5px solid var(--border-light)', width: 'fit-content' }}>
@@ -656,8 +716,8 @@ export default function Configuration() {
                     const label = (document.getElementById('en-label') as HTMLInputElement)?.value.trim()
                     const debut = (document.getElementById('en-debut') as HTMLInputElement)?.value
                     const fin   = (document.getElementById('en-fin')   as HTMLInputElement)?.value
-                    if (!code || !label || !profil?.etablissement_id) return
-                    supabase.from('periodes').insert({ code, label, date_debut: debut || null, date_fin: fin || null, type: 'evaluation_nationale', actif: true, etablissement_id: profil.etablissement_id })
+                    if (!code || !label || !etabId) return
+                    supabase.from('periodes').insert({ code, label, date_debut: debut || null, date_fin: fin || null, type: 'evaluation_nationale', actif: true, etablissement_id: etabId })
                       .then(() => charger())
                   }} style={{ background: '#D97706', color: 'white', border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
                     + Ajouter l'Évaluation Nationale
@@ -667,6 +727,9 @@ export default function Configuration() {
             </div>
 
           </div>
+        )}
+
+        </>
         )}
 
       </main>

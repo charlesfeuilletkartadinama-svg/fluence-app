@@ -51,6 +51,10 @@ export default function MesClasses() {
   const [resultats, setResultats]       = useState<EleveRecherche[]>([])
   const [rechercheLoading, setRechercheLoading] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Admin entonnoir
+  const [allEtabs, setAllEtabs]         = useState<{ id: string; nom: string; circonscription: string | null }[]>([])
+  const [filtreCirco, setFiltreCirco]   = useState('')
+  const [filtreEtab, setFiltreEtab]     = useState('')
   const { profil } = useProfil()
   const router   = useRouter()
   const supabase = createClient()
@@ -98,27 +102,31 @@ export default function MesClasses() {
       })))
 
     } else {
-      // Directeur / Principal → toutes les classes de l'établissement
-      // Count des élèves embarqué dans la requête (pas de N+1)
-      let queryAvecCount = supabase
-        .from('classes')
-        .select('id, nom, niveau, etablissement:etablissements(nom), eleves(count)')
-        .order('niveau')
+      const isAdmin = ['admin', 'ia_dasen', 'recteur'].includes(profil.role)
 
-      if (profil.etablissement_id) {
-        queryAvecCount = queryAvecCount.eq('etablissement_id', profil.etablissement_id)
+      if (isAdmin && !profil.etablissement_id) {
+        // Admin : charger la liste des établissements pour l'entonnoir
+        const { data: etabsData } = await supabase.from('etablissements')
+          .select('id, nom, circonscription').order('nom')
+        setAllEtabs(etabsData || [])
+        // Ne pas charger de classes tant qu'un établissement n'est pas sélectionné
+        setClasses([])
+      } else {
+        // Directeur / Principal / IEN / Coordo → classes de leur établissement
+        let queryAvecCount = supabase
+          .from('classes')
+          .select('id, nom, niveau, etablissement:etablissements(nom), eleves(count)')
+          .order('niveau')
+        if (profil.etablissement_id) {
+          queryAvecCount = queryAvecCount.eq('etablissement_id', profil.etablissement_id)
+        }
+        const { data: dataAvecCount } = await queryAvecCount
+        const classesAvecNb: Classe[] = ((dataAvecCount as unknown as ClasseRaw[]) || []).map(c => ({
+          id: c.id, nom: c.nom, niveau: c.niveau, groupe_lecture: null,
+          etablissement: c.etablissement, nbEleves: c.eleves?.[0]?.count || 0,
+        }))
+        setClasses(classesAvecNb)
       }
-
-      const { data: dataAvecCount } = await queryAvecCount
-      const classesAvecNb: Classe[] = ((dataAvecCount as unknown as ClasseRaw[]) || []).map(c => ({
-        id:             c.id,
-        nom:            c.nom,
-        niveau:         c.niveau,
-        groupe_lecture: null,
-        etablissement:  c.etablissement,
-        nbEleves:       c.eleves?.[0]?.count || 0,
-      }))
-      setClasses(classesAvecNb)
     }
 
     setLoading(false)
@@ -143,6 +151,36 @@ export default function MesClasses() {
     }))
 
     setClassesDisponibles(classesAvecGroupes)
+  }
+
+  async function chargerClassesEtab(etabId: string) {
+    setFiltreEtab(etabId)
+    if (!etabId) { setClasses([]); return }
+    const { data } = await supabase
+      .from('classes')
+      .select('id, nom, niveau, etablissement:etablissements(nom), eleves(count)')
+      .eq('etablissement_id', etabId).order('niveau')
+    const classesAvecNb: Classe[] = ((data as unknown as ClasseRaw[]) || []).map(c => ({
+      id: c.id, nom: c.nom, niveau: c.niveau, groupe_lecture: null,
+      etablissement: c.etablissement, nbEleves: c.eleves?.[0]?.count || 0,
+    }))
+    setClasses(classesAvecNb)
+  }
+
+  // Aussi chercher par INE
+  async function rechercherParINE(query: string) {
+    if (query.trim().length < 3) return
+    setRechercheLoading(true)
+    const { data } = await supabase
+      .from('eleves')
+      .select('id, nom, prenom, numero_ine, classe:classes(id, nom)')
+      .or(`numero_ine.ilike.%${query}%,nom.ilike.%${query}%,prenom.ilike.%${query}%`)
+      .eq('actif', true).limit(15)
+    setResultats((data || []).map((e: any) => ({
+      id: e.id, nom: e.nom, prenom: e.prenom,
+      classeNom: e.classe?.nom || '—', classeId: e.classe?.id || '',
+    })))
+    setRechercheLoading(false)
   }
 
   // ── Recherche d'élève (direction) ─────────────────────────────────────
@@ -230,10 +268,14 @@ export default function MesClasses() {
             <div className={styles.topbar}>
               <div>
                 <h1 className={styles.pageTitle}>
-                  {['directeur','principal','ia_dasen','recteur'].includes(profil?.role || '') ? 'Détail élève' : 'Mes classes'}
+                  {['admin', 'ia_dasen', 'recteur'].includes(profil?.role || '') ? 'Explorateur élèves'
+                    : ['directeur','principal'].includes(profil?.role || '') ? 'Détail élèves'
+                    : 'Mes classes'}
                 </h1>
                 <p className={styles.pageSub}>
-                  {classes.length} classe{classes.length > 1 ? 's' : ''} assignée{classes.length > 1 ? 's' : ''}
+                  {allEtabs.length > 0 && !filtreEtab
+                    ? `${allEtabs.length} établissements — sélectionnez pour voir les classes`
+                    : `${classes.length} classe${classes.length > 1 ? 's' : ''}`}
                 </p>
               </div>
               <div className={styles.topbarActions}>
@@ -253,8 +295,64 @@ export default function MesClasses() {
               </div>
             </div>
 
+            {/* ── Entonnoir admin ── */}
+            {allEtabs.length > 0 && (
+              <div style={{
+                background: 'white', borderRadius: 14, border: '1.5px solid var(--border-light)',
+                padding: '20px 24px', marginBottom: 20,
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 6 }}>Circonscription</label>
+                    <select value={filtreCirco} onChange={e => { setFiltreCirco(e.target.value); setFiltreEtab(''); setClasses([]) }}
+                      style={{ width: '100%', border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '8px 12px', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none', background: 'white' }}>
+                      <option value="">— Toutes les circonscriptions —</option>
+                      {[...new Set(allEtabs.map(e => e.circonscription).filter(Boolean))].sort().map(c => (
+                        <option key={c} value={c!}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 6 }}>Établissement</label>
+                    <select value={filtreEtab} onChange={e => chargerClassesEtab(e.target.value)}
+                      style={{ width: '100%', border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '8px 12px', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none', background: 'white' }}>
+                      <option value="">— Choisir un établissement —</option>
+                      {allEtabs.filter(e => !filtreCirco || e.circonscription === filtreCirco).map(e => (
+                        <option key={e.id} value={e.id}>{e.nom}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {/* Recherche par INE ou nom */}
+                <div style={{ marginTop: 16 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 6 }}>Recherche rapide (nom, prénom ou INE)</label>
+                  <input
+                    value={recherche}
+                    onChange={e => { setRecherche(e.target.value); rechercherParINE(e.target.value) }}
+                    placeholder="Tapez un nom, prénom ou numéro INE…"
+                    style={{ width: '100%', border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '10px 14px', fontSize: 14, fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                  {rechercheLoading && <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6 }}>Recherche…</p>}
+                  {resultats.length > 0 && (
+                    <div style={{ marginTop: 8, background: 'var(--bg-gray)', borderRadius: 10, border: '1px solid var(--border-light)', maxHeight: 200, overflowY: 'auto' }}>
+                      {resultats.map(r => (
+                        <a key={r.id} href={`/dashboard/eleve/${r.id}`} style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '10px 16px', borderBottom: '1px solid var(--border-light)',
+                          textDecoration: 'none', color: 'var(--primary-dark)', fontSize: 13, fontFamily: 'var(--font-sans)',
+                        }}>
+                          <span><strong>{r.nom}</strong> {r.prenom}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{r.classeNom}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ── Barre de recherche (direction) ── */}
-            {['directeur','principal','ia_dasen','recteur'].includes(profil?.role || '') && (
+            {['directeur','principal','ia_dasen','recteur'].includes(profil?.role || '') && allEtabs.length === 0 && (
               <div style={{ marginBottom: 24, position: 'relative' }}>
                 <input
                   type="text"

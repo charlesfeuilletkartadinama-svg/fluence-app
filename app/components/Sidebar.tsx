@@ -48,7 +48,6 @@ export default function Sidebar() {
     ...(canSaisie ? [
       { href: '/dashboard/saisie',    icon: '✏️', label: 'Mode Saisie'   },
       { href: '/dashboard/passation', icon: '⏱️', label: 'Mode passation' },
-      { href: '/dashboard/sessions',  icon: '📋', label: 'Sessions QCM'  },
     ] : []),
     { href: '/dashboard/statistiques', icon: '📈', label: 'Statistiques'     },
     { href: '/dashboard/groupes',      icon: '🎯', label: 'Groupes & Remédiation' },

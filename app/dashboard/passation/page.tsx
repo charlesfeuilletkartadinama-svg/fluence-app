@@ -6,7 +6,7 @@ import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
-import type { Periode, Classe } from '@/app/lib/types'
+import type { Periode, Classe, TestSession } from '@/app/lib/types'
 import { periodeVerrouillee } from '@/app/lib/fluenceUtils'
 
 type Eleve = {
@@ -48,6 +48,13 @@ function PassationContent() {
   const [nbErreurs, setNbErreurs]       = useState(0)
   const [dernierMot, setDernierMot]     = useState('')
   const [qs, setQs]                     = useState<(boolean|null)[]>(Array(6).fill(null))
+  const [ongletPass, setOngletPass]     = useState<'fluence' | 'qcm'>('fluence')
+  // QCM session
+  const [qcmSessions, setQcmSessions]   = useState<TestSession[]>([])
+  const [creatingQcm, setCreatingQcm]   = useState(false)
+  const [copiedQcm, setCopiedQcm]       = useState('')
+  const [qcmResultats, setQcmResultats] = useState<Record<string, { q1: string|null, q2: string|null, q3: string|null, q4: string|null, q5: string|null, q6: string|null }>>({})
+
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const { profil, loading: profilLoading } = useProfil()
@@ -125,6 +132,60 @@ function PassationContent() {
     setLoading(false)
   }
 
+  const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  function genererCode(): string {
+    let code = 'FLU-'
+    for (let i = 0; i < 4; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
+    return code
+  }
+
+  async function chargerQcmSessions(classeId: string, periodeId: string) {
+    const { data } = await supabase
+      .from('test_sessions')
+      .select('id, code, classe_id, periode_id, enseignant_id, active, expires_at, created_at')
+      .eq('classe_id', classeId).eq('periode_id', periodeId)
+      .order('created_at', { ascending: false })
+    setQcmSessions((data || []) as TestSession[])
+  }
+
+  async function chargerQcmRes(classeId: string, periodeId: string) {
+    const { data: elevesData } = await supabase.from('eleves').select('id').eq('classe_id', classeId).eq('actif', true)
+    if (!elevesData || elevesData.length === 0) return
+    const { data: passData } = await supabase.from('passations')
+      .select('eleve_id, q1, q2, q3, q4, q5, q6')
+      .in('eleve_id', elevesData.map(e => e.id))
+      .eq('periode_id', periodeId).eq('hors_periode', false)
+    const map: Record<string, any> = {}
+    for (const p of (passData || [])) map[p.eleve_id] = { q1: p.q1, q2: p.q2, q3: p.q3, q4: p.q4, q5: p.q5, q6: p.q6 }
+    setQcmResultats(map)
+  }
+
+  async function creerQcmSession() {
+    if (!classe || !periode || !profil) return
+    setCreatingQcm(true)
+    let code = genererCode()
+    let attempts = 0
+    while (attempts < 5) {
+      const { error } = await supabase.from('test_sessions').insert({ code, classe_id: classe.id, periode_id: periode.id, enseignant_id: profil.id })
+      if (!error) break
+      if (error.code === '23505') { code = genererCode(); attempts++ }
+      else { setCreatingQcm(false); return }
+    }
+    setCreatingQcm(false)
+    chargerQcmSessions(classe.id, periode.id)
+  }
+
+  async function desactiverQcmSession(id: string) {
+    await supabase.from('test_sessions').update({ active: false }).eq('id', id)
+    setQcmSessions(prev => prev.map(s => s.id === id ? { ...s, active: false } : s))
+  }
+
+  function copierQcmCode(code: string) {
+    navigator.clipboard.writeText(code)
+    setCopiedQcm(code)
+    setTimeout(() => setCopiedQcm(''), 2000)
+  }
+
   async function selectionnerPeriode(p: Periode) {
     if (profil?.role === 'enseignant' && periodeVerrouillee(p?.date_fin)) return
     setPeriode(p)
@@ -140,7 +201,10 @@ function PassationContent() {
         q1: null, q2: null, q3: null, q4: null, q5: null, q6: null,
       })))
       setLoading(false)
+      setOngletPass('fluence')
       setEtape('liste')
+      chargerQcmSessions(classe.id, p.id)
+      chargerQcmRes(classe.id, p.id)
     } else {
       setEtape('classe')
     }
@@ -158,7 +222,12 @@ function PassationContent() {
       q1: null, q2: null, q3: null, q4: null, q5: null, q6: null,
     })))
     setLoading(false)
+    setOngletPass('fluence')
     setEtape('liste')
+    if (periode) {
+      chargerQcmSessions(c.id, periode.id)
+      chargerQcmRes(c.id, periode.id)
+    }
   }
 
   function demarrerChrono() {
@@ -374,58 +443,195 @@ function PassationContent() {
           </div>
         )}
 
-        {/* ── Liste élèves ── */}
+        {/* ── Liste élèves — avec onglets Fluence / QCM ── */}
         {etape === 'liste' && (
-          <div style={{ padding: 32, maxWidth: 640 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
-              <div>
-                <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>{classe?.nom}</h2>
-                <p style={{ color: 'var(--text-secondary)', marginTop: 4, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
-                  {periode?.code} · {nbFaits} / {eleves.length} élèves passés
-                </p>
-              </div>
-              {nbFaits > 0 && (
-                <button onClick={enregistrerTout} disabled={saving}
-                  style={{ background: '#16a34a', color: 'white', border: 'none', padding: '10px 18px', borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
-                  {saving ? 'Enregistrement...' : '✓ Enregistrer tout'}
-                </button>
-              )}
+          <div style={{ padding: 32, maxWidth: 700 }}>
+            <div style={{ marginBottom: 8 }}>
+              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>{classe?.nom} · {periode?.code}</h2>
             </div>
 
-            {/* Barre de progression */}
-            <div style={{ background: 'var(--border-light)', borderRadius: 99, height: 6, marginBottom: 24 }}>
-              <div style={{ background: 'var(--primary-dark)', height: 6, borderRadius: 99, transition: 'width 0.3s', width: `${eleves.length > 0 ? nbFaits/eleves.length*100 : 0}%` }}/>
+            {/* Onglets */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '2px solid var(--border-light)' }}>
+              <button onClick={() => setOngletPass('fluence')} style={{
+                padding: '10px 24px', fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-sans)',
+                background: 'none', border: 'none', cursor: 'pointer', marginBottom: -2,
+                borderBottom: `2px solid ${ongletPass === 'fluence' ? 'var(--primary-dark)' : 'transparent'}`,
+                color: ongletPass === 'fluence' ? 'var(--primary-dark)' : 'var(--text-secondary)',
+                transition: 'all 0.15s',
+              }}>Fluence</button>
+              <button onClick={() => setOngletPass('qcm')} style={{
+                padding: '10px 24px', fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-sans)',
+                background: 'none', border: 'none', cursor: 'pointer', marginBottom: -2,
+                borderBottom: `2px solid ${ongletPass === 'qcm' ? 'var(--primary-dark)' : 'transparent'}`,
+                color: ongletPass === 'qcm' ? 'var(--primary-dark)' : 'var(--text-secondary)',
+                transition: 'all 0.15s',
+              }}>QCM Compréhension</button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {eleves.map((e, i) => (
-                <div key={e.id} style={{
-                  background: e.fait ? '#f0fdf4' : 'white',
-                  border: `1.5px solid ${e.fait ? '#bbf7d0' : 'var(--border-light)'}`,
-                  borderRadius: 14, padding: '16px 20px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
-                  <div>
-                    <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{e.nom}</span>
-                    <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 14, fontFamily: 'var(--font-sans)' }}>{e.prenom}</span>
-                    {e.fait && (
-                      <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: 6, fontFamily: 'var(--font-sans)' }}>
-                        {e.ne ? 'N.É.' : `${e.scoreActuel} m/min`}
-                      </span>
-                    )}
-                  </div>
-                  {!e.fait ? (
-                    <button
-                      onClick={() => { setEleveIdx(i); setEtape('eleve') }}
-                      style={{ background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
-                      Commencer →
+            {/* ── Onglet Fluence ── */}
+            {ongletPass === 'fluence' && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: 14, fontFamily: 'var(--font-sans)', margin: 0 }}>
+                    {nbFaits} / {eleves.length} élèves passés
+                  </p>
+                  {nbFaits > 0 && (
+                    <button onClick={enregistrerTout} disabled={saving}
+                      style={{ background: '#16a34a', color: 'white', border: 'none', padding: '10px 18px', borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+                      {saving ? 'Enregistrement...' : '✓ Enregistrer tout'}
                     </button>
-                  ) : (
-                    <span style={{ color: '#16a34a', fontSize: 18 }}>✓</span>
                   )}
                 </div>
-              ))}
-            </div>
+
+                {/* Barre de progression */}
+                <div style={{ background: 'var(--border-light)', borderRadius: 99, height: 6, marginBottom: 24 }}>
+                  <div style={{ background: 'var(--primary-dark)', height: 6, borderRadius: 99, transition: 'width 0.3s', width: `${eleves.length > 0 ? nbFaits/eleves.length*100 : 0}%` }}/>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {eleves.map((e, i) => (
+                    <div key={e.id} style={{
+                      background: e.fait ? '#f0fdf4' : 'white',
+                      border: `1.5px solid ${e.fait ? '#bbf7d0' : 'var(--border-light)'}`,
+                      borderRadius: 14, padding: '16px 20px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    }}>
+                      <div>
+                        <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{e.nom}</span>
+                        <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 14, fontFamily: 'var(--font-sans)' }}>{e.prenom}</span>
+                        {e.fait && (
+                          <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: 6, fontFamily: 'var(--font-sans)' }}>
+                            {e.ne ? 'N.É.' : `${e.scoreActuel} m/min`}
+                          </span>
+                        )}
+                      </div>
+                      {!e.fait ? (
+                        <button
+                          onClick={() => { setEleveIdx(i); setEtape('eleve') }}
+                          style={{ background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
+                          Commencer →
+                        </button>
+                      ) : (
+                        <span style={{ color: '#16a34a', fontSize: 18 }}>✓</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* ── Onglet QCM ── */}
+            {ongletPass === 'qcm' && (
+              <div>
+                {/* Créer une session */}
+                <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, marginBottom: 24 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: '0 0 12px 0' }}>
+                    Session QCM pour les élèves
+                  </h3>
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
+                    Créez un code pour que les élèves passent le test de compréhension sur tablette via <strong>/test</strong>.
+                  </p>
+                  <button onClick={creerQcmSession} disabled={creatingQcm} style={{
+                    background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '11px 22px',
+                    borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                    opacity: creatingQcm ? 0.6 : 1,
+                  }}>
+                    {creatingQcm ? 'Création…' : '+ Nouvelle session QCM'}
+                  </button>
+                </div>
+
+                {/* Sessions */}
+                {qcmSessions.length > 0 && (
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden', marginBottom: 24 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-gray)' }}>
+                          <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>CODE</th>
+                          <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>STATUT</th>
+                          <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>ACTIONS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {qcmSessions.map(s => {
+                          const expired = new Date(s.expires_at) < new Date()
+                          const isActive = s.active && !expired
+                          return (
+                            <tr key={s.id} style={{ borderTop: '1px solid var(--border-light)' }}>
+                              <td style={{ padding: '14px 20px', fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'monospace', fontSize: 16, letterSpacing: 2 }}>{s.code}</td>
+                              <td style={{ padding: '14px 20px', textAlign: 'center' }}>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, fontFamily: 'var(--font-sans)',
+                                  background: isActive ? '#f0fdf4' : '#f3f4f6', color: isActive ? '#16a34a' : '#6b7280',
+                                }}>
+                                  {isActive ? 'Active' : !s.active ? 'Désactivée' : 'Expirée'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '14px 20px', textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                                  <button onClick={() => copierQcmCode(s.code)} style={{
+                                    background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
+                                    padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                  }}>{copiedQcm === s.code ? 'Copié !' : 'Copier'}</button>
+                                  {isActive && (
+                                    <button onClick={() => desactiverQcmSession(s.id)} style={{
+                                      background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5',
+                                      padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                    }}>Désactiver</button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Résultats QCM */}
+                <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden' }}>
+                  <div style={{ padding: '16px 20px', background: 'var(--bg-gray)', borderBottom: '1.5px solid var(--border-light)' }}>
+                    <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', margin: 0 }}>
+                      Résultats QCM
+                    </h4>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg-gray)' }}>
+                        <th style={{ padding: '10px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>ÉLÈVE</th>
+                        {['Q1','Q2','Q3','Q4','Q5','Q6'].map(q => (
+                          <th key={q} style={{ padding: '10px 8px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>{q}</th>
+                        ))}
+                        <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>SCORE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {eleves.map(e => {
+                        const r = qcmResultats[e.id]
+                        const qsArr = r ? [r.q1, r.q2, r.q3, r.q4, r.q5, r.q6] : Array(6).fill(null)
+                        const nbCorrect = qsArr.filter(q => q === 'Correct').length
+                        const hasAny = qsArr.some(q => q !== null)
+                        return (
+                          <tr key={e.id} style={{ borderTop: '1px solid var(--border-light)' }}>
+                            <td style={{ padding: '12px 20px', fontWeight: 700, color: 'var(--primary-dark)' }}>{e.nom} {e.prenom}</td>
+                            {qsArr.map((q, i) => (
+                              <td key={i} style={{ padding: '12px 8px', textAlign: 'center' }}>
+                                {q === 'Correct' ? <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
+                                  : q === 'Incorrect' ? <span style={{ color: '#dc2626', fontWeight: 800 }}>✗</span>
+                                  : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                              </td>
+                            ))}
+                            <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: hasAny ? (nbCorrect >= 4 ? '#16a34a' : nbCorrect >= 2 ? '#d97706' : '#dc2626') : 'var(--text-tertiary)' }}>
+                              {hasAny ? `${nbCorrect}/6` : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

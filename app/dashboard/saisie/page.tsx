@@ -6,8 +6,15 @@ import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import { useProfil } from '@/app/lib/useProfil'
-import type { Periode, Classe } from '@/app/lib/types'
+import type { Periode, Classe, TestSession } from '@/app/lib/types'
 import { periodeVerrouillee } from '@/app/lib/fluenceUtils'
+
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+function genererCode(): string {
+  let code = 'FLU-'
+  for (let i = 0; i < 4; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
+  return code
+}
 
 type Eleve = {
   id: string
@@ -27,6 +34,7 @@ type Eleve = {
 
 function Saisie() {
   const [etape, setEtape]             = useState<'periode' | 'classe' | 'saisie' | 'recap' | 'done'>('periode')
+  const [onglet, setOnglet]           = useState<'fluence' | 'qcm'>('fluence')
   const [periodes, setPeriodes]       = useState<Periode[]>([])
   const [periode, setPeriode]         = useState<Periode | null>(null)
   const [classe, setClasse]           = useState<Classe | null>(null)
@@ -35,6 +43,12 @@ function Saisie() {
   const [loading, setLoading]         = useState(true)
   const [saving, setSaving]           = useState(false)
   const [erreurSauvegarde, setErreurSauvegarde] = useState('')
+  // QCM session
+  const [sessions, setSessions]       = useState<TestSession[]>([])
+  const [creatingSession, setCreatingSession] = useState(false)
+  const [copiedCode, setCopiedCode]   = useState('')
+  const [qcmResultats, setQcmResultats] = useState<Record<string, { q1: string|null, q2: string|null, q3: string|null, q4: string|null, q5: string|null, q6: string|null }>>({})
+
   const router   = useRouter()
   const supabase = createClient()
   const { profil, loading: profilLoading } = useProfil()
@@ -99,13 +113,15 @@ function Saisie() {
     if (profil?.role === 'enseignant' && periodeVerrouillee(p?.date_fin)) return
     setPeriode(p)
     if (classe) {
-      // Classe déjà connue : charger les élèves et aller directement à la saisie
       setLoading(true)
       const { data } = await supabase
         .from('eleves').select('id, nom, prenom').eq('classe_id', classe.id).eq('actif', true).order('nom')
       setEleves((data || []).map(e => ({ ...e, score: '', ne: false, absent: false, q1: null, q2: null, q3: null, q4: null, q5: null, q6: null })))
       setLoading(false)
+      setOnglet('fluence')
       setEtape('saisie')
+      chargerSessions(classe.id, p.id)
+      chargerQcmResultats(classe.id, p.id)
     } else {
       setEtape('classe')
     }
@@ -118,7 +134,71 @@ function Saisie() {
       .from('eleves').select('id, nom, prenom').eq('classe_id', c.id).eq('actif', true).order('nom')
     setEleves((data || []).map(e => ({ ...e, score: '', ne: false, absent: false, q1: null, q2: null, q3: null, q4: null, q5: null, q6: null })))
     setLoading(false)
+    setOnglet('fluence')
     setEtape('saisie')
+    if (periode) {
+      chargerSessions(c.id, periode.id)
+      chargerQcmResultats(c.id, periode.id)
+    }
+  }
+
+  async function chargerSessions(classeId: string, periodeId: string) {
+    const { data } = await supabase
+      .from('test_sessions')
+      .select('id, code, classe_id, periode_id, enseignant_id, active, expires_at, created_at')
+      .eq('classe_id', classeId)
+      .eq('periode_id', periodeId)
+      .order('created_at', { ascending: false })
+    setSessions((data || []) as TestSession[])
+  }
+
+  async function chargerQcmResultats(classeId: string, periodeId: string) {
+    const { data: elevesData } = await supabase
+      .from('eleves').select('id').eq('classe_id', classeId).eq('actif', true)
+    if (!elevesData || elevesData.length === 0) return
+    const ids = elevesData.map(e => e.id)
+    const { data: passData } = await supabase
+      .from('passations')
+      .select('eleve_id, q1, q2, q3, q4, q5, q6')
+      .in('eleve_id', ids)
+      .eq('periode_id', periodeId)
+      .eq('hors_periode', false)
+    const map: Record<string, any> = {}
+    for (const p of (passData || [])) {
+      map[p.eleve_id] = { q1: p.q1, q2: p.q2, q3: p.q3, q4: p.q4, q5: p.q5, q6: p.q6 }
+    }
+    setQcmResultats(map)
+  }
+
+  async function creerSession() {
+    if (!classe || !periode || !profil) return
+    setCreatingSession(true)
+    let code = genererCode()
+    let attempts = 0
+    while (attempts < 5) {
+      const { error } = await supabase.from('test_sessions').insert({
+        code,
+        classe_id: classe.id,
+        periode_id: periode.id,
+        enseignant_id: profil.id,
+      })
+      if (!error) break
+      if (error.code === '23505') { code = genererCode(); attempts++ }
+      else { setCreatingSession(false); return }
+    }
+    setCreatingSession(false)
+    chargerSessions(classe.id, periode.id)
+  }
+
+  async function desactiverSession(id: string) {
+    await supabase.from('test_sessions').update({ active: false }).eq('id', id)
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, active: false } : s))
+  }
+
+  function copierCode(code: string) {
+    navigator.clipboard.writeText(code)
+    setCopiedCode(code)
+    setTimeout(() => setCopiedCode(''), 2000)
   }
 
   function updateEleve(idx: number, champ: string, valeur: any) {
@@ -181,6 +261,15 @@ function Saisie() {
   }
 
   if (loading) return <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }}>Chargement...</div>
+
+  // Tab style helper
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding: '10px 24px', fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-sans)',
+    background: 'none', border: 'none', cursor: 'pointer', marginBottom: -2,
+    borderBottom: `2px solid ${active ? 'var(--primary-dark)' : 'transparent'}`,
+    color: active ? 'var(--primary-dark)' : 'var(--text-secondary)',
+    transition: 'all 0.15s',
+  })
 
   return (
     <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, maxWidth: 900, minHeight: '100vh', background: 'var(--bg-light)' }}>
@@ -273,103 +362,208 @@ function Saisie() {
           </>
         )}
 
-        {/* ÉTAPE 2 : Saisie */}
+        {/* ÉTAPE 2 : Saisie — avec onglets Fluence / QCM */}
         {etape === 'saisie' && (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div>
                 <h2 style={{ fontSize: 24, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
                   {classe?.nom} · {periode?.code}
                 </h2>
-                <p style={{ color: 'var(--text-secondary)', marginTop: 4, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
+              </div>
+            </div>
+
+            {/* Onglets Fluence / QCM */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '2px solid var(--border-light)' }}>
+              <button onClick={() => setOnglet('fluence')} style={tabStyle(onglet === 'fluence')}>Fluence</button>
+              <button onClick={() => setOnglet('qcm')} style={tabStyle(onglet === 'qcm')}>QCM Compréhension</button>
+            </div>
+
+            {/* ── Onglet Fluence ── */}
+            {onglet === 'fluence' && (
+              <>
+                <p style={{ color: 'var(--text-secondary)', marginTop: 0, marginBottom: 16, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
                   {nbSaisis} / {eleves.length} élèves saisis
                 </p>
-              </div>
-              <button onClick={() => setEtape('recap')} disabled={nbSaisis === 0} style={{
-                background: nbSaisis === 0 ? 'var(--text-tertiary)' : 'var(--primary-dark)',
-                color: 'white', border: 'none', padding: '11px 22px', borderRadius: 12,
-                fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 700,
-                cursor: nbSaisis === 0 ? 'not-allowed' : 'pointer',
-              }}>
-                Valider →
-              </button>
-            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {eleves.map((eleve, idx) => (
-                <div key={eleve.id} style={{
-                  background: eleve.absent ? '#fef2f2' : eleve.ne ? '#fff7ed' : eleve.score !== '' ? '#f0fdf4' : 'white',
-                  border: `1.5px solid ${eleve.absent ? '#fca5a5' : eleve.ne ? '#fed7aa' : eleve.score !== '' ? '#bbf7d0' : 'var(--border-light)'}`,
-                  borderRadius: 16, padding: '18px 24px', transition: 'all 0.15s',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, minHeight: 48 }}>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{eleve.nom}</span>
-                      <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 15 }}>{eleve.prenom}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {eleves.map((eleve, idx) => (
+                    <div key={eleve.id} style={{
+                      background: eleve.absent ? '#fef2f2' : eleve.ne ? '#fff7ed' : eleve.score !== '' ? '#f0fdf4' : 'white',
+                      border: `1.5px solid ${eleve.absent ? '#fca5a5' : eleve.ne ? '#fed7aa' : eleve.score !== '' ? '#bbf7d0' : 'var(--border-light)'}`,
+                      borderRadius: 16, padding: '18px 24px', transition: 'all 0.15s',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16, minHeight: 48 }}>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{eleve.nom}</span>
+                          <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 15 }}>{eleve.prenom}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <input type="number" value={eleve.score}
+                            onChange={e => updateEleve(idx, 'score', e.target.value)}
+                            disabled={eleve.ne || eleve.absent}
+                            placeholder="—" min={0} max={500}
+                            style={{
+                              width: 88, textAlign: 'center', border: '1.5px solid var(--border-main)',
+                              borderRadius: 12, padding: '10px 12px', fontSize: 18, fontWeight: 700,
+                              color: 'var(--primary-dark)', outline: 'none', fontFamily: 'var(--font-sans)',
+                              background: (eleve.ne || eleve.absent) ? 'var(--bg-gray)' : 'white',
+                              opacity: (eleve.ne || eleve.absent) ? 0.4 : 1,
+                            }}
+                          />
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: 12, fontFamily: 'var(--font-sans)' }}>mots/min</span>
+                        </div>
+                        <button onClick={() => setEleves(prev => prev.map((e, i) => i === idx ? { ...e, ne: !e.ne, absent: false, score: '' } : e))} style={{
+                          padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
+                          border: eleve.ne ? '2px solid #fb923c' : '2px solid var(--border-main)',
+                          background: eleve.ne ? '#fff7ed' : 'transparent',
+                          color: eleve.ne ? '#c2410c' : 'var(--text-tertiary)',
+                          cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
+                        }}>N.É.</button>
+                        <button onClick={() => setEleves(prev => prev.map((e, i) => i === idx ? { ...e, absent: !e.absent, ne: false, score: '' } : e))} style={{
+                          padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
+                          border: eleve.absent ? '2px solid #f87171' : '2px solid var(--border-main)',
+                          background: eleve.absent ? '#fef2f2' : 'transparent',
+                          color: eleve.absent ? '#dc2626' : 'var(--text-tertiary)',
+                          cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
+                        }}>Absent</button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <input type="number" value={eleve.score}
-                        onChange={e => updateEleve(idx, 'score', e.target.value)}
-                        disabled={eleve.ne || eleve.absent}
-                        placeholder="—" min={0} max={500}
-                        style={{
-                          width: 88, textAlign: 'center', border: '1.5px solid var(--border-main)',
-                          borderRadius: 12, padding: '10px 12px', fontSize: 18, fontWeight: 700,
-                          color: 'var(--primary-dark)', outline: 'none', fontFamily: 'var(--font-sans)',
-                          background: (eleve.ne || eleve.absent) ? 'var(--bg-gray)' : 'white',
-                          opacity: (eleve.ne || eleve.absent) ? 0.4 : 1,
-                        }}
-                      />
-                      <span style={{ color: 'var(--text-tertiary)', fontSize: 12, fontFamily: 'var(--font-sans)' }}>mots/min</span>
-                    </div>
-                    <button onClick={() => setEleves(prev => prev.map((e, i) => i === idx ? { ...e, ne: !e.ne, absent: false, score: '' } : e))} style={{
-                      padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
-                      border: eleve.ne ? '2px solid #fb923c' : '2px solid var(--border-main)',
-                      background: eleve.ne ? '#fff7ed' : 'transparent',
-                      color: eleve.ne ? '#c2410c' : 'var(--text-tertiary)',
-                      cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
-                    }}>N.É.</button>
-                    <button onClick={() => setEleves(prev => prev.map((e, i) => i === idx ? { ...e, absent: !e.absent, ne: false, score: '' } : e))} style={{
-                      padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
-                      border: eleve.absent ? '2px solid #f87171' : '2px solid var(--border-main)',
-                      background: eleve.absent ? '#fef2f2' : 'transparent',
-                      color: eleve.absent ? '#dc2626' : 'var(--text-tertiary)',
-                      cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
-                    }}>Absent</button>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setEtape('recap')} disabled={nbSaisis === 0} style={{
+                    background: nbSaisis === 0 ? 'var(--text-tertiary)' : 'var(--primary-dark)',
+                    color: 'white', border: 'none', padding: '13px 32px', borderRadius: 12,
+                    fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700,
+                    cursor: nbSaisis === 0 ? 'not-allowed' : 'pointer',
+                  }}>
+                    Voir le récapitulatif →
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* ── Onglet QCM ── */}
+            {onglet === 'qcm' && (
+              <div>
+                {/* Créer une session */}
+                <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, marginBottom: 24 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: '0 0 12px 0' }}>
+                    Session QCM pour les élèves
+                  </h3>
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
+                    Créez un code pour que les élèves passent le test de compréhension sur tablette via <strong>/test</strong>.
+                  </p>
+                  <button onClick={creerSession} disabled={creatingSession} style={{
+                    background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '11px 22px',
+                    borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                    opacity: creatingSession ? 0.6 : 1,
+                  }}>
+                    {creatingSession ? 'Création…' : '+ Nouvelle session QCM'}
+                  </button>
+                </div>
+
+                {/* Sessions actives */}
+                {sessions.length > 0 && (
+                  <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden', marginBottom: 24 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-gray)' }}>
+                          <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>CODE</th>
+                          <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>STATUT</th>
+                          <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>EXPIRE</th>
+                          <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>ACTIONS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sessions.map(s => {
+                          const expired = new Date(s.expires_at) < new Date()
+                          const isActive = s.active && !expired
+                          return (
+                            <tr key={s.id} style={{ borderTop: '1px solid var(--border-light)' }}>
+                              <td style={{ padding: '14px 20px', fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'monospace', fontSize: 16, letterSpacing: 2 }}>{s.code}</td>
+                              <td style={{ padding: '14px 20px', textAlign: 'center' }}>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, fontFamily: 'var(--font-sans)',
+                                  background: isActive ? '#f0fdf4' : '#f3f4f6',
+                                  color: isActive ? '#16a34a' : '#6b7280',
+                                }}>
+                                  {isActive ? 'Active' : !s.active ? 'Désactivée' : 'Expirée'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '14px 20px', textAlign: 'center', fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+                                {new Date(s.expires_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                              </td>
+                              <td style={{ padding: '14px 20px', textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                                  <button onClick={() => copierCode(s.code)} style={{
+                                    background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
+                                    padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                  }}>
+                                    {copiedCode === s.code ? 'Copié !' : 'Copier'}
+                                  </button>
+                                  {isActive && (
+                                    <button onClick={() => desactiverSession(s.id)} style={{
+                                      background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5',
+                                      padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                    }}>Désactiver</button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                  {!eleve.ne && !eleve.absent && eleve.score !== '' && periode?.type !== 'evaluation_nationale' && (
-                    <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, fontFamily: 'var(--font-sans)', marginRight: 4 }}>Compréhension :</span>
-                      {(['q1','q2','q3','q4','q5','q6'] as const).map(q => {
-                        const val = (eleve as any)[q]
+                )}
+
+                {/* Résultats QCM des élèves */}
+                <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden' }}>
+                  <div style={{ padding: '16px 20px', background: 'var(--bg-gray)', borderBottom: '1.5px solid var(--border-light)' }}>
+                    <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'var(--font-sans)', margin: 0 }}>
+                      Résultats QCM
+                    </h4>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg-gray)' }}>
+                        <th style={{ padding: '10px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>ÉLÈVE</th>
+                        {['Q1','Q2','Q3','Q4','Q5','Q6'].map(q => (
+                          <th key={q} style={{ padding: '10px 8px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>{q}</th>
+                        ))}
+                        <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>SCORE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {eleves.map(e => {
+                        const r = qcmResultats[e.id]
+                        const qs = r ? [r.q1, r.q2, r.q3, r.q4, r.q5, r.q6] : Array(6).fill(null)
+                        const nbCorrect = qs.filter(q => q === 'Correct').length
+                        const hasAny = qs.some(q => q !== null)
                         return (
-                          <button key={q} onClick={() => toggleQ(idx, q)} style={{
-                            width: 40, height: 40, borderRadius: 10, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                            fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
-                            border: val === true ? '2px solid #22c55e' : val === false ? '2px solid #ef4444' : '2px solid var(--border-main)',
-                            background: val === true ? '#f0fdf4' : val === false ? '#fef2f2' : 'var(--bg-gray)',
-                            color: val === true ? '#16a34a' : val === false ? '#dc2626' : 'var(--text-tertiary)',
-                          }}>
-                            {q.toUpperCase()}
-                          </button>
+                          <tr key={e.id} style={{ borderTop: '1px solid var(--border-light)' }}>
+                            <td style={{ padding: '12px 20px', fontWeight: 700, color: 'var(--primary-dark)' }}>{e.nom} {e.prenom}</td>
+                            {qs.map((q, i) => (
+                              <td key={i} style={{ padding: '12px 8px', textAlign: 'center' }}>
+                                {q === 'Correct' ? <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
+                                  : q === 'Incorrect' ? <span style={{ color: '#dc2626', fontWeight: 800 }}>✗</span>
+                                  : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                              </td>
+                            ))}
+                            <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: hasAny ? (nbCorrect >= 4 ? '#16a34a' : nbCorrect >= 2 ? '#d97706' : '#dc2626') : 'var(--text-tertiary)' }}>
+                              {hasAny ? `${nbCorrect}/6` : '—'}
+                            </td>
+                          </tr>
                         )
                       })}
-                    </div>
-                  )}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-            </div>
-
-            <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => setEtape('recap')} disabled={nbSaisis === 0} style={{
-                background: nbSaisis === 0 ? 'var(--text-tertiary)' : 'var(--primary-dark)',
-                color: 'white', border: 'none', padding: '13px 32px', borderRadius: 12,
-                fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700,
-                cursor: nbSaisis === 0 ? 'not-allowed' : 'pointer',
-              }}>
-                Voir le récapitulatif →
-              </button>
-            </div>
+              </div>
+            )}
           </>
         )}
 
@@ -437,7 +631,7 @@ function Saisie() {
                 fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700,
                 cursor: saving ? 'not-allowed' : 'pointer',
               }}>
-                {saving ? 'Enregistrement...' : '✅ Confirmer et envoyer'}
+                {saving ? 'Enregistrement...' : 'Confirmer et envoyer'}
               </button>
             </div>
           </>

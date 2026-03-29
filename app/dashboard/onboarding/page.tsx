@@ -83,6 +83,8 @@ export default function Configuration() {
 
   useEffect(() => {
     if (!profil) return
+    const ALLOWED_ROLES = ['directeur', 'principal']
+    if (!ALLOWED_ROLES.includes(profil.role)) { router.push('/dashboard'); return }
     if (isAdmin) {
       // Charger la liste des établissements pour le sélecteur
       supabase.from('etablissements').select('id, nom, type, type_reseau, ville, departement, circonscription').order('nom')

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
+import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import type { TestSession, Periode, Classe } from '@/app/lib/types'
@@ -11,12 +12,13 @@ const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 function genererCode(): string {
   let code = 'FLU-'
-  for (let i = 0; i < 4; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
+  for (let i = 0; i < 6; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
   return code
 }
 
 export default function SessionsPage() {
   const { profil, loading: profilLoading } = useProfil()
+  const router = useRouter()
   const supabase = createClient()
   const [sessions, setSessions] = useState<(TestSession & { classe?: Classe; periode?: Periode })[]>([])
   const [classes, setClasses] = useState<Classe[]>([])
@@ -30,6 +32,8 @@ export default function SessionsPage() {
 
   useEffect(() => {
     if (profilLoading || !profil) return
+    const ALLOWED_ROLES = ['enseignant', 'directeur', 'principal', 'admin', 'coordo_rep']
+    if (!ALLOWED_ROLES.includes(profil.role)) { router.push('/dashboard'); return }
     charger()
   }, [profil, profilLoading])
 

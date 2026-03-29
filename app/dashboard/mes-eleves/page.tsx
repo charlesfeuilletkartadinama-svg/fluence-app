@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
+import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import type { Periode } from '@/app/lib/types'
@@ -30,10 +31,14 @@ export default function MesEleves() {
   const [periodeCode, setPeriodeCode] = useState<string>('')
   const [loading, setLoading]     = useState(true)
   const { profil } = useProfil()
+  const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    if (profil) charger()
+    if (!profil) return
+    const ALLOWED_ROLES = ['enseignant']
+    if (!ALLOWED_ROLES.includes(profil.role)) { router.push('/dashboard'); return }
+    charger()
   }, [profil])
 
   useEffect(() => {

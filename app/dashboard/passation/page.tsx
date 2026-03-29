@@ -75,6 +75,8 @@ function PassationContent() {
   useEffect(() => {
     if (profilLoading) return
     if (!profil) { setLoading(false); return }
+    const ALLOWED_ROLES = ['enseignant', 'directeur', 'principal', 'admin', 'coordo_rep']
+    if (!ALLOWED_ROLES.includes(profil.role)) { router.push('/dashboard'); return }
     if (profil.role === 'enseignant') chargerDonneesEnseignant()
     else if (['directeur', 'principal'].includes(profil.role)) chargerDonneesDirection()
     else setLoading(false)
@@ -146,7 +148,7 @@ function PassationContent() {
   const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   function genererCode(): string {
     let code = 'FLU-'
-    for (let i = 0; i < 4; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
+    for (let i = 0; i < 6; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
     return code
   }
 

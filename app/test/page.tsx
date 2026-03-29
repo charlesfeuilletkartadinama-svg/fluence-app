@@ -227,7 +227,7 @@ export default function TestEleve() {
             value={codeInput}
             onChange={e => setCodeInput(e.target.value.toUpperCase())}
             onKeyDown={e => e.key === 'Enter' && validerCode()}
-            placeholder="FLU-XXXX"
+            placeholder="FLU-XXXXXX"
             style={input}
             autoFocus
           />

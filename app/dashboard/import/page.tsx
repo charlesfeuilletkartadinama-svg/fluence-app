@@ -50,9 +50,9 @@ function parseCSV(texte: string): EleveCSV[] {
       const cols = ligne.split(sep).map(c => c.trim().replace(/^["']|["']$/g, ''))
       const get = (key: string) => cols[entetes.indexOf(key)] || ''
 
-      const nom = get('nom').toUpperCase()
-      const prenom = get('prenom')
-      const classe = get('classe')
+      const nom = get('nom').toUpperCase().replace(/[<>{}|\\^`]/g, '').trim()
+      const prenom = get('prenom').replace(/[<>{}|\\^`]/g, '').trim()
+      const classe = get('classe').replace(/[<>{}|\\^`]/g, '').trim()
 
       return {
         nom,
@@ -82,7 +82,10 @@ export default function ImportCSV() {
   const supabase = createClient()
 
   useEffect(() => {
-    if (profil?.etablissement_id) chargerClasses()
+    if (!profil) return
+    const ALLOWED_ROLES = ['directeur', 'principal', 'admin', 'coordo_rep', 'ien']
+    if (!ALLOWED_ROLES.includes(profil.role)) { router.push('/dashboard'); return }
+    if (profil.etablissement_id) chargerClasses()
   }, [profil])
 
   async function chargerClasses() {
@@ -92,9 +95,23 @@ export default function ImportCSV() {
     setClasses(data || [])
   }
 
+  function sanitize(str: string): string {
+    return str.replace(/[<>{}|\\^`]/g, '').trim()
+  }
+
   function handleFichier(e: React.ChangeEvent<HTMLInputElement>) {
     const fichier = e.target.files?.[0]
     if (!fichier) return
+    // Validation taille (5 Mo max)
+    if (fichier.size > 5 * 1024 * 1024) {
+      setErreur('Le fichier est trop volumineux (5 Mo maximum).')
+      return
+    }
+    // Validation type
+    if (!fichier.name.match(/\.(csv|txt)$/i)) {
+      setErreur('Format non supporté. Utilisez un fichier .csv ou .txt.')
+      return
+    }
     const reader = new FileReader()
     reader.onload = (ev) => {
       try {

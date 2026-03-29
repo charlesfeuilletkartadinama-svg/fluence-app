@@ -879,45 +879,58 @@ export default function Dashboard() {
         })[0]
       : null
 
-    // Charger élèves et passations en parallèle (avec pagination si > 1000)
+    // Charger avec pagination forcée par 1000 (limite Supabase)
     async function fetchAll(table: string, select: string, filters?: (q: any) => any) {
       let all: any[] = []
       let off = 0
       while (true) {
-        let q = supabase.from(table).select(select).range(off, off + 4999)
+        let q = supabase.from(table).select(select).range(off, off + 999)
         if (filters) q = filters(q)
         const { data } = await q
         if (!data || data.length === 0) break
         all = all.concat(data)
-        if (data.length < 5000) break
-        off += 5000
+        if (data.length < 1000) break
+        off += 1000
       }
       return all
     }
 
-    // Récupérer les IDs de périodes pour l'année + code choisi
+    // Récupérer TOUS les IDs de périodes regular de l'année choisie (T1+T2+T3)
+    const allPeriodeIdsAnnee = allPeriodes
+      .filter((p: any) => p.annee_scolaire === anneeChoisie && p.type !== 'evaluation_nationale')
+      .map((p: any) => p.id)
+
+    // IDs de la période active spécifique (T1) pour les stats "période courante"
     const periodeActiveIds = allPeriodes
       .filter((p: any) => p.code === periodeActive?.code && p.annee_scolaire === anneeChoisie)
       .map((p: any) => p.id)
 
     const [allEleves, allPassations] = await Promise.all([
       fetchAll('eleves', 'id, classe_id, classe:classes(niveau, etablissement_id, nom)', q => q.eq('actif', true)),
-      periodeActiveIds.length > 0
-        ? fetchAll('passations', 'eleve_id, score, non_evalue, q1, q2, q3, q4, q5, q6, periode:periodes(code, type)', q => q.in('periode_id', periodeActiveIds))
+      allPeriodeIdsAnnee.length > 0
+        ? fetchAll('passations', 'eleve_id, score, non_evalue, q1, q2, q3, q4, q5, q6, periode:periodes(code, type)', q => q.in('periode_id', allPeriodeIdsAnnee))
         : Promise.resolve([]),
     ])
 
     const elevesArr = allEleves || []
     const passArr = allPassations || []
 
-    // Score par niveau (période active)
+    // Pour chaque élève, prendre le dernier score de l'année (T3 > T2 > T1)
+    const codePriority = (c: string) => c === 'T3' ? 3 : c === 'T2' ? 2 : c === 'T1' ? 1 : 0
+    function dernierScore(eleveId: string) {
+      const passes = passArr.filter((pa: any) => pa.eleve_id === eleveId)
+      if (passes.length === 0) return null
+      return passes.sort((a: any, b: any) => codePriority(b.periode?.code) - codePriority(a.periode?.code))[0]
+    }
+
+    // Score par niveau (dernier score de l'année)
     const niveauxMap: Record<string, { scores: number[]; nbEleves: number; nbEvalues: number }> = {}
     const NIVEAUX_ORDRE = ['CP', 'CE1', 'CE2', 'CM1', 'CM2', '6eme', '5eme', '4eme', '3eme']
     for (const e of elevesArr) {
       const niv = (e as any).classe?.niveau || 'Autre'
       if (!niveauxMap[niv]) niveauxMap[niv] = { scores: [], nbEleves: 0, nbEvalues: 0 }
       niveauxMap[niv].nbEleves++
-      const p = passArr.find((pa: any) => pa.eleve_id === e.id)
+      const p = dernierScore(e.id)
       if (p && !p.non_evalue && p.score && p.score > 0) {
         niveauxMap[niv].scores.push(p.score as number)
         niveauxMap[niv].nbEvalues++
@@ -946,7 +959,7 @@ export default function Dashboard() {
     let gTresFragile = 0, gFragile = 0, gEnCours = 0, gAttendu = 0
     for (const e of elevesArr) {
       const niv = (e as any).classe?.niveau || ''
-      const p = passArr.find((pa: any) => pa.eleve_id === e.id)
+      const p = dernierScore(e.id)
       if (!p || p.non_evalue || !p.score) continue
       const norme = normeDefault[niv] || defaultNorms[niv]
       if (!norme) continue
@@ -1001,7 +1014,7 @@ export default function Dashboard() {
       const classeIds = ecMap[ens.id] || []
       if (classeIds.length === 0) continue
       const eleveIds = elevesArr.filter(e => classeIds.includes(e.classe_id)).map(e => e.id)
-      const aPassation = passArr.some((pa: any) => eleveIds.includes(pa.eleve_id) && (pa as any).periode?.code === periodeActive?.code)
+      const aPassation = passArr.some((pa: any) => eleveIds.includes(pa.eleve_id))
       if (!aPassation) {
         const etab = allEtabs.find(e => e.id === ens.etablissement_id)
         enseignantsSansSaisie.push({ nom: ens.nom, prenom: ens.prenom, etablissement: etab?.nom || '—' })
@@ -1018,7 +1031,7 @@ export default function Dashboard() {
         etabScores[etabId] = { nom: etab?.nom || '?', scores: [], nbEleves: 0, nbFragiles: 0 }
       }
       etabScores[etabId].nbEleves++
-      const p = passArr.find((pa: any) => pa.eleve_id === e.id)
+      const p = dernierScore(e.id)
       if (p && !p.non_evalue && p.score && p.score > 0) {
         etabScores[etabId].scores.push(p.score as number)
         const niv = (e as any).classe?.niveau || ''

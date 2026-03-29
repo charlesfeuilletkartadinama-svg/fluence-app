@@ -41,6 +41,8 @@ export default function Admin() {
   const [newPeriodeCode, setNewPeriodeCode]   = useState('')
   const [newPeriodeLabel, setNewPeriodeLabel] = useState('')
   const [newPeriodeType, setNewPeriodeType]   = useState('regular')
+  const [newPeriodeAnnee, setNewPeriodeAnnee] = useState('2025-2026')
+  const [filtreAnnee, setFiltreAnnee]         = useState('2025-2026')
   const { profil, loading: profilLoading }    = useProfil()
   const router   = useRouter()
   const supabase = createClient()
@@ -89,7 +91,7 @@ export default function Admin() {
       setMonReseau((ceData || []).map((ce: any) => ce.etablissement).filter(Boolean))
 
       let periQuery = supabase.from('periodes')
-        .select('id, code, label, actif, etablissement_id, date_debut, date_fin, saisie_ouverte, type')
+        .select('id, code, label, actif, etablissement_id, date_debut, date_fin, saisie_ouverte, type, annee_scolaire')
         .order('code')
       if (etabIds.length > 0) periQuery = periQuery.in('etablissement_id', etabIds)
       const { data: periData } = await periQuery
@@ -107,7 +109,7 @@ export default function Admin() {
       supabase.from('etablissements')
         .select('id, nom, type, type_reseau, ville, departement, circonscription').order('nom'),
       supabase.from('periodes')
-        .select('id, code, label, actif, etablissement_id, date_debut, date_fin, saisie_ouverte, type').order('code'),
+        .select('id, code, label, actif, etablissement_id, date_debut, date_fin, saisie_ouverte, type, annee_scolaire').order('code'),
       supabase.from('coordo_etablissements')
         .select('id, coordo_id, etablissement_id, coordo:profils(nom, prenom), etablissement:etablissements(nom)').order('coordo_id'),
       supabase.from('ien_etablissements')
@@ -142,19 +144,20 @@ export default function Admin() {
     const code = newPeriodeCode.trim().toUpperCase()
     const label = newPeriodeLabel.trim()
     const type = newPeriodeType
+    const annee = newPeriodeAnnee
 
-    // Vérifier si le code existe déjà
-    const existe = periodes.some(p => p.code === code)
-    if (existe) { alert(`Le code "${code}" existe déjà.`); return }
+    // Vérifier si le code existe déjà pour cette année
+    const existe = periodes.some(p => p.code === code && (p as any).annee_scolaire === annee)
+    if (existe) { alert(`Le code "${code}" existe déjà pour ${annee}.`); return }
 
     if (etablissements.length > 0) {
       const rows = etablissements.map(e => ({
-        code, label, actif: true, saisie_ouverte: true, type,
+        code, label, actif: true, saisie_ouverte: true, type, annee_scolaire: annee,
         etablissement_id: e.id,
       }))
       await supabase.from('periodes').insert(rows)
     } else {
-      await supabase.from('periodes').insert({ code, label, actif: true, saisie_ouverte: true, type })
+      await supabase.from('periodes').insert({ code, label, actif: true, saisie_ouverte: true, type, annee_scolaire: annee })
     }
     setNewPeriodeCode(''); setNewPeriodeLabel(''); setNewPeriodeType('regular')
     chargerDonnees()
@@ -378,9 +381,23 @@ export default function Admin() {
         {/* ── Périodes ── */}
         {onglet === periodesOnglet && (
           <div>
+            {/* Filtre année scolaire */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>Année scolaire :</span>
+              {['2024-2025', '2025-2026', '2026-2027'].map(a => (
+                <button key={a} onClick={() => setFiltreAnnee(a)} style={{
+                  padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)', border: '1.5px solid',
+                  borderColor: filtreAnnee === a ? 'var(--primary-dark)' : 'var(--border-main)',
+                  background: filtreAnnee === a ? 'var(--primary-dark)' : 'white',
+                  color: filtreAnnee === a ? 'white' : 'var(--text-secondary)',
+                }}>{a}</button>
+              ))}
+            </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' as const, gap: 8 }}>
               <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', margin: 0 }}>
-                Périodes de passation
+                Périodes · {filtreAnnee}
               </p>
               {!isReseau && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, alignItems: 'center' }}>
@@ -389,11 +406,17 @@ export default function Admin() {
                     style={{ ...S.input, width: 80 }} />
                   <input type="text" placeholder="Libellé" value={newPeriodeLabel}
                     onChange={e => setNewPeriodeLabel(e.target.value)}
-                    style={{ ...S.input, width: 180 }} />
+                    style={{ ...S.input, width: 140 }} />
                   <select value={newPeriodeType} onChange={e => setNewPeriodeType(e.target.value)}
-                    style={{ ...S.input, width: 170 }}>
+                    style={{ ...S.input, width: 120 }}>
                     <option value="regular">Classique</option>
-                    <option value="evaluation_nationale">Éval. nationale</option>
+                    <option value="evaluation_nationale">Éval. nat.</option>
+                  </select>
+                  <select value={newPeriodeAnnee} onChange={e => setNewPeriodeAnnee(e.target.value)}
+                    style={{ ...S.input, width: 110 }}>
+                    <option value="2024-2025">2024-2025</option>
+                    <option value="2025-2026">2025-2026</option>
+                    <option value="2026-2027">2026-2027</option>
                   </select>
                   <button onClick={creerPeriode} disabled={!newPeriodeCode || !newPeriodeLabel}
                     style={{ ...S.btnPrimary, opacity: (!newPeriodeCode || !newPeriodeLabel) ? 0.4 : 1 }}>
@@ -415,7 +438,7 @@ export default function Admin() {
                   <th style={S.thC}></th>
                 </tr></thead>
                 <tbody>
-                  {periodes.map(p => (
+                  {periodes.filter(p => (p as any).annee_scolaire === filtreAnnee).map(p => (
                     <PeriodeRow key={p.code} periode={p}
                       isReseau={isReseau}
                       onToggleActif={() => togglePeriodeByCode(p.code, 'actif', !!p.actif)}

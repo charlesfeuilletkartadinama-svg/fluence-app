@@ -39,6 +39,7 @@ export type Periode = {
   etablissement_id?: string
   date_debut?: string | null
   saisie_ouverte?: boolean
+  annee_scolaire?: string
 }
 
 /** Seuils de fluence par niveau — utilisé dans admin, statistiques, groupes, eleve/[id] */

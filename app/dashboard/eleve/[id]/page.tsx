@@ -29,7 +29,7 @@ type Passation = {
   q4: string | null; q5: string | null; q6: string | null
   mode: string
   created_at: string
-  periode: { id: string; code: string; label: string }
+  periode: { id: string; code: string; label: string; annee_scolaire?: string }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@ export default function FicheElevePage({ params }: { params: Promise<{ id: strin
     // Passations avec période
     const { data: passData } = await supabase
       .from('passations')
-      .select('id, score, non_evalue, q1, q2, q3, q4, q5, q6, mode, created_at, periode:periodes(id, code, label)')
+      .select('id, score, non_evalue, q1, q2, q3, q4, q5, q6, mode, created_at, periode:periodes(id, code, label, annee_scolaire)')
       .eq('eleve_id', eleveId)
       .order('created_at', { ascending: true })
     setPassations((passData || []) as any[])
@@ -148,18 +148,31 @@ export default function FicheElevePage({ params }: { params: Promise<{ id: strin
     )
   }
 
-  // Dédupliquons par code de période (garder la plus récente)
-  const passByCode: Record<string, Passation> = {}
+  // Dédupliquons par code+année de période (garder la plus récente)
+  const passByKey: Record<string, Passation> = {}
   passations.forEach(p => {
     const code = (p.periode as any)?.code
-    if (code) passByCode[code] = p
+    const annee = (p.periode as any)?.annee_scolaire || ''
+    const key = `${annee}_${code}`
+    if (code) passByKey[key] = p
   })
-  const passUniques = Object.values(passByCode).sort((a, b) =>
-    ((a.periode as any)?.code || '').localeCompare((b.periode as any)?.code || '')
-  )
+  const passUniques = Object.values(passByKey).sort((a, b) => {
+    const anneeA = (a.periode as any)?.annee_scolaire || ''
+    const anneeB = (b.periode as any)?.annee_scolaire || ''
+    if (anneeA !== anneeB) return anneeA.localeCompare(anneeB)
+    return ((a.periode as any)?.code || '').localeCompare((b.periode as any)?.code || '')
+  })
 
   const scores = passUniques.map(p => (!p.non_evalue && p.score != null) ? p.score : null)
-  const codes  = passUniques.map(p => (p.periode as any)?.code || '')
+  const codes  = passUniques.map(p => {
+    const code = (p.periode as any)?.code || ''
+    const annee = (p.periode as any)?.annee_scolaire || ''
+    // Format court : "T1 24-25"
+    const anneeShort = annee ? annee.replace('20', '').replace('-20', '-') : ''
+    return anneeShort ? `${code} ${anneeShort}` : code
+  })
+  // Identifier les années distinctes
+  const anneesDistinctes = [...new Set(passUniques.map(p => (p.periode as any)?.annee_scolaire || ''))].filter(Boolean)
   const niveau = (eleve.classe as any)?.niveau || ''
 
   return (
@@ -207,7 +220,14 @@ export default function FicheElevePage({ params }: { params: Promise<{ id: strin
             {/* Courbe de progression */}
             {scores.filter(s => s !== null).length >= 2 && (
               <div className={styles.card} style={{ marginBottom: 20 }}>
-                <h2 className={styles.cardTitle}>Progression</h2>
+                <h2 className={styles.cardTitle}>
+                  Progression
+                  {anneesDistinctes.length > 1 && (
+                    <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 8 }}>
+                      ({anneesDistinctes.join(' → ')})
+                    </span>
+                  )}
+                </h2>
                 <LineChart scores={scores} codes={codes} />
               </div>
             )}

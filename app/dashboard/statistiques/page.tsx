@@ -328,7 +328,7 @@ function Statistiques() {
     setNiveaux(niveauxUniq)
 
     // Périodes — déduplication par code
-    const { data: perData } = await supabase.from('periodes').select('id, code, label').order('code')
+    const { data: perData } = await supabase.from('periodes').select('id, code, label, annee_scolaire').order('code')
     const seen = new Set<string>()
     const per: Periode[] = (perData || []).filter(p => {
       if (seen.has(p.code)) return false
@@ -766,6 +766,24 @@ function Statistiques() {
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Filtre année scolaire */}
+            {periodes.some(p => p.annee_scolaire) && (() => {
+              const annees = [...new Set(periodes.map(p => p.annee_scolaire || '2025-2026'))].sort()
+              return annees.length > 1 ? (
+                <select
+                  value={periodes[0]?.annee_scolaire || '2025-2026'}
+                  onChange={e => {
+                    const annee = e.target.value
+                    // Filtrer les périodes affichées par année
+                    const filtered = periodes.filter(p => p.annee_scolaire === annee)
+                    if (filtered.length > 0) setPeriodeActive(filtered[0].code)
+                  }}
+                  style={{ border: '1.5px solid var(--border-main)', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)', background: 'white', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                >
+                  {annees.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              ) : null
+            })()}
             {/* Toggle établissement / classe (direction) */}
             {profil && ['directeur', 'principal'].includes(profil.role) && (
               <div style={{ display: 'flex', background: 'white', borderRadius: 10, padding: 3, border: '1.5px solid var(--border-main)', gap: 2 }}>

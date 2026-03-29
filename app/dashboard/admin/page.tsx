@@ -104,7 +104,14 @@ export default function Admin() {
       supabase.from('villes').select('id, nom, circonscription_id').order('nom'),
     ])
     setEtablissements(etabRes.data || [])
-    setPeriodes(periRes.data || [])
+    // Dédupliquer les périodes par code (une seule ligne par code)
+    const allPeriodes = periRes.data || []
+    const seenCodes = new Set<string>()
+    const dedupPeriodes = allPeriodes.filter((p: any) => {
+      if (seenCodes.has(p.code)) return false
+      seenCodes.add(p.code); return true
+    })
+    setPeriodes(dedupPeriodes)
     setCoordoEtabs((ceRes.data || []) as unknown as CoorDoEtab[])
     setIenEtabs((ienRes.data || []) as unknown as IenEtab[])
     setInvitations((invRes.data || []) as unknown as Invitation[])
@@ -114,25 +121,6 @@ export default function Admin() {
     setLoading(false)
   }
 
-  async function togglePeriode(id: string, actif: boolean) {
-    await supabase.from('periodes').update({ actif: !actif }).eq('id', id)
-    setPeriodes(prev => prev.map(p => p.id === id ? { ...p, actif: !actif } : p))
-  }
-
-  async function toggleSaisie(id: string, ouvert: boolean) {
-    await supabase.from('periodes').update({ saisie_ouverte: !ouvert }).eq('id', id)
-    setPeriodes(prev => prev.map(p => p.id === id ? { ...p, saisie_ouverte: !ouvert } : p))
-  }
-
-  async function updateDates(id: string, debut: string | null, fin: string | null) {
-    await supabase.from('periodes').update({ date_debut: debut || null, date_fin: fin || null }).eq('id', id)
-    setPeriodes(prev => prev.map(p => p.id === id ? { ...p, date_debut: debut, date_fin: fin } : p))
-  }
-
-  async function updateTypePeriode(id: string, type: string) {
-    await supabase.from('periodes').update({ type }).eq('id', id)
-    setPeriodes(prev => prev.map(p => p.id === id ? { ...p, type } : p))
-  }
 
   async function creerPeriode() {
     if (!newPeriodeCode.trim() || !newPeriodeLabel.trim()) return
@@ -399,24 +387,17 @@ export default function Admin() {
                   {!isReseau && <th style={S.thC}>Actions</th>}
                 </tr></thead>
                 <tbody>
-                  {(() => {
-                    // Dédupliquer par code — afficher une seule ligne par code
-                    const seen = new Set<string>()
-                    return periodes.filter(p => {
-                      if (seen.has(p.code)) return false
-                      seen.add(p.code); return true
-                    }).map(p => (
-                      <PeriodeRow key={p.code} periode={p}
-                        isReseau={isReseau}
-                        onToggleActif={() => togglePeriodeByCode(p.code, 'actif', !!p.actif)}
-                        onToggleSaisie={() => togglePeriodeByCode(p.code, 'saisie_ouverte', !!p.saisie_ouverte)}
-                        onUpdateDates={(d, f) => updateDatesByCode(p.code, d, f)}
-                        onUpdateType={t => updateTypeByCode(p.code, t)}
-                        onUpdateLabel={l => updatePeriodeLabel(p.code, l)}
-                        onSupprimer={() => supprimerPeriode(p.code)}
-                      />
-                    ))
-                  })()}
+                  {periodes.map(p => (
+                    <PeriodeRow key={p.code} periode={p}
+                      isReseau={isReseau}
+                      onToggleActif={() => togglePeriodeByCode(p.code, 'actif', !!p.actif)}
+                      onToggleSaisie={() => togglePeriodeByCode(p.code, 'saisie_ouverte', !!p.saisie_ouverte)}
+                      onUpdateDates={(d, f) => updateDatesByCode(p.code, d, f)}
+                      onUpdateType={t => updateTypeByCode(p.code, t)}
+                      onUpdateLabel={l => updatePeriodeLabel(p.code, l)}
+                      onSupprimer={() => supprimerPeriode(p.code)}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>

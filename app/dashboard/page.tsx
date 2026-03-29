@@ -897,10 +897,17 @@ export default function Dashboard() {
       seenPKeys.add(key); return true
     })
 
-    // Période active courante (T1 de l'année la plus récente)
-    const periodeActive = periDedup
-      .filter((p: any) => p.actif && p.type !== 'evaluation_nationale')
-      .sort((a: any, b: any) => (b.annee_scolaire || '').localeCompare(a.annee_scolaire || ''))[0] || null
+    // Période active courante — année la plus récente, code T1 en priorité
+    const activePeriodes = periDedup.filter((p: any) => p.actif && p.type !== 'evaluation_nationale')
+    const periodeActive = activePeriodes.length > 0
+      ? activePeriodes.sort((a: any, b: any) => {
+          const anneeComp = (b.annee_scolaire || '').localeCompare(a.annee_scolaire || '')
+          if (anneeComp !== 0) return anneeComp
+          // Priorité T1 > T2 > T3 > autres
+          const priority = (c: string) => c === 'T1' ? 1 : c === 'T2' ? 2 : c === 'T3' ? 3 : 10
+          return priority(a.code) - priority(b.code)
+        })[0]
+      : null
 
     // Charger élèves et passations en parallèle (avec pagination si > 1000)
     async function fetchAll(table: string, select: string, filters?: (q: any) => any) {

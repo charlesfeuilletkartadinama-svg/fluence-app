@@ -95,9 +95,26 @@ function RapportContent() {
         .select('classe:classes(id, nom, niveau, etablissement:etablissements(id, nom))')
         .eq('enseignant_id', profil.id)
       classesData = (data || []).map((r: any) => r.classe).filter(Boolean)
+    } else if (profil.etablissement_id) {
+      const { data } = await supabase.from('classes')
+        .select('id, nom, niveau, etablissement:etablissements(id, nom)')
+        .eq('etablissement_id', profil.etablissement_id).order('nom')
+      classesData = (data as unknown as ClasseOption[]) || []
+    } else if (['coordo_rep', 'ien'].includes(profil.role)) {
+      const table = profil.role === 'ien' ? 'ien_etablissements' : 'coordo_etablissements'
+      const field = profil.role === 'ien' ? 'ien_id' : 'coordo_id'
+      const { data: ceData } = await supabase.from(table).select('etablissement_id').eq(field, profil.id)
+      const etabIds = (ceData || []).map((e: any) => e.etablissement_id)
+      if (etabIds.length > 0) {
+        const { data } = await supabase.from('classes')
+          .select('id, nom, niveau, etablissement:etablissements(id, nom)')
+          .in('etablissement_id', etabIds).order('nom')
+        classesData = (data as unknown as ClasseOption[]) || []
+      }
     } else {
-      const q = supabase.from('classes').select('id, nom, niveau, etablissement:etablissements(id, nom)').order('nom')
-      const { data } = profil.etablissement_id ? await q.eq('etablissement_id', profil.etablissement_id) : await q
+      // admin, ia_dasen, recteur — all classes
+      const { data } = await supabase.from('classes')
+        .select('id, nom, niveau, etablissement:etablissements(id, nom)').order('nom')
       classesData = (data as unknown as ClasseOption[]) || []
     }
     setClasses(classesData)
@@ -344,6 +361,7 @@ function RapportContent() {
   }
 
   const isDirection = profil && ['directeur', 'principal'].includes(profil.role)
+  const canMultiRapport = profil && ['directeur', 'principal', 'admin', 'coordo_rep', 'ien', 'ia_dasen', 'recteur'].includes(profil.role)
   const donneesPrete = mode === 'classe' ? donneesClasse : mode === 'etablissement' ? donneesEtab : donneesComplet
 
   return (
@@ -365,7 +383,7 @@ function RapportContent() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
             {/* ── Sélecteur de type ── */}
-            {isDirection && (
+            {canMultiRapport && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
                 {[
                   { id: 'complet'      as ModeRapport, icon: '📊', titre: 'Rapport complet',   desc: 'Toutes les classes sur toutes les périodes avec progression T1→T2→T3' },

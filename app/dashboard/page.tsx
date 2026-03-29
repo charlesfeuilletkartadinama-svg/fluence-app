@@ -889,23 +889,45 @@ export default function Dashboard() {
     const rolesCounts: Record<string, number> = {}
     allProfils.forEach((u: any) => { rolesCounts[u.role] = (rolesCounts[u.role] || 0) + 1 })
 
-    // Dédupliquer périodes par code
-    const seenPCodes = new Set<string>()
+    // Dédupliquer périodes par code+annee
+    const seenPKeys = new Set<string>()
     const periDedup = allPeriodes.filter((p: any) => {
-      if (seenPCodes.has(p.code)) return false
-      seenPCodes.add(p.code); return true
+      const key = `${p.annee_scolaire || ''}_${p.code}`
+      if (seenPKeys.has(key)) return false
+      seenPKeys.add(key); return true
     })
 
-    // Période active courante (la dernière active)
-    const periodeActive = periDedup.find((p: any) => p.actif && p.type !== 'evaluation_nationale')
+    // Période active courante (T1 de l'année la plus récente)
+    const periodeActive = periDedup
+      .filter((p: any) => p.actif && p.type !== 'evaluation_nationale')
+      .sort((a: any, b: any) => (b.annee_scolaire || '').localeCompare(a.annee_scolaire || ''))[0] || null
 
-    // Charger TOUS les élèves et passations
-    const { data: allEleves } = await supabase.from('eleves')
-      .select('id, classe_id, classe:classes(niveau, etablissement_id, nom)')
-      .eq('actif', true)
+    // Charger TOUS les élèves et passations (sans limite de 1000)
+    let allElevesData: any[] = []
+    let offset = 0
+    while (true) {
+      const { data } = await supabase.from('eleves')
+        .select('id, classe_id, classe:classes(niveau, etablissement_id, nom)')
+        .eq('actif', true).range(offset, offset + 999)
+      if (!data || data.length === 0) break
+      allElevesData = allElevesData.concat(data)
+      if (data.length < 1000) break
+      offset += 1000
+    }
+    const allEleves = allElevesData
 
-    const { data: allPassations } = await supabase.from('passations')
-      .select('eleve_id, score, non_evalue, q1, q2, q3, q4, q5, q6, periode:periodes(code, type)')
+    let allPassData: any[] = []
+    offset = 0
+    while (true) {
+      const { data } = await supabase.from('passations')
+        .select('eleve_id, score, non_evalue, q1, q2, q3, q4, q5, q6, periode:periodes(code, type)')
+        .range(offset, offset + 999)
+      if (!data || data.length === 0) break
+      allPassData = allPassData.concat(data)
+      if (data.length < 1000) break
+      offset += 1000
+    }
+    const allPassations = allPassData
 
     const elevesArr = allEleves || []
     const passArr = allPassations || []

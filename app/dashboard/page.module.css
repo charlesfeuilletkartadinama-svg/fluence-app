@@ -67,7 +67,7 @@
 }
 
 .statCard.featured .statLabel {
-  color: var(--text-lightest);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .statNum {
@@ -79,7 +79,8 @@
 }
 
 .statCard.featured .statNum {
-  color: white;
+  color: #FFFFFF;
+  font-weight: 700;
 }
 
 .statUnit {
@@ -89,7 +90,7 @@
 }
 
 .statCard.featured .statUnit {
-  color: var(--text-lighter);
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .statGold {

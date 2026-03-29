@@ -343,9 +343,9 @@ function Statistiques() {
     setNormes(normesData || [])
 
     // Coordo / IEN / IA-DASEN / Recteur : charger les établissements du réseau
-    if (['coordo_rep', 'ien', 'ia_dasen', 'recteur'].includes(profil.role)) {
+    if (['coordo_rep', 'ien', 'ia_dasen', 'recteur', 'admin'].includes(profil.role)) {
       let etabs: { id: string; nom: string }[]
-      if (profil.role === 'ia_dasen' || profil.role === 'recteur') {
+      if (profil.role === 'ia_dasen' || profil.role === 'recteur' || profil.role === 'admin') {
         const { data } = await supabase.from('etablissements').select('id, nom').order('nom')
         etabs = (data || []).map((e: any) => ({ id: e.id, nom: e.nom }))
       } else {
@@ -368,7 +368,10 @@ function Statistiques() {
       }
     }
 
-    if (classesData.length > 0) setClasseId(classesData[0].id)
+    // Pour les rôles réseau (dont admin), ne pas sélectionner de classe par défaut — ils voient la vue réseau
+    if (classesData.length > 0 && !['coordo_rep', 'ien', 'ia_dasen', 'recteur', 'admin'].includes(profil.role)) {
+      setClasseId(classesData[0].id)
+    }
     setLoading(false)
   }
 

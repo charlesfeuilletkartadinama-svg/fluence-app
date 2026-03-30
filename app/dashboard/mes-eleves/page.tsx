@@ -35,6 +35,7 @@ export default function MesEleves() {
   const router = useRouter()
   const supabase = createClient()
   const loadedRef = useRef<string | null>(null)
+  const [openEleve, setOpenEleve] = useState<string | null>(null)
 
   useEffect(() => {
     if (profilLoading || !profil) return
@@ -161,7 +162,6 @@ export default function MesEleves() {
     </>
   )
 
-  const [openEleve, setOpenEleve] = useState<string | null>(null)
   const totalEleves  = classes.reduce((n, c) => n + c.eleves.length, 0)
   const totalEvalues = classes.reduce((n, c) => n + c.eleves.filter(e => e.statut === 'evalue').length, 0)
 

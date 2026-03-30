@@ -17,11 +17,24 @@ export default function ImpersonationBar() {
   useEffect(() => {
     hydrate()
     setMounted(true)
-    // Charger tous les profils simulables (DEMO + TEST + réels)
+    // Charger les profils simulables — max 1 par rôle pour un sélecteur compact
     supabase.from('profils').select('id, nom, prenom, role, etablissement_id')
       .neq('role', 'admin')
       .order('role').order('nom')
       .then(({ data }) => {
+        // 1 profil par rôle : prioriser les profils sans [TEST] (= profils de démo nommés)
+        const byRole = new Map<string, any>()
+        for (const p of (data || [])) {
+          const isTest = (p.nom || '').includes('[TEST]')
+          const current = byRole.get(p.role)
+          if (!current) { byRole.set(p.role, p) }
+          else {
+            const currentIsTest = (current.nom || '').includes('[TEST]')
+            // Préférer non-[TEST] avec établissement
+            if (currentIsTest && !isTest && p.etablissement_id) byRole.set(p.role, p)
+          }
+        }
+        data = Array.from(byRole.values())
         if (data) {
           setSimulProfils(data.map((p: any) => ({
             id: p.id,
@@ -138,17 +151,13 @@ export default function ImpersonationBar() {
                 })
               }}>
               <option value="">Choisir un profil...</option>
-              {['enseignant', 'directeur', 'principal', 'coordo_rep', 'ien', 'ia_dasen', 'recteur'].map(role => {
-                const profils = simulProfils.filter(p => p.role === role)
-                if (profils.length === 0) return null
-                const roleLabel: Record<string, string> = { enseignant: '👨‍🏫 Enseignants', directeur: '🏫 Directeurs', principal: '🏛️ Principaux', coordo_rep: '🎯 Coordo', ien: '📋 IEN', ia_dasen: '🏢 IA-DASEN', recteur: '⭐ Recteurs' }
+              {simulProfils.map(p => {
+                const roleIcon: Record<string, string> = { enseignant: '👨‍🏫', directeur: '🏫', principal: '🏛️', coordo_rep: '🎯', ien: '📋', ia_dasen: '🏢', recteur: '⭐' }
+                const roleLabel: Record<string, string> = { enseignant: 'Enseignant', directeur: 'Directeur', principal: 'Principal', coordo_rep: 'Coordo REP', ien: 'IEN', ia_dasen: 'IA-DASEN', recteur: 'Recteur' }
                 return (
-                  <optgroup key={role} label={roleLabel[role] || role}>
-                    {profils.slice(0, 10).map(p => (
-                      <option key={p.id} value={p.id}>{p.label}</option>
-                    ))}
-                    {profils.length > 10 && <option disabled>… et {profils.length - 10} autres</option>}
-                  </optgroup>
+                  <option key={p.id} value={p.id}>
+                    {roleIcon[p.role] || ''} {roleLabel[p.role] || p.role} — {p.label.replace(/\[TEST\]\s*/g, '')}
+                  </option>
                 )
               })}
             </select>

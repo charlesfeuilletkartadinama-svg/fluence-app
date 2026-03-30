@@ -1677,8 +1677,8 @@ function QcmTab({ supabase, profil, periodes }: { supabase: any; profil: any; pe
             <label style={A.label}>Période *</label>
             <select value={qcmPeriodeId} onChange={e => setQcmPeriodeId(e.target.value)} style={A.select}>
               <option value="">— Choisir —</option>
-              {periodes.filter(p => p.actif).map(p => (
-                <option key={p.id} value={p.id}>{p.code} — {p.label}</option>
+              {periodes.map(p => (
+                <option key={p.id} value={p.id}>{p.code} — {p.label}{p.annee_scolaire ? ` (${p.annee_scolaire})` : ''}</option>
               ))}
             </select>
           </div>
@@ -1695,8 +1695,8 @@ function QcmTab({ supabase, profil, periodes }: { supabase: any; profil: any; pe
           </div>
         </div>
         <div>
-          <label style={A.label}>Texte de référence (le passage que l'élève lit)</label>
-          <textarea value={texteRef} onChange={e => setTexteRef(e.target.value)} rows={5} placeholder="Collez ici le texte que les élèves doivent lire avant de répondre aux questions…" style={{ ...A.input, width: '100%', resize: 'vertical' as const }} />
+          <label style={A.label}>Texte de référence <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10, letterSpacing: 0 }}>(optionnel — laissez vide si le texte est distribué sur papier)</span></label>
+          <textarea value={texteRef} onChange={e => setTexteRef(e.target.value)} rows={5} placeholder="Collez ici le texte que les élèves doivent lire. Si le texte est distribué sur papier, laissez ce champ vide." style={{ ...A.input, width: '100%', resize: 'vertical' as const }} />
         </div>
       </div>
 
@@ -1707,24 +1707,36 @@ function QcmTab({ supabase, profil, periodes }: { supabase: any; profil: any; pe
             <input value={q.question_text} onChange={e => updateQuestion(idx, 'question_text', e.target.value)} placeholder="Énoncé de la question…" style={{ ...A.input, flex: 1 }} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, paddingLeft: 44 }}>
-            {(['A', 'B', 'C', 'D'] as const).map(letter => (
-              <div key={letter} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="radio"
-                  name={`correct-${idx}`}
-                  checked={q.reponse_correcte === letter}
-                  onChange={() => updateQuestion(idx, 'reponse_correcte', letter)}
-                  style={{ accentColor: 'var(--primary-dark)' }}
-                />
-                <span style={{ fontSize: 13, fontWeight: 700, color: q.reponse_correcte === letter ? '#16a34a' : 'var(--text-tertiary)', fontFamily: 'var(--font-sans)', minWidth: 16 }}>{letter}.</span>
+            {(['A', 'B', 'C', 'D'] as const).map(letter => {
+              const isCorrect = q.reponse_correcte === letter
+              return (
+              <div key={letter} onClick={() => updateQuestion(idx, 'reponse_correcte', letter)} style={{
+                display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+                padding: '8px 10px', borderRadius: 10,
+                background: isCorrect ? '#f0fdf4' : 'transparent',
+                border: `1.5px solid ${isCorrect ? '#16a34a' : 'transparent'}`,
+                transition: 'all 0.15s',
+              }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: isCorrect ? '#16a34a' : 'var(--bg-gray)',
+                  color: isCorrect ? 'white' : 'var(--text-tertiary)',
+                  fontSize: 12, fontWeight: 800,
+                }}>
+                  {isCorrect ? '✓' : letter}
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: isCorrect ? '#16a34a' : 'var(--text-tertiary)', fontFamily: 'var(--font-sans)', minWidth: 16 }}>{letter}.</span>
                 <input
                   value={(q as any)[`option_${letter.toLowerCase()}`] || ''}
-                  onChange={e => updateQuestion(idx, `option_${letter.toLowerCase()}`, e.target.value)}
+                  onChange={e => { e.stopPropagation(); updateQuestion(idx, `option_${letter.toLowerCase()}`, e.target.value) }}
+                  onClick={e => e.stopPropagation()}
                   placeholder={`Option ${letter}`}
-                  style={{ ...A.input, flex: 1 }}
+                  style={{ ...A.input, flex: 1, background: isCorrect ? '#f0fdf4' : 'white' }}
                 />
               </div>
-            ))}
+            )
+            })}
           </div>
         </div>
       ))}

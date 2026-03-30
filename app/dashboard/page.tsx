@@ -202,28 +202,31 @@ export default function Dashboard() {
 
     // Sélectionner la dernière période T* (pas EN)
     const lastT = [...deduped].reverse().find(p => /^T\d/.test(p.code))
-    const periodeActuelle = (selectedPeriodeId
-      ? deduped.find(p => p.id === selectedPeriodeId)
-      : null) ?? lastT ?? deduped[0] ?? null
-    if (periodeActuelle && !periodeEnsId) setPeriodeEnsId(periodeActuelle.id)
+    const periodeActuelle = selectedPeriodeId
+      ? deduped.find(p => p.id === selectedPeriodeId) ?? lastT ?? deduped[0]
+      : lastT ?? deduped[0] ?? null
+    if (periodeActuelle && !selectedPeriodeId) setPeriodeEnsId(periodeActuelle.id)
 
-    // 3. TOUS les élèves actifs en une seule requête (remplace N requêtes)
+    // 3. TOUS les élèves actifs en une seule requête
     const { data: tousElevesData } = await supabase
       .from('eleves').select('id, nom, prenom, classe_id')
       .in('classe_id', classeIds).eq('actif', true)
     const tousEleves = tousElevesData || []
     const eleveIds = tousEleves.map((e: any) => e.id)
 
-    // 4. TOUTES les passations (toutes périodes) — filtre par code en mémoire comme la page statistiques
-    let toutesPassBrutes: any[] = []
-    if (eleveIds.length > 0) {
-      const { data: passData } = await supabase
-        .from('passations').select('eleve_id, score, non_evalue, periode:periodes(code)')
-        .in('eleve_id', eleveIds)
-      toutesPassBrutes = passData || []
+    // 4. Passations filtrées par periode_id (pas par code) pour éviter les doublons multi-années
+    let toutesPass: any[] = []
+    if (eleveIds.length > 0 && periodeActuelle) {
+      // Trouver tous les periode_id qui correspondent à ce code + cet établissement
+      const perIds = (periodesBrutes || []).filter((p: any) => p.code === periodeActuelle.code).map((p: any) => p.id)
+      if (perIds.length > 0) {
+        const { data: passData } = await supabase
+          .from('passations').select('eleve_id, score, non_evalue, q1')
+          .in('eleve_id', eleveIds)
+          .in('periode_id', perIds)
+        toutesPass = passData || []
+      }
     }
-    const periodeCodeActuelle = periodeActuelle?.code || ''
-    const toutesPass = toutesPassBrutes.filter(p => p.periode?.code === periodeCodeActuelle)
 
     // 5. Calcul par classe en mémoire (zéro requête supplémentaire)
     const alertesGlobal: EleveAlert[] = []
@@ -291,43 +294,45 @@ export default function Dashboard() {
       { label: 'Attendu', count: g4, color: '#16A34A' },
     ])
 
-    // 5d. Évolution par période
+    // 5d. Évolution par période (charger toutes les passations pour les périodes de l'établissement)
+    const allPerIds = (periodesBrutes || []).map((p: any) => p.id)
+    let allPassForEvo: any[] = []
+    if (eleveIds.length > 0 && allPerIds.length > 0) {
+      const { data } = await supabase.from('passations')
+        .select('eleve_id, score, non_evalue, periode_id')
+        .in('eleve_id', eleveIds).in('periode_id', allPerIds)
+      allPassForEvo = data || []
+    }
+    const perIdToCode: Record<string, string> = {}
+    for (const p of (periodesBrutes || [])) perIdToCode[p.id] = p.code
     const evoData = deduped.map(per => {
-      const passP = toutesPassBrutes.filter(p => p.periode?.code === per.code && !p.non_evalue && p.score > 0)
+      const perIdsForCode = (periodesBrutes || []).filter((p: any) => p.code === per.code).map((p: any) => p.id)
+      const passP = allPassForEvo.filter(p => perIdsForCode.includes(p.periode_id) && !p.non_evalue && p.score > 0)
       const scores = passP.map(p => p.score as number)
       return { code: per.code, moyenne: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null }
     })
     setEvolutionData(evoData)
 
-    // 5e. QCM complétion par classe
-    const qcmS = (assignees as any[]).map(a => {
-      const elevesC = tousEleves.filter((e: any) => e.classe_id === a.classe_id)
-      const passQcm = toutesPassBrutes.filter(p =>
-        elevesC.some((e: any) => e.id === p.eleve_id) && p.periode?.code === periodeCodeActuelle
-      )
-      // On cherche dans les passations brutes celles qui ont q1 renseigné
-      return { classeNom: a.classe?.nom || '', complete: 0, total: elevesC.length }
-    })
-    // Charger les passations avec q1 pour la période active
-    if (eleveIds.length > 0) {
+    // 5e. QCM complétion par classe (pour la période active uniquement)
+    const qcmS = (assignees as any[]).map(a => ({ classeNom: a.classe?.nom || '', complete: 0, total: tousEleves.filter((e: any) => e.classe_id === a.classe_id).length }))
+    if (eleveIds.length > 0 && periodeActuelle) {
+      const perIdsForCode = (periodesBrutes || []).filter((p: any) => p.code === periodeActuelle.code).map((p: any) => p.id)
       const { data: qcmPass } = await supabase.from('passations')
-        .select('eleve_id, q1, periode:periodes(code)')
-        .in('eleve_id', eleveIds)
+        .select('eleve_id, q1, periode_id')
+        .in('eleve_id', eleveIds).in('periode_id', perIdsForCode)
         .not('q1', 'is', null)
-      const qcmPassFiltered = (qcmPass || []).filter((p: any) => p.periode?.code === periodeCodeActuelle)
       for (const s of qcmS) {
-        const classEleves = tousEleves.filter((e: any) => {
-          const asg = (assignees as any[]).find(a => a.classe?.nom === s.classeNom)
-          return asg && e.classe_id === asg.classe_id
-        })
-        s.complete = qcmPassFiltered.filter(p => classEleves.some((e: any) => e.id === p.eleve_id)).length
+        const asg = (assignees as any[]).find(a => a.classe?.nom === s.classeNom)
+        if (!asg) continue
+        const classEleveIds = tousEleves.filter((e: any) => e.classe_id === asg.classe_id).map((e: any) => e.id)
+        s.complete = (qcmPass || []).filter(p => classEleveIds.includes(p.eleve_id)).length
       }
     }
     setQcmStats(qcmS)
 
     setStatsClasses(statsC)
     setAlertes(alertesGlobal)
-    setPeriodeCode(periodeCodeActuelle)
+    setPeriodeCode(periodeActuelle?.code || '')
 
     // 6. KPIs globaux calculés en mémoire
     const totalEvalues = statsC.reduce((s, c) => s + c.nbEvalues, 0)

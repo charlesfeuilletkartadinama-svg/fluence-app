@@ -401,12 +401,8 @@ function PassationContent() {
     ))
     resetChrono()
 
-    const prochain = eleves.findIndex((e, i) => i > eleveIdx && !e.fait)
-    if (prochain >= 0) {
-      setEleveIdx(prochain)
-    } else {
-      setEtape('liste')
-    }
+    // Toujours retourner à la liste pour que l'enseignant choisisse le prochain élève
+    setEtape('liste')
   }
 
   async function enregistrerTout() {
@@ -1007,27 +1003,6 @@ function PassationContent() {
                     </p>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* Questions compréhension */}
-            {chronoTermine && scoreCalc !== null && periode?.type !== 'evaluation_nationale' && (
-              <div style={{ padding: '0 28px 16px' }}>
-                <p style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, marginBottom: 10, fontFamily: 'var(--font-sans)' }}>Questions de compréhension</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 }}>
-                  {qs.map((q, i) => (
-                    <button key={i} onClick={() => toggleQ(i)}
-                      style={{
-                        padding: '12px 4px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font-sans)',
-                        border: q === true ? '1.5px solid #22c55e' : q === false ? '1.5px solid #ef4444' : '1.5px solid var(--border-main)',
-                        background: q === true ? '#f0fdf4' : q === false ? '#fef2f2' : 'var(--bg-gray)',
-                        color: q === true ? '#16a34a' : q === false ? '#dc2626' : 'var(--text-tertiary)',
-                      }}>
-                      Q{i+1}
-                      <div style={{ fontSize: 16, marginTop: 2 }}>{q === true ? '✓' : q === false ? '✗' : '·'}</div>
-                    </button>
-                  ))}
-                </div>
               </div>
             )}
 

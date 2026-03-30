@@ -70,6 +70,7 @@ function PassationContent() {
   const [confirmDeleteSession, setConfirmDeleteSession] = useState<string | null>(null)
   const [confirmCloreEleve, setConfirmCloreEleve] = useState<string | null>(null)
   const [confirmResetReponse, setConfirmResetReponse] = useState<{ seId: string; qNum: string } | null>(null)
+  const [liveCorrectAnswers, setLiveCorrectAnswers] = useState<Record<number, string>>({})
   // Durée timer pour création de session
   const [newSessionDuree, setNewSessionDuree] = useState(300)
   // QCM individuel
@@ -259,12 +260,56 @@ function PassationContent() {
     chargerQcmSessions(classe.id, periode.id)
   }
 
+  // Télécharger les codes en PDF (génère un HTML et l'imprime dans un iframe)
+  function telechargerCodesPDF(sessionCode: string, eleves: typeof liveEleves) {
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Codes QCM - ${sessionCode}</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; }
+      h1 { font-size: 18px; text-align: center; margin-bottom: 4px; }
+      h2 { font-size: 14px; text-align: center; color: #666; margin-bottom: 20px; font-weight: normal; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+      .card { border: 2px solid #1e3a5f; border-radius: 10px; padding: 14px; text-align: center; page-break-inside: avoid; }
+      .nom { font-size: 14px; font-weight: bold; color: #1e3a5f; margin-bottom: 6px; }
+      .code { font-size: 18px; font-family: monospace; font-weight: bold; letter-spacing: 2px; color: #000; background: #f0f4ff; padding: 6px 10px; border-radius: 6px; }
+      .url { font-size: 10px; color: #666; margin-top: 6px; }
+      @media print { body { padding: 10px; } }
+    </style></head><body>
+    <h1>Codes QCM — ${sessionCode}</h1>
+    <h2>${classe?.nom || ''} · ${periode?.code || ''} — ${typeof window !== 'undefined' ? window.location.origin : ''}/test</h2>
+    <div class="grid">${eleves.map(e => `
+      <div class="card">
+        <div class="nom">${e.nom} ${e.prenom}</div>
+        <div class="code">${e.code}</div>
+      </div>`).join('')}
+    </div></body></html>`
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const iframe = document.createElement('iframe')
+    iframe.style.display = 'none'
+    iframe.src = url
+    document.body.appendChild(iframe)
+    iframe.onload = () => { iframe.contentWindow?.print(); setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 1000) }
+  }
+
   async function ouvrirSuiviLive(sessionId: string) {
     if (liveSessionId === sessionId) { setLiveSessionId(null); if (liveIntervalRef.current) clearInterval(liveIntervalRef.current); return }
     setLiveSessionId(sessionId)
-    // Charger la durée du timer de cette session
-    const { data: sess } = await supabase.from('test_sessions').select('duree_timer').eq('id', sessionId).single()
-    if (sess) setLiveSessionDuree(sess.duree_timer || 300)
+    // Charger la durée du timer + les bonnes réponses du QCM
+    const { data: sess } = await supabase.from('test_sessions').select('duree_timer, periode_id, classe_id').eq('id', sessionId).single()
+    if (sess) {
+      setLiveSessionDuree(sess.duree_timer || 300)
+      // Charger les bonnes réponses
+      const { data: classeData } = await supabase.from('classes').select('niveau').eq('id', sess.classe_id).single()
+      if (classeData) {
+        const { data: test } = await supabase.from('qcm_tests').select('id').eq('periode_id', sess.periode_id).eq('niveau', classeData.niveau).single()
+        if (test) {
+          const { data: qs } = await supabase.from('qcm_questions').select('numero, reponse_correcte').eq('qcm_test_id', test.id)
+          const answers: Record<number, string> = {}
+          for (const q of (qs || [])) answers[q.numero] = q.reponse_correcte
+          setLiveCorrectAnswers(answers)
+        }
+      }
+    }
 
     const charger = async () => {
       const { data } = await supabase.from('session_eleves')
@@ -1002,159 +1047,166 @@ function PassationContent() {
                                     </span>
                                   </td>
                                   <td style={{ padding: '14px 20px', textAlign: 'center' }}>
-                                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                                      <button onClick={() => copierQcmCode(s.code)} style={{ background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>
-                                        {copiedQcm === s.code ? 'Copié !' : 'Copier'}
-                                      </button>
+                                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
                                       {isActive && (
-                                        <>
-                                          <button onClick={() => ouvrirSuiviLive(s.id)} style={{
-                                            background: liveSessionId === s.id ? '#2563EB' : 'transparent', color: liveSessionId === s.id ? 'white' : '#2563EB',
-                                            border: '1.5px solid #93c5fd', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                          }}>{liveSessionId === s.id ? '● Live' : 'Suivi live'}</button>
-                                          <button onClick={() => desactiverQcmSession(s.id)} style={{ background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Désactiver</button>
-                                        </>
+                                        <button onClick={() => ouvrirSuiviLive(s.id)} style={{
+                                          background: liveSessionId === s.id ? '#2563EB' : 'transparent', color: liveSessionId === s.id ? 'white' : '#2563EB',
+                                          border: '1.5px solid #93c5fd', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                        }}>{liveSessionId === s.id ? '● Live' : 'Suivi live'}</button>
                                       )}
+                                      {isActive && (
+                                        <button onClick={() => desactiverQcmSession(s.id)} style={{ background: 'transparent', color: '#f97316', border: '1.5px solid #fed7aa', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Désactiver</button>
+                                      )}
+                                      <button onClick={() => setConfirmDeleteSession(s.id)} style={{ background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Supprimer</button>
                                     </div>
+                                    {confirmDeleteSession === s.id && (
+                                      <div style={{ marginTop: 8, background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                                        <span style={{ fontSize: 11, color: '#dc2626', fontFamily: 'var(--font-sans)' }}>Confirmer ?</span>
+                                        <button onClick={() => supprimerSession(s.id)} style={{ background: '#dc2626', color: 'white', border: 'none', padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Oui</button>
+                                        <button onClick={() => setConfirmDeleteSession(null)} style={{ background: 'white', color: '#64748b', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Non</button>
+                                      </div>
+                                    )}
                                   </td>
                                 </tr>
                                 {liveSessionId === s.id && (
                                   <tr><td colSpan={3} style={{ padding: 0 }}>
-                                    <div style={{ background: '#eff6ff', padding: '20px', borderTop: '1px solid #bfdbfe' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                                        <h4 style={{ fontSize: 14, fontWeight: 800, color: '#1d4ed8', margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                          Suivi live · {liveEleves.filter(e => e.termine).length}/{liveEleves.length} terminés
-                                        </h4>
-                                        <div style={{ display: 'flex', gap: 8 }}>
-                                          <button onClick={() => window.print()} style={{
-                                            background: 'white', border: '1.5px solid #93c5fd', color: '#1d4ed8', padding: '5px 12px',
-                                            borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                          }}>Imprimer codes</button>
-                                          <button onClick={() => setConfirmDeleteSession(s.id)} style={{
-                                            background: '#fef2f2', border: '1.5px solid #fca5a5', color: '#dc2626', padding: '5px 12px',
-                                            borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                          }}>Supprimer session</button>
+                                    <div style={{ background: '#f8fafc', borderTop: '1px solid #bfdbfe' }}>
+                                      {/* Header avec stats + boutons */}
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontFamily: 'var(--font-sans)' }}>
+                                          <span style={{ fontSize: 13, fontWeight: 800, color: '#1d4ed8' }}>
+                                            {liveEleves.filter(e => e.termine).length}/{liveEleves.length} terminés
+                                          </span>
+                                          <span style={{ fontSize: 11, color: '#64748b' }}>
+                                            {liveEleves.filter(e => e.connecte && !e.termine).length} en cours · {liveEleves.filter(e => !e.connecte && !e.termine).length} en attente
+                                          </span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 6 }}>
+                                          <button onClick={() => telechargerCodesPDF(s.code, liveEleves)} style={{
+                                            background: 'white', border: '1px solid #93c5fd', color: '#1d4ed8', padding: '4px 10px',
+                                            borderRadius: 6, fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                          }}>PDF codes</button>
                                         </div>
                                       </div>
 
-                                      {/* Confirmation suppression session */}
-                                      {confirmDeleteSession === s.id && (
-                                        <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 12, padding: '14px 18px', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                          <span style={{ fontSize: 13, color: '#dc2626', fontWeight: 600, fontFamily: 'var(--font-sans)' }}>Supprimer cette session et tous les codes ? Les passations déjà enregistrées seront conservées.</span>
-                                          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                                            <button onClick={() => supprimerSession(s.id)} style={{ background: '#dc2626', color: 'white', border: 'none', padding: '7px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Confirmer</button>
-                                            <button onClick={() => setConfirmDeleteSession(null)} style={{ background: 'white', color: '#64748b', border: '1.5px solid #e2e8f0', padding: '7px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Annuler</button>
-                                          </div>
+                                      {/* Confirmation reset réponse */}
+                                      {confirmResetReponse && (
+                                        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                                          <span style={{ fontSize: 12, color: '#c2410c', fontFamily: 'var(--font-sans)' }}>
+                                            Réinitialiser Q{confirmResetReponse.qNum} de {liveEleves.find(e => e.id === confirmResetReponse.seId)?.prenom || ''} ?
+                                          </span>
+                                          <button onClick={() => resetReponseEleve(confirmResetReponse.seId, confirmResetReponse.qNum)} style={{ background: '#c2410c', color: 'white', border: 'none', padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Oui</button>
+                                          <button onClick={() => setConfirmResetReponse(null)} style={{ background: 'white', color: '#64748b', border: '1px solid #e2e8f0', padding: '3px 10px', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Non</button>
+                                        </div>
+                                      )}
+                                      {confirmCloreEleve && (
+                                        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                                          <span style={{ fontSize: 12, color: '#dc2626', fontFamily: 'var(--font-sans)' }}>
+                                            Terminer {liveEleves.find(e => e.id === confirmCloreEleve)?.prenom || ''} ? Réponses soumises.
+                                          </span>
+                                          <button onClick={() => cloreSessionEleve(confirmCloreEleve)} style={{ background: '#dc2626', color: 'white', border: 'none', padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Confirmer</button>
+                                          <button onClick={() => setConfirmCloreEleve(null)} style={{ background: 'white', color: '#64748b', border: '1px solid #e2e8f0', padding: '3px 10px', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Annuler</button>
                                         </div>
                                       )}
 
-                                      {/* Carte par élève */}
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                        {liveEleves.map(elv => {
-                                          const timerRestant = getTimerRestant(elv, liveSessionDuree)
-                                          const timerMin = timerRestant !== null ? `${Math.floor(timerRestant / 60)}:${String(timerRestant % 60).padStart(2, '0')}` : null
-                                          const timerColor = timerRestant === null ? '#94a3b8' : timerRestant <= 30 ? '#dc2626' : timerRestant <= 60 ? '#f97316' : '#1d4ed8'
-                                          const nbQuestions = 6
-                                          const repLive = elv.reponses_live || {}
+                                      {/* TABLEAU COMPACT */}
+                                      <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: 'var(--font-sans)' }}>
+                                          <thead>
+                                            <tr style={{ background: '#e8eeff' }}>
+                                              <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#475569', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>ÉLÈVE</th>
+                                              <th style={{ padding: '8px 6px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#475569', width: 50 }}>CODE</th>
+                                              <th style={{ padding: '8px 6px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#475569', width: 48 }}>TIMER</th>
+                                              {[1,2,3,4,5,6].map(n => (
+                                                <th key={n} style={{ padding: '8px 4px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#475569', width: 32 }}>Q{n}</th>
+                                              ))}
+                                              <th style={{ padding: '8px 6px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#475569', width: 60 }}>ACTIONS</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {liveEleves.map(elv => {
+                                              const timerRestant = getTimerRestant(elv, liveSessionDuree)
+                                              const timerStr = timerRestant !== null ? `${Math.floor(timerRestant / 60)}:${String(timerRestant % 60).padStart(2, '0')}` : null
+                                              const timerColor = timerRestant === null ? '#94a3b8' : timerRestant <= 30 ? '#dc2626' : timerRestant <= 60 ? '#f97316' : '#1e3a5f'
+                                              const repLive = elv.reponses_live || {}
+                                              const rowBg = elv.termine ? '#f0fdf4' : !elv.connecte ? '#fafafa' : 'white'
 
-                                          return (
-                                            <div key={elv.id} style={{
-                                              background: elv.termine ? '#f0fdf4' : 'white',
-                                              border: `1.5px solid ${elv.termine ? '#bbf7d0' : elv.connecte ? '#93c5fd' : '#e2e8f0'}`,
-                                              borderRadius: 14, padding: '14px 18px',
-                                            }}>
-                                              {/* Ligne 1 : Nom + Code + Timer */}
-                                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                  <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: elv.termine ? '#16a34a' : elv.connecte ? '#2563eb' : '#d1d5db' }} />
-                                                  <div>
-                                                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{elv.nom} {elv.prenom}</span>
-                                                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#64748b', letterSpacing: 1, marginLeft: 10 }}>{elv.code}</span>
-                                                  </div>
-                                                </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                  {elv.termine ? (
-                                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '3px 10px', borderRadius: 8, fontFamily: 'var(--font-sans)' }}>
-                                                      Terminé{elv.temps_total_secondes ? ` · ${Math.floor(elv.temps_total_secondes / 60)}m${String(elv.temps_total_secondes % 60).padStart(2, '0')}s` : ''}
-                                                    </span>
-                                                  ) : timerMin ? (
-                                                    <span style={{ fontSize: 16, fontWeight: 900, color: timerColor, fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-sans)' }}>
-                                                      {timerMin}
-                                                    </span>
-                                                  ) : (
-                                                    <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'var(--font-sans)' }}>En attente</span>
-                                                  )}
-                                                </div>
-                                              </div>
-
-                                              {/* Ligne 2 : Réponses Q1-Q6 */}
-                                              <div style={{ display: 'flex', gap: 6, marginBottom: elv.termine ? 0 : 10, flexWrap: 'wrap' }}>
-                                                {Array.from({ length: nbQuestions }, (_, i) => {
-                                                  const qNum = String(i + 1)
-                                                  const rep = repLive[qNum]
-                                                  return (
-                                                    <button
-                                                      key={qNum}
-                                                      onClick={() => {
-                                                        if (rep && !elv.termine) setConfirmResetReponse({ seId: elv.id, qNum })
-                                                      }}
-                                                      disabled={!rep || elv.termine}
-                                                      style={{
-                                                        display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
-                                                        borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)',
-                                                        cursor: rep && !elv.termine ? 'pointer' : 'default',
-                                                        background: rep ? '#eff6ff' : '#f8fafc',
-                                                        border: `1.5px solid ${rep ? '#93c5fd' : '#e2e8f0'}`,
-                                                        color: rep ? '#1d4ed8' : '#94a3b8',
-                                                        transition: 'all 0.1s',
-                                                      }}
-                                                      title={rep ? `Q${qNum}: ${rep} — Cliquer pour réinitialiser` : `Q${qNum}: en attente`}
-                                                    >
-                                                      <span style={{ color: '#64748b' }}>Q{qNum}:</span>
-                                                      <span>{rep || '—'}</span>
-                                                    </button>
-                                                  )
-                                                })}
-                                              </div>
-
-                                              {/* Confirmation reset réponse */}
-                                              {confirmResetReponse?.seId === elv.id && (
-                                                <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '8px 12px', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                  <span style={{ fontSize: 12, color: '#c2410c', fontFamily: 'var(--font-sans)' }}>Réinitialiser Q{confirmResetReponse.qNum} ?</span>
-                                                  <div style={{ display: 'flex', gap: 6 }}>
-                                                    <button onClick={() => resetReponseEleve(elv.id, confirmResetReponse.qNum)} style={{ background: '#c2410c', color: 'white', border: 'none', padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Oui</button>
-                                                    <button onClick={() => setConfirmResetReponse(null)} style={{ background: 'white', color: '#64748b', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Non</button>
-                                                  </div>
-                                                </div>
-                                              )}
-
-                                              {/* Confirmation clore session élève */}
-                                              {confirmCloreEleve === elv.id && (
-                                                <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                  <span style={{ fontSize: 12, color: '#dc2626', fontFamily: 'var(--font-sans)' }}>Terminer la session de {elv.prenom} ? Ses réponses seront soumises.</span>
-                                                  <div style={{ display: 'flex', gap: 6 }}>
-                                                    <button onClick={() => cloreSessionEleve(elv.id)} style={{ background: '#dc2626', color: 'white', border: 'none', padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Confirmer</button>
-                                                    <button onClick={() => setConfirmCloreEleve(null)} style={{ background: 'white', color: '#64748b', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Annuler</button>
-                                                  </div>
-                                                </div>
-                                              )}
-
-                                              {/* Ligne 3 : Boutons action (sauf si terminé) */}
-                                              {!elv.termine && elv.connecte && (
-                                                <div style={{ display: 'flex', gap: 8 }}>
-                                                  <button onClick={() => resetTimerEleve(elv.id)} style={{
-                                                    background: 'white', border: '1.5px solid #93c5fd', color: '#1d4ed8', padding: '6px 14px',
-                                                    borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                                  }}>Reset timer</button>
-                                                  <button onClick={() => setConfirmCloreEleve(elv.id)} style={{
-                                                    background: 'white', border: '1.5px solid #fca5a5', color: '#dc2626', padding: '6px 14px',
-                                                    borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                                  }}>Terminer</button>
-                                                </div>
-                                              )}
-                                            </div>
-                                          )
-                                        })}
+                                              return (
+                                                <tr key={elv.id} style={{ borderTop: '1px solid #e2e8f0', background: rowBg }}>
+                                                  {/* Nom + statut */}
+                                                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                      <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: elv.termine ? '#16a34a' : elv.connecte ? '#2563eb' : '#d1d5db' }} />
+                                                      <span style={{ fontWeight: 700, color: 'var(--primary-dark)', fontSize: 12 }}>{elv.nom}</span>
+                                                      <span style={{ color: '#64748b', fontSize: 11 }}>{elv.prenom}</span>
+                                                    </div>
+                                                  </td>
+                                                  {/* Code */}
+                                                  <td style={{ padding: '7px 6px', textAlign: 'center' }}>
+                                                    <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#64748b', letterSpacing: 0.5 }}>{elv.code.split('-').pop()}</span>
+                                                  </td>
+                                                  {/* Timer */}
+                                                  <td style={{ padding: '7px 6px', textAlign: 'center' }}>
+                                                    {elv.termine ? (
+                                                      <span style={{ fontSize: 10, fontWeight: 700, color: '#16a34a' }}>
+                                                        {elv.temps_total_secondes ? `${Math.floor(elv.temps_total_secondes / 60)}m${String(elv.temps_total_secondes % 60).padStart(2, '0')}` : '✓'}
+                                                      </span>
+                                                    ) : timerStr ? (
+                                                      <span style={{ fontSize: 12, fontWeight: 900, color: timerColor, fontVariantNumeric: 'tabular-nums' }}>{timerStr}</span>
+                                                    ) : (
+                                                      <span style={{ fontSize: 10, color: '#d1d5db' }}>—</span>
+                                                    )}
+                                                  </td>
+                                                  {/* Q1-Q6 avec vert/rouge */}
+                                                  {[1,2,3,4,5,6].map(n => {
+                                                    const rep = repLive[String(n)]
+                                                    const correct = liveCorrectAnswers[n]
+                                                    const isCorrect = rep && correct ? rep === correct : null
+                                                    const bg = !rep ? 'transparent' : isCorrect === true ? '#dcfce7' : isCorrect === false ? '#fef2f2' : '#eff6ff'
+                                                    const color = !rep ? '#d1d5db' : isCorrect === true ? '#16a34a' : isCorrect === false ? '#dc2626' : '#1d4ed8'
+                                                    const borderCol = !rep ? '#e2e8f0' : isCorrect === true ? '#bbf7d0' : isCorrect === false ? '#fecaca' : '#93c5fd'
+                                                    return (
+                                                      <td key={n} style={{ padding: '7px 3px', textAlign: 'center' }}>
+                                                        <button
+                                                          onClick={() => { if (rep && !elv.termine) setConfirmResetReponse({ seId: elv.id, qNum: String(n) }) }}
+                                                          disabled={!rep || elv.termine}
+                                                          style={{
+                                                            width: 28, height: 26, borderRadius: 6, fontSize: 11, fontWeight: 800,
+                                                            border: `1.5px solid ${borderCol}`, background: bg, color,
+                                                            cursor: rep && !elv.termine ? 'pointer' : 'default',
+                                                            padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                          }}
+                                                          title={rep ? `Q${n}: ${rep}${isCorrect === true ? ' ✓' : isCorrect === false ? ' ✗' : ''} — Clic pour reset` : ''}
+                                                        >
+                                                          {rep || '—'}
+                                                        </button>
+                                                      </td>
+                                                    )
+                                                  })}
+                                                  {/* Actions */}
+                                                  <td style={{ padding: '7px 6px', textAlign: 'center' }}>
+                                                    {!elv.termine && elv.connecte ? (
+                                                      <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                                                        <button onClick={() => resetTimerEleve(elv.id)} title="Reset timer" style={{
+                                                          background: 'white', border: '1px solid #93c5fd', color: '#1d4ed8', padding: '3px 6px',
+                                                          borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer', lineHeight: 1,
+                                                        }}>↺</button>
+                                                        <button onClick={() => setConfirmCloreEleve(elv.id)} title="Terminer" style={{
+                                                          background: 'white', border: '1px solid #fca5a5', color: '#dc2626', padding: '3px 6px',
+                                                          borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer', lineHeight: 1,
+                                                        }}>■</button>
+                                                      </div>
+                                                    ) : elv.termine ? (
+                                                      <span style={{ fontSize: 12, color: '#16a34a' }}>✓</span>
+                                                    ) : (
+                                                      <span style={{ fontSize: 10, color: '#d1d5db' }}>—</span>
+                                                    )}
+                                                  </td>
+                                                </tr>
+                                              )
+                                            })}
+                                          </tbody>
+                                        </table>
                                       </div>
                                     </div>
                                   </td></tr>

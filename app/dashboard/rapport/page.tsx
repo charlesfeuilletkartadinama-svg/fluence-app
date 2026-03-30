@@ -8,7 +8,7 @@ import dynamic from 'next/dynamic'
 import Sidebar from '@/app/components/Sidebar'
 import ImpersonationBar from '@/app/components/ImpersonationBar'
 import styles from './rapport.module.css'
-import { RapportPDF, RapportEtabPDF, RapportCompletPDF, RapportReseauPDF } from './RapportPDF'
+import { RapportPDF, RapportEtabPDF, RapportCompletPDF, RapportReseauPDF, RapportElevePDF } from './RapportPDF'
 import { classerEleve } from '@/app/lib/fluenceUtils'
 
 const PDFDownloadLink = dynamic(
@@ -18,7 +18,7 @@ const PDFDownloadLink = dynamic(
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type ModeRapport = 'classe' | 'etablissement' | 'complet' | 'reseau'
+type ModeRapport = 'classe' | 'etablissement' | 'complet' | 'reseau' | 'eleve'
 type ClasseOption  = { id: string; nom: string; niveau: string; etablissement: { id: string; nom: string } }
 type PeriodeOption = { id: string; code: string; label: string }
 
@@ -56,6 +56,15 @@ type DonneesComplet = {
   etablissement: string; dateGeneration: string; directeur: string
   periodes: string[]
   classes: ClasseCompletData[]
+}
+
+type DonneesEleve = {
+  nom: string; prenom: string; dateNaissance: string | null; sexe: string | null
+  classe: string; niveau: string; etablissement: string
+  dateGeneration: string
+  passations: { periode: string; annee: string; score: number | null; ne: boolean; groupe: string; q1: string|null; q2: string|null; q3: string|null; q4: string|null; q5: string|null; q6: string|null }[]
+  scoreMoyen: number | null
+  dernierGroupe: string
 }
 
 type EtabReseauRow = {
@@ -101,6 +110,10 @@ function RapportContent() {
   const [filtreEtabId, setFiltreEtabId] = useState('')
   const [allClasses, setAllClasses]   = useState<ClasseOption[]>([])
   const [donneesReseau,     setDonneesReseau]     = useState<DonneesReseau | null>(null)
+  const [donneesEleve,      setDonneesEleve]      = useState<DonneesEleve | null>(null)
+  const [rechercheEleve, setRechercheEleve] = useState('')
+  const [resultatsEleve, setResultatsEleve] = useState<{ id: string; nom: string; prenom: string; classe: string }[]>([])
+  const [eleveId, setEleveId]         = useState('')
 
   const { profil } = useProfil()
   const supabase   = createClient()
@@ -173,7 +186,7 @@ function RapportContent() {
       setClasses(filtered)
       if (filtered[0]) setClasseId(filtered[0].id)
     }
-    setDonneesClasse(null); setDonneesEtab(null); setDonneesComplet(null); setDonneesReseau(null)
+    setDonneesClasse(null); setDonneesEtab(null); setDonneesComplet(null); setDonneesReseau(null); setDonneesEleve(null)
   }
 
   // ── Génération rapport par classe ─────────────────────────────────────
@@ -531,22 +544,83 @@ function RapportContent() {
     setGenerating(false)
   }
 
+  async function rechercherElevePDF(query: string) {
+    setRechercheEleve(query)
+    if (query.trim().length < 2) { setResultatsEleve([]); return }
+    const { data } = await supabase.from('eleves')
+      .select('id, nom, prenom, classe:classes(nom)')
+      .or(`nom.ilike.%${query}%,prenom.ilike.%${query}%,numero_ine.ilike.%${query}%`)
+      .eq('actif', true).limit(10)
+    setResultatsEleve((data || []).map((e: any) => ({ id: e.id, nom: e.nom, prenom: e.prenom, classe: e.classe?.nom || '' })))
+  }
+
+  async function genererEleve() {
+    if (!eleveId) return
+    setGenerating(true); setDonneesEleve(null)
+
+    const { data: eleve } = await supabase.from('eleves')
+      .select('id, nom, prenom, date_naissance, sexe, classe:classes(nom, niveau, etablissement:etablissements(nom))')
+      .eq('id', eleveId).single()
+    if (!eleve) { setGenerating(false); return }
+
+    const { data: passData } = await supabase.from('passations')
+      .select('score, non_evalue, q1, q2, q3, q4, q5, q6, periode:periodes(code, label, annee_scolaire)')
+      .eq('eleve_id', eleveId)
+      .order('created_at')
+
+    const { data: normesData } = await supabase.from('config_normes')
+      .select('niveau, seuil_min, seuil_attendu')
+    const norme = (normesData || []).find((n: any) => n.niveau === (eleve as any).classe?.niveau)
+
+    const passations = (passData || []).map((p: any) => {
+      let groupe = '—'
+      if (p.score && !p.non_evalue && norme) {
+        const s = p.score
+        if (s < Math.round(norme.seuil_min * 0.7)) groupe = 'Très fragile'
+        else if (s < norme.seuil_min) groupe = 'Fragile'
+        else if (s < norme.seuil_attendu) groupe = "En cours d'acq."
+        else groupe = 'Attendu'
+      }
+      return {
+        periode: p.periode?.code || '', annee: p.periode?.annee_scolaire || '',
+        score: p.score, ne: p.non_evalue, groupe,
+        q1: p.q1, q2: p.q2, q3: p.q3, q4: p.q4, q5: p.q5, q6: p.q6,
+      }
+    })
+
+    const scores = passations.filter(p => p.score && !p.ne).map(p => p.score!)
+    const dernierP = passations[passations.length - 1]
+
+    setDonneesEleve({
+      nom: (eleve as any).nom, prenom: (eleve as any).prenom,
+      dateNaissance: (eleve as any).date_naissance, sexe: (eleve as any).sexe,
+      classe: (eleve as any).classe?.nom || '', niveau: (eleve as any).classe?.niveau || '',
+      etablissement: (eleve as any).classe?.etablissement?.nom || '',
+      dateGeneration: new Date().toLocaleDateString('fr-FR'),
+      passations,
+      scoreMoyen: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+      dernierGroupe: dernierP?.groupe || '—',
+    })
+    setGenerating(false)
+  }
+
   function generer() {
     if (mode === 'classe')             genererClasse()
     else if (mode === 'etablissement') genererEtab()
     else if (mode === 'reseau')        genererReseau()
+    else if (mode === 'eleve')         genererEleve()
     else                               genererComplet()
   }
 
   function onModeChange(m: ModeRapport) {
     setMode(m)
-    setDonneesClasse(null); setDonneesEtab(null); setDonneesComplet(null); setDonneesReseau(null)
+    setDonneesClasse(null); setDonneesEtab(null); setDonneesComplet(null); setDonneesReseau(null); setDonneesEleve(null)
   }
 
   const isDirection = profil && ['directeur', 'principal'].includes(profil.role)
   const canMultiRapport = profil && ['directeur', 'principal', 'admin', 'coordo_rep', 'ien', 'ia_dasen', 'recteur'].includes(profil.role)
   const isReseauRole = profil && ['coordo_rep', 'ien', 'ia_dasen', 'recteur', 'admin'].includes(profil.role)
-  const donneesPrete = mode === 'classe' ? donneesClasse : mode === 'etablissement' ? donneesEtab : mode === 'reseau' ? donneesReseau : donneesComplet
+  const donneesPrete = mode === 'classe' ? donneesClasse : mode === 'etablissement' ? donneesEtab : mode === 'reseau' ? donneesReseau : mode === 'eleve' ? donneesEleve : donneesComplet
 
   return (
     <div className={styles.page}>
@@ -573,6 +647,7 @@ function RapportContent() {
                   { id: 'complet'      as ModeRapport, icon: '📊', titre: 'Rapport complet',   desc: 'Toutes les classes sur toutes les périodes avec progression T1→T2→T3' },
                   { id: 'etablissement'as ModeRapport, icon: '🏫', titre: 'Par établissement', desc: 'Vue globale de toutes les classes pour une période donnée' },
                   { id: 'classe'       as ModeRapport, icon: '📋', titre: 'Par classe',        desc: 'Rapport détaillé d\'une classe pour une période avec liste des élèves' },
+                  { id: 'eleve' as ModeRapport, icon: '👤', titre: 'Par élève', desc: 'Fiche complète d\'un élève avec toutes ses passations et sa progression' },
                   ...(isReseauRole ? [{ id: 'reseau' as ModeRapport, icon: '🌐', titre: 'Rapport réseau',   desc: 'Vue globale de tous les établissements du réseau avec comparaisons' }] : []),
                 ].map(m => (
                   <button key={m.id} onClick={() => onModeChange(m.id)} style={{
@@ -669,6 +744,28 @@ function RapportContent() {
                   </div>
                 )}
 
+                {/* Mode élève */}
+                {mode === 'eleve' && (
+                  <div>
+                    <label className={styles.label}>Rechercher un élève (nom, prénom ou INE)</label>
+                    <input value={rechercheEleve} onChange={e => rechercherElevePDF(e.target.value)}
+                      placeholder="Tapez un nom, prénom ou INE…"
+                      style={{ width: '100%', border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '10px 14px', fontSize: 14, fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box', marginBottom: 8 }} />
+                    {resultatsEleve.length > 0 && (
+                      <div style={{ background: 'var(--bg-gray)', borderRadius: 10, border: '1px solid var(--border-light)', maxHeight: 200, overflowY: 'auto' }}>
+                        {resultatsEleve.map(r => (
+                          <button key={r.id} onClick={() => { setEleveId(r.id); setRechercheEleve(`${r.nom} ${r.prenom}`); setResultatsEleve([]); setDonneesEleve(null) }}
+                            style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '10px 16px', border: 'none', borderBottom: '1px solid var(--border-light)', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: 13, textAlign: 'left', color: 'var(--primary-dark)' }}>
+                            <span><strong>{r.nom}</strong> {r.prenom}</span>
+                            <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{r.classe}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {eleveId && <p style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>Élève sélectionné — cliquez sur Générer</p>}
+                  </div>
+                )}
+
                 {/* Mode réseau */}
                 {mode === 'reseau' && (
                   <div style={{ padding: '12px 16px', background: 'var(--bg-gray)', borderRadius: 10, fontSize: 13, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -711,6 +808,7 @@ function RapportContent() {
                     <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
                       {mode === 'classe' && donneesClasse && `${donneesClasse.classe} · ${donneesClasse.periode}`}
                       {mode === 'etablissement' && donneesEtab && `${donneesEtab.etablissement} · ${donneesEtab.periode}`}
+                      {mode === 'eleve' && donneesEleve && `${donneesEleve.prenom} ${donneesEleve.nom} · ${donneesEleve.classe}`}
                       {mode === 'reseau' && donneesReseau && `${donneesReseau.titre} · ${donneesReseau.periode}`}
                       {mode === 'complet' && donneesComplet && `${donneesComplet.etablissement} · ${donneesComplet.periodes.join(', ')}`}
                     </p>
@@ -733,6 +831,16 @@ function RapportContent() {
                     { label: 'Classes',     val: donneesEtab.classes.length,          color: 'var(--primary-dark)', bg: 'rgba(0,24,69,0.05)' },
                     { label: 'Élèves évalués', val: donneesEtab.totaux.nbEvalues,     color: '#16A34A',             bg: 'rgba(22,163,74,0.06)' },
                     { label: 'Élèves fragiles', val: donneesEtab.totaux.fragiles,     color: '#DC2626',             bg: 'rgba(220,38,38,0.06)' },
+                  ].map(k => (
+                    <div key={k.label} style={{ background: k.bg, borderRadius: 12, padding: '14px 18px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 26, fontWeight: 800, color: k.color, fontFamily: 'var(--font-serif)' }}>{k.val}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>{k.label}</div>
+                    </div>
+                  ))}
+                  {mode === 'eleve' && donneesEleve && [
+                    { label: 'Score moyen', val: donneesEleve.scoreMoyen ?? '—', color: 'var(--primary-dark)', bg: 'rgba(0,24,69,0.05)' },
+                    { label: 'Passations',  val: donneesEleve.passations.length,  color: '#2563EB',             bg: 'rgba(37,99,235,0.06)' },
+                    { label: 'Groupe actuel', val: donneesEleve.dernierGroupe,     color: '#16A34A',             bg: 'rgba(22,163,74,0.06)' },
                   ].map(k => (
                     <div key={k.label} style={{ background: k.bg, borderRadius: 12, padding: '14px 18px', textAlign: 'center' }}>
                       <div style={{ fontSize: 26, fontWeight: 800, color: k.color, fontFamily: 'var(--font-serif)' }}>{k.val}</div>
@@ -770,9 +878,11 @@ function RapportContent() {
                         ? <RapportEtabPDF donnees={donneesEtab} />
                         : mode === 'reseau' && donneesReseau
                           ? <RapportReseauPDF donnees={donneesReseau} />
-                          : donneesComplet
-                            ? <RapportCompletPDF donnees={donneesComplet} />
-                            : <></>
+                          : mode === 'eleve' && donneesEleve
+                            ? <RapportElevePDF donnees={donneesEleve} />
+                            : donneesComplet
+                              ? <RapportCompletPDF donnees={donneesComplet} />
+                              : <></>
                   }
                   fileName={
                     mode === 'classe' && donneesClasse
@@ -781,7 +891,9 @@ function RapportContent() {
                         ? `rapport-etab-${donneesEtab.periode}.pdf`
                         : mode === 'reseau' && donneesReseau
                           ? `rapport-reseau-${donneesReseau.periode}.pdf`
-                          : `rapport-complet-${new Date().toLocaleDateString('fr-FR').replace(/\//g,'-')}.pdf`
+                          : mode === 'eleve' && donneesEleve
+                            ? `rapport-eleve-${donneesEleve.nom}-${donneesEleve.prenom}.pdf`
+                            : `rapport-complet-${new Date().toLocaleDateString('fr-FR').replace(/\//g,'-')}.pdf`
                   }
                 >
                   {({ loading: pdfLoading }: { loading: boolean }) => (

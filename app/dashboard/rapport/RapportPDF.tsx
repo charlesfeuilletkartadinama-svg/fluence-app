@@ -530,3 +530,89 @@ export function RapportReseauPDF({ donnees }: { donnees: DonneesReseau }) {
     </Document>
   )
 }
+
+// ── Rapport Élève ──────────────────────────────────────────────────────────
+
+type DonneesElevePDF = {
+  nom: string; prenom: string; dateNaissance: string | null; sexe: string | null
+  classe: string; niveau: string; etablissement: string; dateGeneration: string
+  passations: { periode: string; annee: string; score: number | null; ne: boolean; groupe: string; q1: string|null; q2: string|null; q3: string|null; q4: string|null; q5: string|null; q6: string|null }[]
+  scoreMoyen: number | null; dernierGroupe: string
+}
+
+export function RapportElevePDF({ donnees }: { donnees: DonneesElevePDF }) {
+  const d = donnees
+  const gc = (g: string) => g === 'Très fragile' ? '#DC2626' : g === 'Fragile' ? '#D97706' : g === "En cours d'acq." ? '#2563EB' : g === 'Attendu' ? '#16A34A' : '#94A3B8'
+
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        <View style={styles.header}>
+          <Text style={styles.titre}>Fiche élève — {d.prenom} {d.nom}</Text>
+          <Text style={styles.sousTitre}>Générée le {d.dateGeneration}</Text>
+        </View>
+
+        <View style={styles.infoGrid}>
+          {[
+            { l: 'Nom', v: d.nom }, { l: 'Prénom', v: d.prenom },
+            { l: 'Classe', v: `${d.classe} (${d.niveau})` }, { l: 'Établissement', v: d.etablissement },
+            ...(d.dateNaissance ? [{ l: 'Né(e) le', v: new Date(d.dateNaissance).toLocaleDateString('fr-FR') }] : []),
+            ...(d.sexe ? [{ l: 'Sexe', v: d.sexe }] : []),
+          ].map((item, i) => (
+            <View key={i} style={styles.infoCard}>
+              <Text style={styles.infoLabel}>{item.l}</Text>
+              <Text style={styles.infoVal}>{item.v}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={{ ...styles.statBox, backgroundColor: '#EFF6FF' }}>
+            <Text style={{ ...styles.statNum, color: '#003189' }}>{d.scoreMoyen ?? '—'}</Text>
+            <Text style={{ ...styles.statLabel, color: '#003189' }}>Score moyen (m/min)</Text>
+          </View>
+          <View style={{ ...styles.statBox, backgroundColor: '#F0FDF4' }}>
+            <Text style={{ ...styles.statNum, color: '#16A34A' }}>{d.passations.length}</Text>
+            <Text style={{ ...styles.statLabel, color: '#16A34A' }}>Passations</Text>
+          </View>
+          <View style={{ ...styles.statBox, backgroundColor: gc(d.dernierGroupe) + '20' }}>
+            <Text style={{ ...styles.statNum, color: gc(d.dernierGroupe), fontSize: 14 }}>{d.dernierGroupe}</Text>
+            <Text style={{ ...styles.statLabel, color: gc(d.dernierGroupe) }}>Groupe actuel</Text>
+          </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>Historique des passations</Text>
+        <View style={styles.tableHeader}>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1 }}>Période</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1 }}>Année</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1, textAlign: 'center' }}>Score</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 1, textAlign: 'center' }}>Groupe</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 0.5, textAlign: 'center' }}>Q1</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 0.5, textAlign: 'center' }}>Q2</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 0.5, textAlign: 'center' }}>Q3</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 0.5, textAlign: 'center' }}>Q4</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 0.5, textAlign: 'center' }}>Q5</Text>
+          <Text style={{ ...styles.tableHeaderCell, flex: 0.5, textAlign: 'center' }}>Q6</Text>
+        </View>
+        {d.passations.map((p, i) => (
+          <View key={i} style={{ ...styles.tableRow, ...(i % 2 === 1 ? styles.tableRowAlt : {}) }}>
+            <Text style={{ ...styles.cellBold, flex: 1 }}>{p.periode}</Text>
+            <Text style={{ ...styles.cell, flex: 1 }}>{p.annee}</Text>
+            <Text style={{ ...styles.cellBold, flex: 1, textAlign: 'center' }}>{p.ne ? 'N.É.' : p.score ?? '—'}</Text>
+            <Text style={{ ...styles.cell, flex: 1, textAlign: 'center', color: gc(p.groupe) }}>{p.groupe}</Text>
+            {[p.q1, p.q2, p.q3, p.q4, p.q5, p.q6].map((q, qi) => (
+              <Text key={qi} style={{ ...styles.cell, flex: 0.5, textAlign: 'center', color: q === 'Correct' ? '#16A34A' : q === 'Incorrect' ? '#DC2626' : '#94A3B8' }}>
+                {q === 'Correct' ? '✓' : q === 'Incorrect' ? '✗' : '—'}
+              </Text>
+            ))}
+          </View>
+        ))}
+
+        <View style={styles.footer} fixed>
+          <Text style={styles.footerText}>Application Test de Fluence — Académie de Guyane</Text>
+          <Text style={styles.footerText}>Fiche {d.prenom} {d.nom} — {d.dateGeneration}</Text>
+        </View>
+      </Page>
+    </Document>
+  )
+}

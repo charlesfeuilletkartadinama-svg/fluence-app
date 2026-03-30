@@ -1,4 +1,4 @@
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+import { Document, Page, Text, View, StyleSheet, Svg, Line, Circle, Polyline, G } from '@react-pdf/renderer'
 
 // ── Types nouveaux PDF ─────────────────────────────────────────────────────
 
@@ -581,26 +581,48 @@ export function RapportElevePDF({ donnees }: { donnees: DonneesElevePDF }) {
           </View>
         </View>
 
-        {/* Graphique d'évolution — barres verticales */}
+        {/* Graphique d'évolution — courbe SVG */}
         {(() => {
           const scoresValides = d.passations.filter(p => p.score && !p.ne)
           if (scoresValides.length < 2) return null
-          const maxScore = Math.max(...scoresValides.map(p => p.score!))
-          const barH = 80
+          const W = 480, H = 120, PAD = 30
+          const scores = scoresValides.map(p => p.score!)
+          const minS = Math.min(...scores) - 5, maxS = Math.max(...scores) + 5
+          const rangeS = maxS - minS || 1
+          const pts = scoresValides.map((p, i) => ({
+            x: PAD + (i / (scoresValides.length - 1)) * (W - 2 * PAD),
+            y: H - PAD - ((p.score! - minS) / rangeS) * (H - 2 * PAD),
+            score: p.score!, label: `${p.periode} ${p.annee.replace('20', '').replace('-20', '-')}`,
+            color: gc(p.groupe),
+          }))
+          const polyPoints = pts.map(p => `${p.x},${p.y}`).join(' ')
           return (
             <>
               <Text style={styles.sectionTitle}>Évolution de la fluence</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: barH + 20, marginBottom: 16, paddingLeft: 4 }}>
-                {scoresValides.map((p, i) => {
-                  const h = Math.max(8, Math.round((p.score! / maxScore) * barH))
-                  return (
-                    <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-                      <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#003189', marginBottom: 2 }}>{p.score}</Text>
-                      <View style={{ width: '80%', height: h, backgroundColor: gc(p.groupe), borderRadius: 3 }} />
-                      <Text style={{ fontSize: 7, color: '#64748B', marginTop: 2 }}>{p.periode} {p.annee.replace('20', '').replace('-20', '-')}</Text>
+              <View style={{ marginBottom: 16 }}>
+                <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+                  {/* Grille */}
+                  <Line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#E2E8F0" strokeWidth={1} />
+                  <Line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="#E2E8F0" strokeWidth={1} />
+                  {/* Courbe */}
+                  <Polyline points={polyPoints} fill="none" stroke="#003189" strokeWidth={2.5} />
+                  {/* Points + labels */}
+                  {pts.map((p, i) => (
+                    <G key={i}>
+                      <Circle cx={p.x} cy={p.y} r={5} fill={p.color} />
+                      <Circle cx={p.x} cy={p.y} r={3} fill="white" />
+                    </G>
+                  ))}
+                </Svg>
+                {/* Labels sous le graphique */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: PAD, paddingRight: PAD }}>
+                  {pts.map((p, i) => (
+                    <View key={i} style={{ alignItems: 'center', flex: 1 }}>
+                      <Text style={{ fontSize: 9, fontFamily: 'Helvetica-Bold', color: p.color }}>{p.score}</Text>
+                      <Text style={{ fontSize: 7, color: '#64748B' }}>{p.label}</Text>
                     </View>
-                  )
-                })}
+                  ))}
+                </View>
               </View>
             </>
           )

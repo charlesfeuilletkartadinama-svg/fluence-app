@@ -196,13 +196,18 @@ function RapportContent() {
     setGenerating(true); setDonneesClasse(null)
 
     const { data: classeData } = await supabase.from('classes')
-      .select('nom, niveau, etablissement:etablissements(nom)').eq('id', classeId).single()
+      .select('nom, niveau, etablissement_id, etablissement:etablissements(nom)').eq('id', classeId).single()
     const { data: periodeData } = await supabase.from('periodes')
-      .select('code, label').eq('id', periodeId).single()
-    const { data: elevesIds } = await supabase.from('eleves').select('id').eq('classe_id', classeId)
+      .select('code, label, annee_scolaire').eq('id', periodeId).single()
+    // Trouver la période correspondante pour l'établissement de la classe
+    const { data: perCorrespondante } = await supabase.from('periodes').select('id')
+      .eq('code', periodeData?.code || '').eq('etablissement_id', (classeData as any)?.etablissement_id || '')
+      .eq('annee_scolaire', (periodeData as any)?.annee_scolaire || '').limit(1)
+    const perIdEffectif = perCorrespondante?.[0]?.id || periodeId
+    const { data: elevesIds } = await supabase.from('eleves').select('id').eq('classe_id', classeId).eq('actif', true)
     const { data: passData } = await supabase.from('passations')
       .select('eleve_id, score, non_evalue, groupe_lecture, q1, q2, q3, q4, q5, q6, eleve:eleves(nom, prenom)')
-      .eq('periode_id', periodeId).in('eleve_id', (elevesIds || []).map(e => e.id))
+      .eq('periode_id', perIdEffectif).in('eleve_id', (elevesIds || []).map(e => e.id))
     const { data: normesData } = await supabase.from('config_normes')
       .select('seuil_min, seuil_attendu').eq('niveau', classeData?.niveau || '').limit(1)
     const { data: groupesConfig } = await supabase.from('config_groupes')
@@ -279,7 +284,7 @@ function RapportContent() {
     const { data: etabData } = await supabase.from('etablissements')
       .select('nom').eq('id', etabIdPourRapport).single()
     const { data: periodeData } = await supabase.from('periodes')
-      .select('code').eq('id', periodeEtabId).single()
+      .select('code, annee_scolaire').eq('id', periodeEtabId).single()
     const { data: classesData } = await supabase.from('classes')
       .select('id, nom, niveau').eq('etablissement_id', etabIdPourRapport).order('niveau')
     const { data: normesData } = await supabase.from('config_normes')
@@ -289,8 +294,11 @@ function RapportContent() {
     const { data: elevesData } = await supabase.from('eleves')
       .select('id, classe_id').in('classe_id', classeIds).eq('actif', true)
 
-    // Trouver tous les IDs de période correspondant au code (multi-étab)
-    const { data: perIds } = await supabase.from('periodes').select('id').eq('code', periodeData?.code || '')
+    // Trouver tous les IDs de période correspondant au code+année pour cet établissement
+    let perQuery = supabase.from('periodes').select('id').eq('code', periodeData?.code || '')
+    if (periodeData?.annee_scolaire) perQuery = perQuery.eq('annee_scolaire', periodeData.annee_scolaire)
+    perQuery = perQuery.eq('etablissement_id', etabIdPourRapport)
+    const { data: perIds } = await perQuery
     const periodeIds = (perIds || []).map((p: any) => p.id)
 
     const eleveIds = (elevesData || []).map((e: any) => e.id)
@@ -364,14 +372,29 @@ function RapportContent() {
       .select('id, classe_id').in('classe_id', classeIds).eq('actif', true)
     const eleveIds = (elevesData || []).map((e: any) => e.id)
 
-    // Toutes les passations pour toutes les périodes
-    const { data: allPass } = eleveIds.length > 0
-      ? await supabase.from('passations')
-          .select('eleve_id, score, non_evalue, periode:periodes(id, code)')
-          .in('eleve_id', eleveIds)
-      : { data: [] }
+    // Périodes de cet établissement
+    const { data: etabPeriodes } = await supabase.from('periodes').select('id, code')
+      .eq('etablissement_id', etabIdPourComplet).eq('type', 'regular')
+    const etabPerIds = (etabPeriodes || []).map((p: any) => p.id)
 
-    const passAll = (allPass || []) as any[]
+    // Toutes les passations pour ces périodes
+    let allPassData: any[] = []
+    if (eleveIds.length > 0 && etabPerIds.length > 0) {
+      // Pagination par 1000
+      let off = 0
+      while (true) {
+        const { data } = await supabase.from('passations')
+          .select('eleve_id, score, non_evalue, periode:periodes(id, code)')
+          .in('periode_id', etabPerIds).in('eleve_id', eleveIds).range(off, off + 999)
+        if (!data || data.length === 0) break
+        allPassData = allPassData.concat(data)
+        if (data.length < 1000) break
+        off += 1000
+      }
+    }
+    const allPass = allPassData
+
+    const passAll = allPass as any[]
 
     const classesResult: ClasseCompletData[] = (classesData || []).map((c: any) => {
       const classeEleves   = (elevesData || []).filter((e: any) => e.classe_id === c.id)

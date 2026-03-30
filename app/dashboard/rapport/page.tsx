@@ -289,13 +289,14 @@ function RapportContent() {
 
   async function genererEtab() {
     const etabIdPourRapport = filtreEtabId || profil?.etablissement_id
-    if (!etabIdPourRapport || !periodeEtabId) { setGenerating(false); return }
+    const perIdPourRapport = periodeEtabId || periodeId
+    if (!etabIdPourRapport || !perIdPourRapport) { setGenerating(false); return }
     setGenerating(true); setDonneesEtab(null)
 
     const { data: etabData } = await supabase.from('etablissements')
       .select('nom').eq('id', etabIdPourRapport).single()
     const { data: periodeData } = await supabase.from('periodes')
-      .select('code, annee_scolaire').eq('id', periodeEtabId).single()
+      .select('code, annee_scolaire').eq('id', perIdPourRapport).single()
     const { data: classesData } = await supabase.from('classes')
       .select('id, nom, niveau').eq('etablissement_id', etabIdPourRapport).order('niveau')
     const { data: normesData } = await supabase.from('config_normes')
@@ -695,7 +696,7 @@ function RapportContent() {
               <button onClick={() => {
                 if (eleveId) { onModeChange('eleve'); genererEleve() }
                 else if (classeId) { onModeChange('classe'); genererClasse() }
-                else if (filtreEtabId) { onModeChange('etablissement'); setPeriodeEtabId(periodeId); setTimeout(genererEtab, 100) }
+                else if (filtreEtabId) { setMode('etablissement'); setPeriodeEtabId(periodeId); genererEtab() }
                 else { onModeChange('reseau'); genererReseau() }
               }} disabled={generating} style={{
                 width: '100%', padding: '14px 28px', borderRadius: 12, border: 'none',

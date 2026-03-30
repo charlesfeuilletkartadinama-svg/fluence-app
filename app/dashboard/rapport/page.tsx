@@ -858,8 +858,19 @@ function RapportContent() {
                   </div>
                 )}
 
-                {/* Mode élève */}
-                {mode === 'eleve' && (
+                {/* Mode élève — liste pour enseignant, recherche pour les autres */}
+                {mode === 'eleve' && isEnseignant && (
+                  <div>
+                    <label className={styles.label}>Sélectionner un élève</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 300, overflowY: 'auto', background: 'var(--bg-gray)', borderRadius: 10, border: '1px solid var(--border-light)', padding: 4 }}>
+                      {classes.map(c => {
+                        // Charger les élèves de cette classe à la volée
+                        return <EleveListForClasse key={c.id} classeId={c.id} classeNom={c.nom} selectedId={eleveId} onSelect={(id) => { setEleveId(id); setDonneesEleve(null) }} supabase={supabase} />
+                      })}
+                    </div>
+                  </div>
+                )}
+                {mode === 'eleve' && !isEnseignant && (
                   <div>
                     <label className={styles.label}>Rechercher un élève (nom, prénom ou INE)</label>
                     <input value={rechercheEleve} onChange={e => rechercherElevePDF(e.target.value)}
@@ -1029,6 +1040,33 @@ function RapportContent() {
         )}
       </main>
     </div>
+  )
+}
+
+// Liste des élèves d'une classe pour le sélecteur enseignant
+function EleveListForClasse({ classeId, classeNom, selectedId, onSelect, supabase }: {
+  classeId: string; classeNom: string; selectedId: string;
+  onSelect: (id: string) => void; supabase: any
+}) {
+  const [eleves, setEleves] = useState<{ id: string; nom: string; prenom: string }[]>([])
+  useEffect(() => {
+    supabase.from('eleves').select('id, nom, prenom').eq('classe_id', classeId).eq('actif', true).order('nom')
+      .then(({ data }: any) => setEleves(data || []))
+  }, [classeId])
+  return (
+    <>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', padding: '8px 12px 4px', letterSpacing: 0.5, textTransform: 'uppercase' }}>{classeNom.replace('[TEST] ', '')}</div>
+      {eleves.map(e => (
+        <button key={e.id} onClick={() => onSelect(e.id)} style={{
+          display: 'block', width: '100%', padding: '8px 12px', border: 'none', borderRadius: 8, textAlign: 'left', cursor: 'pointer',
+          fontFamily: 'var(--font-sans)', fontSize: 13, transition: 'all 0.1s',
+          background: selectedId === e.id ? 'var(--primary-dark)' : 'transparent',
+          color: selectedId === e.id ? 'white' : 'var(--primary-dark)', fontWeight: selectedId === e.id ? 700 : 500,
+        }}>
+          {e.nom} {e.prenom}
+        </button>
+      ))}
+    </>
   )
 }
 

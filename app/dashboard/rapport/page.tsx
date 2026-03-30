@@ -182,8 +182,14 @@ function RapportContent() {
       const key = `${(p as any).annee_scolaire || ''}_${p.code}`
       if (!seen.has(key)) { seen.add(key); perDedup.push(p) }
     }
+    // Trier T1>T2>T3 en premier
+    const prio = (c: string) => { const m = c.match(/^T(\d)/); return m ? parseInt(m[1]) : 99 }
+    perDedup.sort((a, b) => prio(a.code) - prio(b.code))
     setPeriodes(perDedup)
-    if (perDedup[0]) { setPeriodeId(perDedup[0].id); setPeriodeEtabId(perDedup[0].id) }
+    // Sélectionner la dernière T* par défaut
+    const lastT = [...perDedup].reverse().find(p => /^T\d/.test(p.code))
+    const defPer = lastT || perDedup[0]
+    if (defPer) { setPeriodeId(defPer.id); setPeriodeEtabId(defPer.id) }
     setLoading(false)
   }
 
@@ -580,8 +586,9 @@ function RapportContent() {
   }
 
   const isDirection = profil && ['directeur', 'principal'].includes(profil.role)
-  const canMultiRapport = profil && ['directeur', 'principal', 'admin', 'coordo_rep', 'ien', 'ia_dasen', 'recteur'].includes(profil.role)
+  const canMultiRapport = profil && ['enseignant', 'directeur', 'principal', 'admin', 'coordo_rep', 'ien', 'ia_dasen', 'recteur'].includes(profil.role)
   const isReseauRole = profil && ['coordo_rep', 'ien', 'ia_dasen', 'recteur', 'admin'].includes(profil.role)
+  const isEnseignant = profil?.role === 'enseignant'
   const donneesPrete = mode === 'classe' ? donneesClasse : mode === 'etablissement' ? donneesEtab : mode === 'reseau' ? donneesReseau : mode === 'eleve' ? donneesEleve : donneesComplet
 
   return (
@@ -751,10 +758,10 @@ function RapportContent() {
             {canMultiRapport && (
               <div style={{ display: 'grid', gridTemplateColumns: isReseauRole ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: 14 }}>
                 {[
-                  { id: 'complet'      as ModeRapport, icon: '📊', titre: 'Rapport complet',   desc: 'Toutes les classes sur toutes les périodes avec progression T1→T2→T3' },
-                  { id: 'etablissement'as ModeRapport, icon: '🏫', titre: 'Par établissement', desc: 'Vue globale de toutes les classes pour une période donnée' },
-                  { id: 'classe'       as ModeRapport, icon: '📋', titre: 'Par classe',        desc: 'Rapport détaillé d\'une classe pour une période avec liste des élèves' },
-                  { id: 'eleve' as ModeRapport, icon: '👤', titre: 'Par élève', desc: 'Fiche complète d\'un élève avec toutes ses passations et sa progression' },
+                  ...(!isEnseignant ? [{ id: 'complet' as ModeRapport, icon: '📊', titre: 'Rapport complet', desc: 'Toutes les classes sur toutes les périodes avec progression T1→T2→T3' }] : []),
+                  ...(!isEnseignant ? [{ id: 'etablissement' as ModeRapport, icon: '🏫', titre: 'Par établissement', desc: 'Vue globale de toutes les classes pour une période donnée' }] : []),
+                  { id: 'classe'       as ModeRapport, icon: '📋', titre: 'Rapport classe',     desc: 'Rapport détaillé de la classe avec liste des élèves et groupes de besoin' },
+                  { id: 'eleve' as ModeRapport, icon: '👤', titre: 'Fiche élève', desc: 'Fiche complète d\'un élève avec toutes ses passations et sa progression' },
                   ...(isReseauRole ? [{ id: 'reseau' as ModeRapport, icon: '🌐', titre: 'Rapport réseau',   desc: 'Vue globale de tous les établissements du réseau avec comparaisons' }] : []),
                 ].map(m => (
                   <button key={m.id} onClick={() => onModeChange(m.id)} style={{

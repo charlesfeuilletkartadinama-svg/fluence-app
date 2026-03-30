@@ -200,9 +200,11 @@ export default function Dashboard() {
     deduped.sort((a, b) => priorite(a.code) - priorite(b.code))
     setPeriodesEns(deduped)
 
+    // Sélectionner la dernière période T* (pas EN)
+    const lastT = [...deduped].reverse().find(p => /^T\d/.test(p.code))
     const periodeActuelle = (selectedPeriodeId
       ? deduped.find(p => p.id === selectedPeriodeId)
-      : null) ?? deduped[deduped.length - 1] ?? null
+      : null) ?? lastT ?? deduped[0] ?? null
     if (periodeActuelle && !periodeEnsId) setPeriodeEnsId(periodeActuelle.id)
 
     // 3. TOUS les élèves actifs en une seule requête (remplace N requêtes)

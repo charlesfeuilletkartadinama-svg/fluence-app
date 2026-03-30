@@ -18,7 +18,10 @@ export function useProfil() {
   const [loading, setLoading]       = useState(true)
   const router   = useRouter()
   const supabase = createClient()
-  const { roleImpersonne } = useImpersonation()
+  const { roleImpersonne, hydrate } = useImpersonation()
+
+  // Hydrater l'impersonation AVANT de charger le profil
+  useEffect(() => { hydrate() }, [])
 
   useEffect(() => {
     // getSession() lit depuis le cache local — pas de Web Lock, pas de réseau

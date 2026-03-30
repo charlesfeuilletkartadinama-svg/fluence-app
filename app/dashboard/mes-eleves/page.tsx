@@ -31,15 +31,19 @@ export default function MesEleves() {
   const [periodes, setPeriodes]   = useState<Periode[]>([])
   const [periodeCode, setPeriodeCode] = useState<string>('')
   const [loading, setLoading]     = useState(true)
-  const { profil, loading: profilLoading } = useProfil()
+  const { profil, profilReel, loading: profilLoading } = useProfil()
   const router = useRouter()
   const supabase = createClient()
   const loadedRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (profilLoading || !profil) return
-    if (profil.role !== 'enseignant') { router.push('/dashboard'); return }
-    // Ne charger qu'une fois par profil.id
+    // Si admin/ia_dasen/recteur → attendre l'impersonation (ne pas rediriger tout de suite)
+    const canImpersonate = profilReel && ['admin', 'ia_dasen', 'recteur'].includes(profilReel.role)
+    if (profil.role !== 'enseignant') {
+      if (canImpersonate) return // attendre que l'impersonation hydrate
+      router.push('/dashboard'); return
+    }
     if (loadedRef.current === profil.id) return
     loadedRef.current = profil.id
     charger()

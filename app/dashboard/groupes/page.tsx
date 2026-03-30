@@ -98,6 +98,9 @@ export default function Groupes() {
   const [adminData, setAdminData]   = useState<any>(null)
   const [adminAnnee, setAdminAnnee] = useState('2025-2026')
   const [adminLoading, setAdminLoading] = useState(false)
+  const [etabOuvert, setEtabOuvert] = useState<string | null>(null)
+  const [etabDetail, setEtabDetail] = useState<any[]>([])
+  const [etabDetailLoading, setEtabDetailLoading] = useState(false)
 
   const { profil, loading: profilLoading } = useProfil()
   const router   = useRouter()
@@ -113,6 +116,51 @@ export default function Groupes() {
       }
     }
   }, [profil, profilLoading])
+
+  async function chargerDetailEtab(etabNom: string) {
+    if (etabOuvert === etabNom) { setEtabOuvert(null); return }
+    setEtabOuvert(etabNom)
+    setEtabDetailLoading(true)
+    // Trouver l'ID de l'établissement
+    const { data: etabData } = await supabase.from('etablissements').select('id').eq('nom', etabNom).single()
+    if (!etabData) { setEtabDetailLoading(false); return }
+    // Charger via la même fonction mais avec un seul étab
+    const { data } = await supabase.rpc('get_groupes_overview', { p_annee: adminAnnee, p_etab_ids: [etabData.id] })
+    setEtabDetail((data as any)?.fragiles || [])
+    // Charger aussi tous les élèves évalués (pas juste les fragiles)
+    const periode = (data as any)?.periode
+    if (periode) {
+      const { data: perIds } = await supabase.from('periodes').select('id').eq('code', periode).eq('annee_scolaire', adminAnnee).eq('etablissement_id', etabData.id)
+      if (perIds && perIds.length > 0) {
+        const { data: allEleves } = await supabase
+          .from('passations')
+          .select('score, non_evalue, eleve:eleves(id, nom, prenom, classe:classes(nom, niveau))')
+          .in('periode_id', perIds.map(p => p.id))
+          .not('score', 'is', null)
+          .gt('score', 0)
+          .eq('non_evalue', false)
+          .order('score')
+        // Classifier chaque élève
+        const { data: normes } = await supabase.from('config_normes').select('niveau, seuil_min, seuil_attendu')
+        const normesMap: Record<string, any> = {}
+        for (const n of (normes || [])) normesMap[n.niveau] = n
+        const detail = (allEleves || []).map((p: any) => {
+          const niv = p.eleve?.classe?.niveau || ''
+          const norme = normesMap[niv]
+          let groupe = 0
+          if (norme && p.score > 0) {
+            if (p.score < Math.round(norme.seuil_min * 0.7)) groupe = 1
+            else if (p.score < norme.seuil_min) groupe = 2
+            else if (p.score < norme.seuil_attendu) groupe = 3
+            else groupe = 4
+          }
+          return { id: p.eleve?.id, nom: p.eleve?.nom, prenom: p.eleve?.prenom, classe: p.eleve?.classe?.nom, score: p.score, groupe }
+        })
+        setEtabDetail(detail)
+      }
+    }
+    setEtabDetailLoading(false)
+  }
 
   async function chargerVueAdmin(annee?: string) {
     setAdminLoading(true)
@@ -388,17 +436,63 @@ export default function Groupes() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {(d.par_etab || []).map((e: any) => {
                       const total = e.total || 1
+                      const isOpen = etabOuvert === e.etab_nom
+                      const gColors = ['#DC2626', '#D97706', '#2563EB', '#16A34A']
+                      const gLabels = ['Très fragile', 'Fragile', 'En cours', 'Attendu']
                       return (
                         <div key={e.etab_nom}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{(e.etab_nom || '').replace('[TEST] ', '')}</span>
-                            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{e.total} élèves</span>
+                          <div style={{ cursor: 'pointer' }} onClick={() => chargerDetailEtab(e.etab_nom)}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>
+                                <span style={{ marginRight: 6, fontSize: 10, color: 'var(--text-tertiary)' }}>{isOpen ? '▼' : '▶'}</span>
+                                {(e.etab_nom || '').replace('[TEST] ', '')}
+                              </span>
+                              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{e.total} élèves</span>
+                            </div>
+                            <div style={{ display: 'flex', height: 14, borderRadius: 4, overflow: 'hidden' }}>
+                              {[e.g1, e.g2, e.g3, e.g4].map((n, i) => (
+                                n > 0 ? <div key={i} style={{ width: `${Math.round(n / total * 100)}%`, background: gColors[i], minWidth: 2 }} /> : null
+                              ))}
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', height: 14, borderRadius: 4, overflow: 'hidden' }}>
-                            {[{ n: e.g1, c: '#DC2626' }, { n: e.g2, c: '#D97706' }, { n: e.g3, c: '#2563EB' }, { n: e.g4, c: '#16A34A' }].map((g, i) => (
-                              g.n > 0 ? <div key={i} style={{ width: `${Math.round(g.n / total * 100)}%`, background: g.c, minWidth: 2 }} /> : null
-                            ))}
-                          </div>
+                          {isOpen && (
+                            <div style={{ marginTop: 10, padding: '12px 0', borderTop: '1px solid var(--border-light)' }}>
+                              {etabDetailLoading ? (
+                                <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Chargement…</p>
+                              ) : (
+                                <>
+                                  {[1, 2, 3, 4].map(gId => {
+                                    const elevesGroupe = etabDetail.filter((el: any) => el.groupe === gId)
+                                    if (elevesGroupe.length === 0) return null
+                                    return (
+                                      <div key={gId} style={{ marginBottom: 12 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                          <div style={{ width: 10, height: 10, borderRadius: 3, background: gColors[gId - 1] }} />
+                                          <span style={{ fontSize: 12, fontWeight: 700, color: gColors[gId - 1], fontFamily: 'var(--font-sans)' }}>
+                                            {gLabels[gId - 1]} ({elevesGroupe.length})
+                                          </span>
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingLeft: 16 }}>
+                                          {elevesGroupe.map((el: any) => (
+                                            <a key={el.id} href={`/dashboard/eleve/${el.id}`} style={{
+                                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                                              padding: '3px 8px', borderRadius: 6, fontSize: 11,
+                                              background: gColors[gId - 1] + '12', color: gColors[gId - 1],
+                                              fontWeight: 600, fontFamily: 'var(--font-sans)', textDecoration: 'none',
+                                              border: `1px solid ${gColors[gId - 1]}25`,
+                                            }}>
+                                              {el.nom} {el.prenom}
+                                              <span style={{ opacity: 0.7 }}>{el.score}m/min</span>
+                                            </a>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )
                     })}

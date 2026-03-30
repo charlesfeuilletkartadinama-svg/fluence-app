@@ -94,6 +94,10 @@ function RapportContent() {
   const [donneesClasse,     setDonneesClasse]     = useState<DonneesClasse | null>(null)
   const [donneesEtab,       setDonneesEtab]       = useState<DonneesEtab | null>(null)
   const [donneesComplet,    setDonneesComplet]    = useState<DonneesComplet | null>(null)
+  // Admin filtres
+  const [allEtabs, setAllEtabs]       = useState<{ id: string; nom: string }[]>([])
+  const [filtreEtabId, setFiltreEtabId] = useState('')
+  const [allClasses, setAllClasses]   = useState<ClasseOption[]>([])
   const [donneesReseau,     setDonneesReseau]     = useState<DonneesReseau | null>(null)
 
   const { profil } = useProfil()
@@ -128,26 +132,46 @@ function RapportContent() {
         classesData = (data as unknown as ClasseOption[]) || []
       }
     } else {
-      // admin, ia_dasen, recteur — all classes
+      // admin, ia_dasen, recteur — charger les établissements + toutes les classes
+      const { data: etabsData } = await supabase.from('etablissements').select('id, nom').order('nom')
+      setAllEtabs(etabsData || [])
       const { data } = await supabase.from('classes')
         .select('id, nom, niveau, etablissement:etablissements(id, nom)').order('nom')
       classesData = (data as unknown as ClasseOption[]) || []
+      setAllClasses(classesData)
     }
     setClasses(classesData)
     if (classesData[0]) setClasseId(classesData[0].id)
 
+    // Périodes — pour admin, charger TOUTES les périodes (pas juste actives)
+    const isAdminRole = ['admin', 'ia_dasen', 'recteur'].includes(profil.role)
     const etabId = profil.etablissement_id || (classesData[0] as any)?.etablissement?.id || null
-    let perQuery = supabase.from('periodes').select('id, code, label').eq('actif', true).order('code')
-    if (etabId) perQuery = perQuery.eq('etablissement_id', etabId)
+    let perQuery = supabase.from('periodes').select('id, code, label, annee_scolaire').order('annee_scolaire', { ascending: false }).order('code')
+    if (!isAdminRole) perQuery = perQuery.eq('actif', true)
+    if (etabId && !isAdminRole) perQuery = perQuery.eq('etablissement_id', etabId)
     const { data: rawPer } = await perQuery
     const seen = new Set<string>()
     const perDedup: PeriodeOption[] = []
     for (const p of (rawPer || [])) {
-      if (!seen.has(p.code)) { seen.add(p.code); perDedup.push(p) }
+      const key = `${(p as any).annee_scolaire || ''}_${p.code}`
+      if (!seen.has(key)) { seen.add(key); perDedup.push(p) }
     }
     setPeriodes(perDedup)
     if (perDedup[0]) { setPeriodeId(perDedup[0].id); setPeriodeEtabId(perDedup[0].id) }
     setLoading(false)
+  }
+
+  function filtrerParEtab(etabId: string) {
+    setFiltreEtabId(etabId)
+    if (!etabId) {
+      setClasses(allClasses)
+      if (allClasses[0]) setClasseId(allClasses[0].id)
+    } else {
+      const filtered = allClasses.filter((c: any) => c.etablissement?.id === etabId)
+      setClasses(filtered)
+      if (filtered[0]) setClasseId(filtered[0].id)
+    }
+    setDonneesClasse(null); setDonneesEtab(null); setDonneesComplet(null); setDonneesReseau(null)
   }
 
   // ── Génération rapport par classe ─────────────────────────────────────
@@ -573,6 +597,17 @@ function RapportContent() {
                 Paramètres
               </h3>
 
+              {/* Filtre établissement (admin) */}
+              {allEtabs.length > 0 && (mode === 'classe' || mode === 'etablissement' || mode === 'complet') && (
+                <div style={{ marginBottom: 16 }}>
+                  <label className={styles.label}>Établissement</label>
+                  <select value={filtreEtabId} onChange={e => filtrerParEtab(e.target.value)} className={styles.select}>
+                    <option value="">— Tous les établissements —</option>
+                    {allEtabs.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
+                  </select>
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: mode === 'classe' ? 'repeat(3,1fr)' : '1fr', gap: 16 }}>
 
                 {/* Mode classe */}
@@ -580,13 +615,13 @@ function RapportContent() {
                   <div>
                     <label className={styles.label}>Classe</label>
                     <select value={classeId} onChange={e => { setClasseId(e.target.value); setDonneesClasse(null) }} className={styles.select}>
-                      {classes.map(c => <option key={c.id} value={c.id}>{c.nom} · {c.niveau}</option>)}
+                      {classes.map(c => <option key={c.id} value={c.id}>{c.nom} · {c.niveau}{c.etablissement ? ` · ${c.etablissement.nom.replace('[TEST] ', '')}` : ''}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className={styles.label}>Période</label>
                     <select value={periodeId} onChange={e => { setPeriodeId(e.target.value); setDonneesClasse(null) }} className={styles.select}>
-                      {periodes.map(p => <option key={p.id} value={p.id}>{p.code} — {p.label}</option>)}
+                      {periodes.map(p => <option key={p.id} value={p.id}>{p.code} — {p.label}{(p as any).annee_scolaire ? ` (${(p as any).annee_scolaire})` : ''}</option>)}
                     </select>
                   </div>
                   <div>
@@ -603,7 +638,7 @@ function RapportContent() {
                   <div style={{ maxWidth: 320 }}>
                     <label className={styles.label}>Période</label>
                     <select value={periodeEtabId} onChange={e => { setPeriodeEtabId(e.target.value); setDonneesEtab(null) }} className={styles.select}>
-                      {periodes.map(p => <option key={p.id} value={p.id}>{p.code} — {p.label}</option>)}
+                      {periodes.map(p => <option key={p.id} value={p.id}>{p.code} — {p.label}{(p as any).annee_scolaire ? ` (${(p as any).annee_scolaire})` : ''}</option>)}
                     </select>
                   </div>
                 )}

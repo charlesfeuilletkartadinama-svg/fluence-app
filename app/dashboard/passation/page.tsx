@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
@@ -57,6 +57,10 @@ function PassationContent() {
   const [creatingQcm, setCreatingQcm]   = useState(false)
   const [copiedQcm, setCopiedQcm]       = useState('')
   const [qcmResultats, setQcmResultats] = useState<Record<string, { q1: string|null, q2: string|null, q3: string|null, q4: string|null, q5: string|null, q6: string|null }>>({})
+  // Suivi live
+  const [liveSessionId, setLiveSessionId] = useState<string | null>(null)
+  const [liveEleves, setLiveEleves] = useState<{ id: string; nom: string; prenom: string; code: string; connecte: boolean; termine: boolean }[]>([])
+  const liveIntervalRef = useRef<NodeJS.Timeout | null>(null)
   // QCM individuel
   const [qcmMode, setQcmMode]         = useState<'choix' | 'individuelle' | 'collective'>('choix')
   const [qcmEleveId, setQcmEleveId]   = useState<string | null>(null)
@@ -242,6 +246,23 @@ function PassationContent() {
     }
     setCreatingQcm(false)
     chargerQcmSessions(classe.id, periode.id)
+  }
+
+  async function ouvrirSuiviLive(sessionId: string) {
+    if (liveSessionId === sessionId) { setLiveSessionId(null); if (liveIntervalRef.current) clearInterval(liveIntervalRef.current); return }
+    setLiveSessionId(sessionId)
+    const charger = async () => {
+      const { data } = await supabase.from('session_eleves')
+        .select('id, code_individuel, connecte, termine, eleve:eleves(nom, prenom)')
+        .eq('session_id', sessionId).order('created_at')
+      setLiveEleves((data || []).map((se: any) => ({
+        id: se.id, nom: se.eleve?.nom || '', prenom: se.eleve?.prenom || '',
+        code: se.code_individuel, connecte: se.connecte, termine: se.termine,
+      })))
+    }
+    await charger()
+    if (liveIntervalRef.current) clearInterval(liveIntervalRef.current)
+    liveIntervalRef.current = setInterval(charger, 5000)
   }
 
   async function desactiverQcmSession(id: string) {
@@ -890,7 +911,8 @@ function PassationContent() {
                               const expired = new Date(s.expires_at) < new Date()
                               const isActive = s.active && !expired
                               return (
-                                <tr key={s.id} style={{ borderTop: '1px solid var(--border-light)' }}>
+                                <React.Fragment key={s.id}>
+                                <tr style={{ borderTop: '1px solid var(--border-light)' }}>
                                   <td style={{ padding: '14px 20px', fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'monospace', fontSize: 16, letterSpacing: 2 }}>{s.code}</td>
                                   <td style={{ padding: '14px 20px', textAlign: 'center' }}>
                                     <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, fontFamily: 'var(--font-sans)', background: isActive ? '#f0fdf4' : '#f3f4f6', color: isActive ? '#16a34a' : '#6b7280' }}>
@@ -903,11 +925,46 @@ function PassationContent() {
                                         {copiedQcm === s.code ? 'Copié !' : 'Copier'}
                                       </button>
                                       {isActive && (
-                                        <button onClick={() => desactiverQcmSession(s.id)} style={{ background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Désactiver</button>
+                                        <>
+                                          <button onClick={() => ouvrirSuiviLive(s.id)} style={{
+                                            background: liveSessionId === s.id ? '#2563EB' : 'transparent', color: liveSessionId === s.id ? 'white' : '#2563EB',
+                                            border: '1.5px solid #93c5fd', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                          }}>{liveSessionId === s.id ? '● Live' : 'Suivi live'}</button>
+                                          <button onClick={() => desactiverQcmSession(s.id)} style={{ background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer' }}>Désactiver</button>
+                                        </>
                                       )}
                                     </div>
                                   </td>
                                 </tr>
+                                {liveSessionId === s.id && (
+                                  <tr><td colSpan={3} style={{ padding: 0 }}>
+                                    <div style={{ background: '#eff6ff', padding: '16px 20px', borderTop: '1px solid #bfdbfe' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                        <h4 style={{ fontSize: 14, fontWeight: 800, color: '#1d4ed8', margin: 0, fontFamily: 'var(--font-sans)' }}>
+                                          Codes individuels · {liveEleves.filter(e => e.termine).length}/{liveEleves.length} terminés
+                                        </h4>
+                                      </div>
+                                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+                                        {liveEleves.map(e => (
+                                          <div key={e.id} style={{
+                                            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10,
+                                            background: 'white', border: `1.5px solid ${e.termine ? '#bbf7d0' : e.connecte ? '#93c5fd' : 'var(--border-light)'}`,
+                                          }}>
+                                            <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: e.termine ? '#16a34a' : e.connecte ? '#2563eb' : '#d1d5db' }} />
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{e.nom} {e.prenom}</div>
+                                              <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#64748b', letterSpacing: 1 }}>{e.code}</div>
+                                            </div>
+                                            <span style={{ fontSize: 10, fontWeight: 700, color: e.termine ? '#16a34a' : e.connecte ? '#2563eb' : '#94a3b8' }}>
+                                              {e.termine ? '✓' : e.connecte ? '●' : '—'}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </td></tr>
+                                )}
+                                </React.Fragment>
                               )
                             })}
                           </tbody>

@@ -295,8 +295,24 @@ function RapportContent() {
 
     const { data: etabData } = await supabase.from('etablissements')
       .select('nom').eq('id', etabIdPourRapport).single()
+    // Récupérer le code et l'année de la période sélectionnée
     const { data: periodeData } = await supabase.from('periodes')
       .select('code, annee_scolaire').eq('id', perIdPourRapport).single()
+
+    // Trouver la VRAIE période pour cet établissement spécifique
+    const { data: perIds } = await supabase.from('periodes').select('id')
+      .eq('code', periodeData?.code || 'T1')
+      .eq('annee_scolaire', periodeData?.annee_scolaire || '2025-2026')
+      .eq('etablissement_id', etabIdPourRapport)
+    const periodeIds = (perIds || []).map((p: any) => p.id)
+
+    if (periodeIds.length === 0) {
+      // Fallback : chercher n'importe quelle période de cet étab
+      const { data: fallback } = await supabase.from('periodes').select('id')
+        .eq('etablissement_id', etabIdPourRapport).eq('type', 'regular').limit(1)
+      if (fallback && fallback.length > 0) periodeIds.push(fallback[0].id)
+    }
+
     const { data: classesData } = await supabase.from('classes')
       .select('id, nom, niveau').eq('etablissement_id', etabIdPourRapport).order('niveau')
     const { data: normesData } = await supabase.from('config_normes')
@@ -305,13 +321,6 @@ function RapportContent() {
     const classeIds = (classesData || []).map((c: any) => c.id)
     const { data: elevesData } = await supabase.from('eleves')
       .select('id, classe_id').in('classe_id', classeIds).eq('actif', true)
-
-    // Trouver tous les IDs de période correspondant au code+année pour cet établissement
-    let perQuery = supabase.from('periodes').select('id').eq('code', periodeData?.code || '')
-    if (periodeData?.annee_scolaire) perQuery = perQuery.eq('annee_scolaire', periodeData.annee_scolaire)
-    perQuery = perQuery.eq('etablissement_id', etabIdPourRapport)
-    const { data: perIds } = await perQuery
-    const periodeIds = (perIds || []).map((p: any) => p.id)
 
     const eleveIds = (elevesData || []).map((e: any) => e.id)
     let passData: any[] = []

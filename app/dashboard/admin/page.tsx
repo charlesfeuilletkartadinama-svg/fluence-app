@@ -71,7 +71,7 @@ export default function Admin() {
 
   useEffect(() => {
     if (!profilLoading && profil) {
-      if (!['admin', 'ia_dasen', 'recteur', 'principal', 'coordo_rep', 'ien'].includes(profil.role)) {
+      if (!['admin', 'ia_dasen', 'recteur', 'coordo_rep', 'ien'].includes(profil.role)) {
         router.push('/dashboard')
         return
       }
@@ -384,7 +384,7 @@ export default function Admin() {
             {/* Filtre année scolaire */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>Année scolaire :</span>
-              {['2024-2025', '2025-2026', '2026-2027'].map(a => (
+              {(['2024-2025', '2025-2026', '2026-2027'] as string[]).map(a => (
                 <button key={a} onClick={() => setFiltreAnnee(a)} style={{
                   padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
                   fontFamily: 'var(--font-sans)', border: '1.5px solid',
@@ -1677,7 +1677,7 @@ function QcmTab({ supabase, profil, periodes }: { supabase: any; profil: any; pe
           <div>
             <label style={A.label}>1. Année scolaire *</label>
             <select value={qcmAnnee} onChange={e => { setQcmAnnee(e.target.value); setQcmPeriodeId('') }} style={A.select}>
-              {['2024-2025', '2025-2026', '2026-2027'].map(a => (
+              {(['2024-2025', '2025-2026', '2026-2027'] as string[]).map(a => (
                 <option key={a} value={a}>{a}</option>
               ))}
             </select>

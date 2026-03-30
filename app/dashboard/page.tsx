@@ -9,6 +9,7 @@ import ImpersonationBar from '@/app/components/ImpersonationBar'
 import styles from './page.module.css'
 import { ROLE_LABELS } from '@/app/lib/types'
 import { classerEleve } from '@/app/lib/fluenceUtils'
+import { useAnneesScolaires } from '@/app/lib/useAnneesScolaires'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,7 @@ type EtabStat = {
 // ── Composant ──────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const anneesDispo = useAnneesScolaires()
   const [stats, setStats]                     = useState<StatGlobale | null>(null)
   const [activite, setActivite]               = useState<Activite[]>([])
   const [statsClasses, setStatsClasses]       = useState<StatClasse[]>([])
@@ -1765,7 +1767,7 @@ export default function Dashboard() {
                 {/* Sélecteur année scolaire */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>Année scolaire :</span>
-                  {['2024-2025', '2025-2026', '2026-2027'].map(a => (
+                  {anneesDispo.map(a => (
                     <button key={a} onClick={() => { setAdminAnnee(a); chargerAdminOverview(a) }} style={{
                       padding: '6px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
                       fontFamily: 'var(--font-sans)', border: '1.5px solid',

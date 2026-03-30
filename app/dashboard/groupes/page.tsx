@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useAnneesScolaires } from '@/app/lib/useAnneesScolaires'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
@@ -81,6 +82,7 @@ const GROUPES_DEF: Omit<Groupe, 'eleves'>[] = [
 // ── Composant principal ────────────────────────────────────────────────────
 
 export default function Groupes() {
+  const anneesDispo = useAnneesScolaires()
   const [classes, setClasses]       = useState<Classe[]>([])
   const [periodes, setPeriodes]     = useState<Periode[]>([])
   const [niveauFilter, setNiveauFilter] = useState<string>('tous')
@@ -347,7 +349,7 @@ export default function Groupes() {
           {/* Sélecteur année (admin) */}
           {vueAdmin && (
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              {['2024-2025', '2025-2026'].map(a => (
+              {anneesDispo.map(a => (
                 <button key={a} onClick={() => { setAdminAnnee(a); chargerVueAdmin(a) }} style={{
                   padding: '6px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
                   fontFamily: 'var(--font-sans)', border: '1.5px solid',

@@ -73,11 +73,12 @@ export default function SessionsPage() {
       .order('code')
     setPeriodes(periData || [])
 
-    // Charger les sessions
+    // Charger les sessions (limité aux 100 plus récentes)
     const { data: sessData } = await supabase
       .from('test_sessions')
       .select('*, classe:classes(id, nom, niveau), periode:periodes(id, code, label)')
       .order('created_at', { ascending: false })
+      .limit(100)
     setSessions((sessData || []) as any)
     setLoading(false)
   }

@@ -623,7 +623,7 @@ function RapportContent() {
                 </div>
 
                 {/* 2. Ville */}
-                {filtreCirco && (
+                {(
                   <div style={{ marginBottom: 16 }}>
                     <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 8 }}>2. Ville</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
@@ -636,7 +636,7 @@ function RapportContent() {
                 )}
 
                 {/* 3. Établissement */}
-                {(filtreCirco || filtreVille) && (
+                {(
                   <div style={{ marginBottom: 16 }}>
                     <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 8 }}>3. Établissement</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>

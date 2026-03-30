@@ -114,6 +114,7 @@ function RapportContent() {
   const [rechercheEleve, setRechercheEleve] = useState('')
   const [resultatsEleve, setResultatsEleve] = useState<{ id: string; nom: string; prenom: string; classe: string }[]>([])
   const [eleveId, setEleveId]         = useState('')
+  const [elevesClasse, setElevesClasse] = useState<{ id: string; nom: string; prenom: string }[]>([])
 
   const { profil } = useProfil()
   const supabase   = createClient()
@@ -654,24 +655,38 @@ function RapportContent() {
                     <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 8 }}>4. Classe</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
                       {classesFiltrees.map(c => (
-                        <button key={c.id} onClick={() => { setClasseId(classeId === c.id ? '' : c.id); setEleveId(''); setRechercheEleve('') }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', border: '1.5px solid', borderColor: classeId === c.id ? '#D97706' : 'var(--border-main)', background: classeId === c.id ? '#FFFBEB' : 'white', color: classeId === c.id ? '#D97706' : 'var(--text-secondary)' }}>{c.nom} · {c.niveau}</button>
+                        <button key={c.id} onClick={async () => {
+                          const newId = classeId === c.id ? '' : c.id
+                          setClasseId(newId); setEleveId(''); setRechercheEleve(''); setElevesClasse([])
+                          if (newId) {
+                            const { data } = await supabase.from('eleves').select('id, nom, prenom').eq('classe_id', newId).eq('actif', true).order('nom')
+                            setElevesClasse(data || [])
+                          }
+                        }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', border: '1.5px solid', borderColor: classeId === c.id ? '#D97706' : 'var(--border-main)', background: classeId === c.id ? '#FFFBEB' : 'white', color: classeId === c.id ? '#D97706' : 'var(--text-secondary)' }}>{c.nom} · {c.niveau}</button>
                       ))}
                     </div>
                   </div>
                 )}
 
                 {/* 5. Élève */}
-                {classeId && (
+                {classeId && elevesClasse.length > 0 && (
                   <div style={{ marginBottom: 16 }}>
-                    <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 8 }}>5. Élève (optionnel)</label>
-                    <input value={rechercheEleve} onChange={e => rechercherElevePDF(e.target.value)} placeholder="Rechercher un élève…" style={{ width: '100%', border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box' as const }} />
-                    {resultatsEleve.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, marginTop: 8 }}>
-                        {resultatsEleve.map(r => (
-                          <button key={r.id} onClick={() => { setEleveId(r.id); setRechercheEleve(r.nom + ' ' + r.prenom); setResultatsEleve([]) }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', border: '1.5px solid', borderColor: eleveId === r.id ? '#DC2626' : 'var(--border-main)', background: eleveId === r.id ? '#FEF2F2' : 'white', color: eleveId === r.id ? '#DC2626' : 'var(--text-secondary)' }}><strong>{r.nom}</strong> {r.prenom}</button>
-                        ))}
-                      </div>
+                    <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 8 }}>5. Élève (optionnel) — {elevesClasse.length} élèves</label>
+                    {elevesClasse.length > 15 && (
+                      <input value={rechercheEleve} onChange={e => setRechercheEleve(e.target.value)} placeholder="Filtrer par nom…"
+                        style={{ width: '100%', border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box' as const, marginBottom: 8 }} />
                     )}
+                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, maxHeight: 200, overflowY: 'auto' as const }}>
+                      {elevesClasse
+                        .filter(e => !rechercheEleve || `${e.nom} ${e.prenom}`.toLowerCase().includes(rechercheEleve.toLowerCase()))
+                        .map(e => (
+                        <button key={e.id} onClick={() => setEleveId(eleveId === e.id ? '' : e.id)} style={{
+                          padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                          border: '1.5px solid', borderColor: eleveId === e.id ? '#DC2626' : 'var(--border-main)',
+                          background: eleveId === e.id ? '#FEF2F2' : 'white', color: eleveId === e.id ? '#DC2626' : 'var(--text-secondary)',
+                        }}>{e.nom} {e.prenom}</button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

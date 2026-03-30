@@ -851,6 +851,11 @@ function PassationContent() {
                     <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, marginBottom: 24 }}>
                       <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
                         Générez un code de session que les élèves saisiront sur leur tablette pour passer le test de compréhension en autonomie. La session expire après 2 heures.
+                        <br /><br />
+                        <strong>Lien à donner aux élèves :</strong>{' '}
+                        <span style={{ background: 'var(--primary-dark)', color: 'white', padding: '3px 10px', borderRadius: 6, fontSize: 13, fontFamily: 'monospace', userSelect: 'all' as const }}>
+                          {typeof window !== 'undefined' ? `${window.location.origin}/test` : '/test'}
+                        </span>
                       </p>
                       <button onClick={creerQcmSession} disabled={creatingQcm} style={{
                         background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '11px 22px',

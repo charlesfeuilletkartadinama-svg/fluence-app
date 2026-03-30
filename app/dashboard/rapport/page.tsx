@@ -125,17 +125,18 @@ function RapportContent() {
   async function chargerOptions() {
     if (!profil) return
     let classesData: ClasseOption[] = []
+    const isAdminLike = ['admin', 'ia_dasen', 'recteur'].includes(profil.role)
     if (profil.role === 'enseignant') {
       const { data } = await supabase.from('enseignant_classes')
         .select('classe:classes(id, nom, niveau, etablissement:etablissements(id, nom))')
         .eq('enseignant_id', profil.id)
       classesData = (data || []).map((r: any) => r.classe).filter(Boolean)
-    } else if (profil.etablissement_id) {
+    } else if (profil.etablissement_id && !isAdminLike) {
       const { data } = await supabase.from('classes')
         .select('id, nom, niveau, etablissement:etablissements(id, nom)')
         .eq('etablissement_id', profil.etablissement_id).order('nom')
       classesData = (data as unknown as ClasseOption[]) || []
-    } else if (['coordo_rep', 'ien'].includes(profil.role)) {
+    } else if (['coordo_rep', 'ien'].includes(profil.role) && !isAdminLike) {
       const table = profil.role === 'ien' ? 'ien_etablissements' : 'coordo_etablissements'
       const field = profil.role === 'ien' ? 'ien_id' : 'coordo_id'
       const { data: ceData } = await supabase.from(table).select('etablissement_id').eq(field, profil.id)

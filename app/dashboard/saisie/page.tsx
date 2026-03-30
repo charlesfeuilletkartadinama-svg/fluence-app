@@ -589,7 +589,31 @@ function Saisie() {
               </div>
             </div>
 
-            {/* ── Scores + Compréhension ── */}
+            {/* Onglets Fluence / QCM */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+              <button onClick={() => setOnglet('fluence')} style={{
+                padding: '16px 20px', borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)',
+                border: `2px solid ${onglet === 'fluence' ? 'var(--primary-dark)' : 'var(--border-light)'}`,
+                background: onglet === 'fluence' ? 'rgba(0,24,69,0.04)' : 'white', transition: 'all 0.15s',
+              }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>📖</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: onglet === 'fluence' ? 'var(--primary-dark)' : 'var(--text-secondary)' }}>Scores de fluence</div>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Saisir les scores de lecture (mots/minute)</div>
+              </button>
+              <button onClick={() => setOnglet('qcm')} style={{
+                padding: '16px 20px', borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)',
+                border: `2px solid ${onglet === 'qcm' ? '#2563EB' : 'var(--border-light)'}`,
+                background: onglet === 'qcm' ? 'rgba(37,99,235,0.04)' : 'white', transition: 'all 0.15s',
+              }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>🧠</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: onglet === 'qcm' ? '#2563EB' : 'var(--text-secondary)' }}>Compréhension (QCM)</div>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Saisir les réponses de compréhension (Q1-Q6)</div>
+              </button>
+            </div>
+
+            {/* ── Onglet Fluence ── */}
+            {onglet === 'fluence' && (
+              <>
                 <p style={{ color: 'var(--text-secondary)', marginTop: 0, marginBottom: 16, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
                   {nbSaisis} / {eleves.length} élèves saisis
                 </p>
@@ -636,23 +660,6 @@ function Saisie() {
                           cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
                         }}>Absent</button>
                       </div>
-                    {!eleve.ne && !eleve.absent && eleve.score !== '' && (
-                      <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
-                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, fontFamily: 'var(--font-sans)', marginRight: 4 }}>Compréhension :</span>
-                        {(['q1','q2','q3','q4','q5','q6'] as const).map(q => {
-                          const val = (eleve as any)[q]
-                          return (
-                            <button key={q} onClick={() => toggleQ(idx, q)} style={{
-                              width: 40, height: 40, borderRadius: 10, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                              fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
-                              border: val === true ? '2px solid #22c55e' : val === false ? '2px solid #ef4444' : '2px solid var(--border-main)',
-                              background: val === true ? '#f0fdf4' : val === false ? '#fef2f2' : 'var(--bg-gray)',
-                              color: val === true ? '#16a34a' : val === false ? '#dc2626' : 'var(--text-tertiary)',
-                            }}>{q.toUpperCase()}</button>
-                          )
-                        })}
-                      </div>
-                    )}
                   </div>
                   ))}
                 </div>
@@ -667,6 +674,54 @@ function Saisie() {
                     Voir le récapitulatif →
                   </button>
                 </div>
+              </>
+            )}
+
+            {/* ── Onglet QCM (saisie manuelle des Q1-Q6) ── */}
+            {onglet === 'qcm' && (
+              <>
+                <p style={{ color: 'var(--text-secondary)', marginTop: 0, marginBottom: 16, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
+                  Saisissez les réponses de compréhension pour chaque élève (cliquez pour alterner : ✓ Correct / ✗ Incorrect / — Non renseigné)
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {eleves.map((eleve, idx) => (
+                    <div key={eleve.id} style={{
+                      background: 'white', border: '1.5px solid var(--border-light)',
+                      borderRadius: 16, padding: '14px 20px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)' }}>{eleve.nom}</span>
+                          <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 14 }}>{eleve.prenom}</span>
+                        </div>
+                        {(['q1','q2','q3','q4','q5','q6'] as const).map(q => {
+                          const val = (eleve as any)[q]
+                          return (
+                            <button key={q} onClick={() => toggleQ(idx, q)} style={{
+                              width: 44, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                              fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
+                              border: val === true ? '2px solid #22c55e' : val === false ? '2px solid #ef4444' : '2px solid var(--border-main)',
+                              background: val === true ? '#f0fdf4' : val === false ? '#fef2f2' : 'var(--bg-gray)',
+                              color: val === true ? '#16a34a' : val === false ? '#dc2626' : 'var(--text-tertiary)',
+                            }}>{q.toUpperCase()}</button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setEtape('recap')} disabled={nbSaisis === 0} style={{
+                    background: nbSaisis === 0 ? 'var(--text-tertiary)' : 'var(--primary-dark)',
+                    color: 'white', border: 'none', padding: '13px 32px', borderRadius: 12,
+                    fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700,
+                    cursor: nbSaisis === 0 ? 'not-allowed' : 'pointer',
+                  }}>
+                    Voir le récapitulatif →
+                  </button>
+                </div>
+              </>
+            )}
 
           </>
         )}

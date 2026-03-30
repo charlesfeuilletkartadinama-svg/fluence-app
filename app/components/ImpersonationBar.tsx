@@ -22,17 +22,16 @@ export default function ImpersonationBar() {
       .neq('role', 'admin')
       .order('role').order('nom')
       .then(({ data }) => {
-        // 1 profil par rôle : prioriser les profils sans [TEST] (= profils de démo nommés)
+        // 1 profil par rôle : prioriser [DEMO] > profils réels > [TEST]
         const byRole = new Map<string, any>()
+        const priority = (p: any) => {
+          if ((p.prenom || '').includes('[DEMO]')) return 0
+          if (!(p.nom || '').includes('[TEST]')) return 1
+          return 2
+        }
         for (const p of (data || [])) {
-          const isTest = (p.nom || '').includes('[TEST]')
           const current = byRole.get(p.role)
-          if (!current) { byRole.set(p.role, p) }
-          else {
-            const currentIsTest = (current.nom || '').includes('[TEST]')
-            // Préférer non-[TEST] avec établissement
-            if (currentIsTest && !isTest && p.etablissement_id) byRole.set(p.role, p)
-          }
+          if (!current || priority(p) < priority(current)) byRole.set(p.role, p)
         }
         data = Array.from(byRole.values())
         if (data) {
@@ -156,7 +155,7 @@ export default function ImpersonationBar() {
                 const roleLabel: Record<string, string> = { enseignant: 'Enseignant', directeur: 'Directeur', principal: 'Principal', coordo_rep: 'Coordo REP', ien: 'IEN', ia_dasen: 'IA-DASEN', recteur: 'Recteur' }
                 return (
                   <option key={p.id} value={p.id}>
-                    {roleIcon[p.role] || ''} {roleLabel[p.role] || p.role} — {p.label.replace(/\[TEST\]\s*/g, '')}
+                    {roleIcon[p.role] || ''} {roleLabel[p.role] || p.role} — {p.label.replace(/\[(TEST|DEMO)\]\s*/g, '')}
                   </option>
                 )
               })}

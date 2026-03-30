@@ -581,6 +581,69 @@ export function RapportElevePDF({ donnees }: { donnees: DonneesElevePDF }) {
           </View>
         </View>
 
+        {/* Graphique d'évolution — barres verticales */}
+        {(() => {
+          const scoresValides = d.passations.filter(p => p.score && !p.ne)
+          if (scoresValides.length < 2) return null
+          const maxScore = Math.max(...scoresValides.map(p => p.score!))
+          const barH = 80
+          return (
+            <>
+              <Text style={styles.sectionTitle}>Évolution de la fluence</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: barH + 20, marginBottom: 16, paddingLeft: 4 }}>
+                {scoresValides.map((p, i) => {
+                  const h = Math.max(8, Math.round((p.score! / maxScore) * barH))
+                  return (
+                    <View key={i} style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#003189', marginBottom: 2 }}>{p.score}</Text>
+                      <View style={{ width: '80%', height: h, backgroundColor: gc(p.groupe), borderRadius: 3 }} />
+                      <Text style={{ fontSize: 7, color: '#64748B', marginTop: 2 }}>{p.periode} {p.annee.replace('20', '').replace('-20', '-')}</Text>
+                    </View>
+                  )
+                })}
+              </View>
+            </>
+          )
+        })()}
+
+        {/* Évolution des groupes */}
+        {d.passations.filter(p => p.groupe !== '—').length > 1 && (
+          <>
+            <Text style={styles.sectionTitle}>Parcours dans les groupes</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+              {d.passations.filter(p => p.groupe !== '—').map((p, i, arr) => (
+                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <View style={{ backgroundColor: gc(p.groupe) + '20', borderRadius: 4, padding: '3 8', borderWidth: 1, borderColor: gc(p.groupe) }}>
+                    <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', color: gc(p.groupe) }}>{p.periode} {p.annee.replace('20', '').replace('-20', '-')}: {p.groupe}</Text>
+                  </View>
+                  {i < arr.length - 1 && <Text style={{ fontSize: 10, color: '#94A3B8' }}>→</Text>}
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Score compréhension global */}
+        {d.passations.some(p => p.q1 !== null) && (
+          <>
+            <Text style={styles.sectionTitle}>Compréhension par passation</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+              {d.passations.filter(p => p.q1 !== null).map((p, i) => {
+                const qs = [p.q1, p.q2, p.q3, p.q4, p.q5, p.q6].filter(q => q !== null)
+                const correct = qs.filter(q => q === 'Correct').length
+                const pct = qs.length > 0 ? Math.round(correct / qs.length * 100) : 0
+                const col = pct >= 70 ? '#16A34A' : pct >= 40 ? '#D97706' : '#DC2626'
+                return (
+                  <View key={i} style={{ alignItems: 'center', backgroundColor: col + '15', borderRadius: 6, padding: '6 10', minWidth: 60 }}>
+                    <Text style={{ fontSize: 14, fontFamily: 'Helvetica-Bold', color: col }}>{correct}/{qs.length}</Text>
+                    <Text style={{ fontSize: 7, color: col, marginTop: 1 }}>{p.periode} {p.annee.replace('20', '').replace('-20', '-')}</Text>
+                  </View>
+                )
+              })}
+            </View>
+          </>
+        )}
+
         <Text style={styles.sectionTitle}>Historique des passations</Text>
         <View style={styles.tableHeader}>
           <Text style={{ ...styles.tableHeaderCell, flex: 1 }}>Période</Text>

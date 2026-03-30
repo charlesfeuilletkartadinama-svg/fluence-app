@@ -1543,6 +1543,7 @@ function QcmTab({ supabase, profil, periodes }: { supabase: any; profil: any; pe
   const [editTest, setEditTest] = useState<QcmTest | null>(null)
   const [titre, setTitre] = useState('')
   const [texteRef, setTexteRef] = useState('')
+  const [qcmAnnee, setQcmAnnee] = useState('2025-2026')
   const [qcmPeriodeId, setQcmPeriodeId] = useState('')
   const [niveau, setNiveau] = useState('')
   const [questions, setQuestions] = useState<QcmQuestion[]>([])
@@ -1672,18 +1673,26 @@ function QcmTab({ supabase, profil, periodes }: { supabase: any; profil: any; pe
       {erreur && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#dc2626', fontFamily: 'var(--font-sans)' }}>{erreur}</div>}
 
       <div style={{ ...A.card, padding: 24, marginBottom: 20 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
           <div>
-            <label style={A.label}>Période *</label>
-            <select value={qcmPeriodeId} onChange={e => setQcmPeriodeId(e.target.value)} style={A.select}>
-              <option value="">— Choisir —</option>
-              {periodes.map(p => (
-                <option key={p.id} value={p.id}>{p.code} — {p.label}{p.annee_scolaire ? ` (${p.annee_scolaire})` : ''}</option>
+            <label style={A.label}>1. Année scolaire *</label>
+            <select value={qcmAnnee} onChange={e => { setQcmAnnee(e.target.value); setQcmPeriodeId('') }} style={A.select}>
+              {['2024-2025', '2025-2026', '2026-2027'].map(a => (
+                <option key={a} value={a}>{a}</option>
               ))}
             </select>
           </div>
           <div>
-            <label style={A.label}>Niveau *</label>
+            <label style={A.label}>2. Période *</label>
+            <select value={qcmPeriodeId} onChange={e => setQcmPeriodeId(e.target.value)} style={A.select}>
+              <option value="">— Choisir —</option>
+              {periodes.filter(p => p.annee_scolaire === qcmAnnee).map(p => (
+                <option key={p.id} value={p.id}>{p.code} — {p.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={A.label}>3. Niveau *</label>
             <select value={niveau} onChange={e => setNiveau(e.target.value)} style={A.select}>
               <option value="">— Choisir —</option>
               {NIVEAUX_QCM.map(n => <option key={n} value={n}>{n}</option>)}

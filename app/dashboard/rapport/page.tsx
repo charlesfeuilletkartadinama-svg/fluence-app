@@ -588,164 +588,133 @@ function RapportContent() {
         {loading ? (
           <div className={styles.loading}>Chargement…</div>
         ) : isReseauRole ? (
-          /* ══════════════════════════════════════════
-             VUE ENTONNOIR (admin, ia_dasen, recteur, ien, coordo)
-          ══════════════════════════════════════════ */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {/* Sélecteur année */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>Année :</span>
-              {[...new Set(periodes.map(p => (p as any).annee_scolaire).filter(Boolean))].sort().reverse().map(a => (
-                <button key={a} onClick={() => { /* TODO: filtrer */ }} style={{
-                  padding: '5px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                  fontFamily: 'var(--font-sans)', border: '1.5px solid var(--border-main)', background: 'white', color: 'var(--text-secondary)',
-                }}>{a}</button>
-              ))}
-            </div>
+          /* VUE ENTONNOIR */
+          (() => {
+            const circos = [...new Set(allEtabs.map(e => e.circonscription).filter(Boolean))].sort() as string[]
+            const villes = [...new Set(allEtabs.filter(e => !filtreCirco || e.circonscription === filtreCirco).map(e => e.ville).filter(Boolean))].sort() as string[]
+            const etabsFiltres = allEtabs.filter(e => (!filtreCirco || e.circonscription === filtreCirco) && (!filtreVille || e.ville === filtreVille))
+            const classesFiltrees = filtreEtabId ? classes : []
 
-            {/* Entonnoir */}
-            <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 28 }}>
-              <h3 style={{ fontWeight: 800, fontSize: 15, color: 'var(--primary-dark)', marginBottom: 20, fontFamily: 'var(--font-sans)' }}>
-                Sélectionnez le périmètre du rapport
-              </h3>
+            return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
-                {/* Circonscription */}
-                <div>
-                  <label className={styles.label}>Circonscription</label>
-                  <select value={filtreCirco} onChange={e => { setFiltreCirco(e.target.value); setFiltreVille(''); setFiltreEtabId(''); setClasseId(''); setEleveId('') }} className={styles.select}>
-                    <option value="">— Toutes —</option>
-                    {[...new Set(allEtabs.map(e => e.circonscription).filter(Boolean))].sort().map(c => (
-                      <option key={c!} value={c!}>{c}</option>
-                    ))}
-                  </select>
-                  {filtreCirco && !filtreEtabId && (
-                    <button onClick={() => { onModeChange('reseau'); genererReseau() }} disabled={generating}
-                      style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 8, border: 'none', background: '#16A34A', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
-                      {generating ? '⏳' : '📄'} PDF Circonscription
-                    </button>
-                  )}
-                </div>
-
-                {/* Établissement */}
-                <div>
-                  <label className={styles.label}>Établissement</label>
-                  <select value={filtreEtabId} onChange={e => { filtrerParEtab(e.target.value); setClasseId(''); setEleveId('') }} className={styles.select}>
-                    <option value="">— Tous —</option>
-                    {allEtabs.filter(e => (!filtreCirco || e.circonscription === filtreCirco)).map(e => (
-                      <option key={e.id} value={e.id}>{e.nom}</option>
-                    ))}
-                  </select>
-                  {filtreEtabId && !classeId && (
-                    <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                      <button onClick={() => { onModeChange('etablissement'); setPeriodeEtabId(periodes[0]?.id || ''); genererEtab() }} disabled={generating}
-                        style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', background: '#2563EB', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
-                        📄 PDF Étab.
-                      </button>
-                      <button onClick={() => { onModeChange('complet'); genererComplet() }} disabled={generating}
-                        style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', background: '#7C3AED', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
-                        📄 PDF Complet
-                      </button>
-                    </div>
-                  )}
-                </div>
+              <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 28 }}>
+                <h3 style={{ fontWeight: 800, fontSize: 15, color: 'var(--primary-dark)', marginBottom: 20, fontFamily: 'var(--font-sans)' }}>
+                  Sélectionnez le périmètre du rapport
+                </h3>
 
                 {/* Période */}
-                <div>
-                  <label className={styles.label}>Période</label>
-                  <select value={periodeId} onChange={e => { setPeriodeId(e.target.value); setPeriodeEtabId(e.target.value) }} className={styles.select}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '10px 16px', background: 'var(--bg-gray)', borderRadius: 10 }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }}>Période :</label>
+                  <select value={periodeId} onChange={e => { setPeriodeId(e.target.value); setPeriodeEtabId(e.target.value) }} className={styles.select} style={{ width: 'auto', flex: 1 }}>
                     {periodes.map(p => <option key={p.id} value={p.id}>{p.code}{(p as any).annee_scolaire ? ` (${(p as any).annee_scolaire})` : ''}</option>)}
                   </select>
                 </div>
-              </div>
 
-              {/* Classe + Élève */}
-              {filtreEtabId && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
-                  <div>
-                    <label className={styles.label}>Classe</label>
-                    <select value={classeId} onChange={e => { setClasseId(e.target.value); setEleveId('') }} className={styles.select}>
-                      <option value="">— Choisir —</option>
-                      {classes.map(c => <option key={c.id} value={c.id}>{c.nom} · {c.niveau}</option>)}
-                    </select>
-                    {classeId && (
-                      <button onClick={() => { onModeChange('classe'); genererClasse() }} disabled={generating}
-                        style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 8, border: 'none', background: '#D97706', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
-                        {generating ? '⏳' : '📄'} PDF Classe
-                      </button>
-                    )}
+                {/* 1. Circonscription */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 8 }}>1. Circonscription</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                    <button onClick={() => { setFiltreCirco(''); setFiltreVille(''); setFiltreEtabId(''); setClasseId(''); setEleveId('') }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', border: '1.5px solid', borderColor: !filtreCirco ? 'var(--primary-dark)' : 'var(--border-main)', background: !filtreCirco ? 'var(--primary-dark)' : 'white', color: !filtreCirco ? 'white' : 'var(--text-secondary)' }}>Toutes</button>
+                    {circos.map(c => (
+                      <button key={c} onClick={() => { setFiltreCirco(c); setFiltreVille(''); setFiltreEtabId(''); setClasseId(''); setEleveId('') }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', border: '1.5px solid', borderColor: filtreCirco === c ? 'var(--primary-dark)' : 'var(--border-main)', background: filtreCirco === c ? 'var(--primary-dark)' : 'white', color: filtreCirco === c ? 'white' : 'var(--text-secondary)' }}>{c}</button>
+                    ))}
                   </div>
-                  <div>
-                    <label className={styles.label}>Élève (recherche)</label>
-                    <input value={rechercheEleve} onChange={e => rechercherElevePDF(e.target.value)}
-                      placeholder="Nom, prénom ou INE…"
-                      className={styles.select} style={{ width: '100%' }} />
+                </div>
+
+                {/* 2. Ville */}
+                {filtreCirco && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 8 }}>2. Ville</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                      <button onClick={() => { setFiltreVille(''); setFiltreEtabId(''); setClasseId('') }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', border: '1.5px solid', borderColor: !filtreVille ? 'var(--primary-dark)' : 'var(--border-main)', background: !filtreVille ? 'var(--primary-dark)' : 'white', color: !filtreVille ? 'white' : 'var(--text-secondary)' }}>Toutes</button>
+                      {villes.map(v => (
+                        <button key={v} onClick={() => { setFiltreVille(v); setFiltreEtabId(''); setClasseId('') }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', border: '1.5px solid', borderColor: filtreVille === v ? 'var(--primary-dark)' : 'var(--border-main)', background: filtreVille === v ? 'var(--primary-dark)' : 'white', color: filtreVille === v ? 'white' : 'var(--text-secondary)' }}>{v}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Établissement */}
+                {(filtreCirco || filtreVille) && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 8 }}>3. Établissement</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                      {etabsFiltres.map(e => (
+                        <button key={e.id} onClick={() => { filtrerParEtab(filtreEtabId === e.id ? '' : e.id); setClasseId(''); setEleveId('') }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', border: '1.5px solid', borderColor: filtreEtabId === e.id ? '#2563EB' : 'var(--border-main)', background: filtreEtabId === e.id ? '#EFF6FF' : 'white', color: filtreEtabId === e.id ? '#2563EB' : 'var(--text-secondary)' }}>{e.nom.replace('[TEST] ', '')}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Classe */}
+                {filtreEtabId && classesFiltrees.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 8 }}>4. Classe</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                      {classesFiltrees.map(c => (
+                        <button key={c.id} onClick={() => { setClasseId(classeId === c.id ? '' : c.id); setEleveId(''); setRechercheEleve('') }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', border: '1.5px solid', borderColor: classeId === c.id ? '#D97706' : 'var(--border-main)', background: classeId === c.id ? '#FFFBEB' : 'white', color: classeId === c.id ? '#D97706' : 'var(--text-secondary)' }}>{c.nom} · {c.niveau}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Élève */}
+                {classeId && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', display: 'block', marginBottom: 8 }}>5. Élève (optionnel)</label>
+                    <input value={rechercheEleve} onChange={e => rechercherElevePDF(e.target.value)} placeholder="Rechercher un élève…" style={{ width: '100%', border: '1.5px solid var(--border-main)', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box' as const }} />
                     {resultatsEleve.length > 0 && (
-                      <div style={{ background: 'var(--bg-gray)', borderRadius: 8, border: '1px solid var(--border-light)', maxHeight: 150, overflowY: 'auto', marginTop: 4 }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, marginTop: 8 }}>
                         {resultatsEleve.map(r => (
-                          <button key={r.id} onClick={() => { setEleveId(r.id); setRechercheEleve(`${r.nom} ${r.prenom}`); setResultatsEleve([]) }}
-                            style={{ display: 'block', width: '100%', padding: '8px 12px', border: 'none', borderBottom: '1px solid var(--border-light)', background: 'transparent', cursor: 'pointer', fontSize: 12, textAlign: 'left', fontFamily: 'var(--font-sans)', color: 'var(--primary-dark)' }}>
-                            <strong>{r.nom}</strong> {r.prenom} <span style={{ color: 'var(--text-tertiary)' }}>· {r.classe}</span>
-                          </button>
+                          <button key={r.id} onClick={() => { setEleveId(r.id); setRechercheEleve(r.nom + ' ' + r.prenom); setResultatsEleve([]) }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', border: '1.5px solid', borderColor: eleveId === r.id ? '#DC2626' : 'var(--border-main)', background: eleveId === r.id ? '#FEF2F2' : 'white', color: eleveId === r.id ? '#DC2626' : 'var(--text-secondary)' }}><strong>{r.nom}</strong> {r.prenom}</button>
                         ))}
                       </div>
                     )}
-                    {eleveId && (
-                      <button onClick={() => { onModeChange('eleve'); genererEleve() }} disabled={generating}
-                        style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 8, border: 'none', background: '#DC2626', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
-                        {generating ? '⏳' : '📄'} PDF Élève
+                  </div>
+                )}
+              </div>
+
+              {/* Bouton Générer */}
+              <button onClick={() => {
+                if (eleveId) { onModeChange('eleve'); genererEleve() }
+                else if (classeId) { onModeChange('classe'); genererClasse() }
+                else if (filtreEtabId) { onModeChange('etablissement'); setPeriodeEtabId(periodeId); setTimeout(genererEtab, 100) }
+                else { onModeChange('reseau'); genererReseau() }
+              }} disabled={generating} style={{
+                width: '100%', padding: '14px 28px', borderRadius: 12, border: 'none',
+                background: generating ? 'var(--bg-gray)' : 'var(--primary-dark)',
+                color: generating ? 'var(--text-secondary)' : 'white',
+                fontSize: 15, fontWeight: 700, cursor: generating ? 'default' : 'pointer', fontFamily: 'var(--font-sans)',
+              }}>
+                {generating ? '⏳ Génération en cours…' : '📄 Générer le rapport ' + (eleveId ? 'élève' : classeId ? 'classe' : filtreEtabId ? 'établissement' : filtreCirco ? 'circonscription' : 'global')}
+              </button>
+
+              {/* Téléchargement */}
+              {donneesPrete && (
+                <div style={{ background: 'white', borderRadius: 16, padding: 28, border: '2px solid #16A34A' }}>
+                  <h3 style={{ fontWeight: 800, fontSize: 16, color: '#16A34A', fontFamily: 'var(--font-sans)', margin: '0 0 16px 0' }}>Rapport prêt ✅</h3>
+                  <PDFDownloadLink
+                    document={
+                      mode === 'classe' && donneesClasse ? <RapportPDF donnees={donneesClasse} />
+                      : mode === 'etablissement' && donneesEtab ? <RapportEtabPDF donnees={donneesEtab} />
+                      : mode === 'reseau' && donneesReseau ? <RapportReseauPDF donnees={donneesReseau} />
+                      : mode === 'eleve' && donneesEleve ? <RapportElevePDF donnees={donneesEleve} />
+                      : donneesComplet ? <RapportCompletPDF donnees={donneesComplet} /> : <></>
+                    }
+                    fileName={mode === 'eleve' && donneesEleve ? 'rapport-eleve-' + donneesEleve.nom + '.pdf' : mode === 'classe' && donneesClasse ? 'rapport-classe-' + donneesClasse.classe + '.pdf' : mode === 'etablissement' && donneesEtab ? 'rapport-etab.pdf' : 'rapport-reseau.pdf'}
+                  >
+                    {({ loading: pdfLoading }: { loading: boolean }) => (
+                      <button style={{ width: '100%', padding: '14px 0', borderRadius: 12, border: 'none', background: pdfLoading ? 'var(--bg-gray)' : '#16A34A', fontFamily: 'var(--font-sans)', color: pdfLoading ? 'var(--text-secondary)' : 'white', fontWeight: 700, fontSize: 15, cursor: pdfLoading ? 'default' : 'pointer' }}>
+                        {pdfLoading ? '⏳ Préparation du PDF…' : '⬇ Télécharger le PDF'}
                       </button>
                     )}
-                  </div>
+                  </PDFDownloadLink>
                 </div>
               )}
             </div>
-
-            {/* Résultat + Téléchargement */}
-            {donneesPrete && (
-              <div style={{ background: 'white', borderRadius: 16, padding: 28, border: '1.5px solid var(--border-light)' }}>
-                <h3 style={{ fontWeight: 800, fontSize: 16, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: '0 0 16px 0' }}>
-                  Rapport prêt ✅
-                </h3>
-                <PDFDownloadLink
-                  document={
-                    mode === 'classe' && donneesClasse ? <RapportPDF donnees={donneesClasse} />
-                    : mode === 'etablissement' && donneesEtab ? <RapportEtabPDF donnees={donneesEtab} />
-                    : mode === 'reseau' && donneesReseau ? <RapportReseauPDF donnees={donneesReseau} />
-                    : mode === 'eleve' && donneesEleve ? <RapportElevePDF donnees={donneesEleve} />
-                    : donneesComplet ? <RapportCompletPDF donnees={donneesComplet} />
-                    : <></>
-                  }
-                  fileName={
-                    mode === 'classe' && donneesClasse ? `rapport-classe-${donneesClasse.classe}.pdf`
-                    : mode === 'etablissement' && donneesEtab ? `rapport-etab-${donneesEtab.etablissement}.pdf`
-                    : mode === 'reseau' && donneesReseau ? `rapport-reseau-${donneesReseau.periode}.pdf`
-                    : mode === 'eleve' && donneesEleve ? `rapport-eleve-${donneesEleve.nom}-${donneesEleve.prenom}.pdf`
-                    : `rapport-complet.pdf`
-                  }
-                >
-                  {({ loading: pdfLoading }: { loading: boolean }) => (
-                    <button style={{
-                      width: '100%', padding: '14px 0', borderRadius: 12, border: 'none',
-                      background: pdfLoading ? 'var(--bg-gray)' : '#16A34A', fontFamily: 'var(--font-sans)',
-                      color: pdfLoading ? 'var(--text-secondary)' : 'white',
-                      fontWeight: 700, fontSize: 15, cursor: pdfLoading ? 'default' : 'pointer',
-                    }}>
-                      {pdfLoading ? '⏳ Préparation du PDF…' : '⬇ Télécharger le PDF'}
-                    </button>
-                  )}
-                </PDFDownloadLink>
-              </div>
-            )}
-
-            {/* Rapport réseau global */}
-            {!filtreCirco && !filtreEtabId && (
-              <button onClick={() => { onModeChange('reseau'); genererReseau() }} disabled={generating}
-                style={{ padding: '14px 28px', borderRadius: 12, border: 'none', background: 'var(--primary-dark)', color: 'white', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
-                {generating ? '⏳ Génération…' : '📄 Générer le rapport global (tous établissements)'}
-              </button>
-            )}
-          </div>
+            )
+          })()
         ) : (
           /* ══════════════════════════════════════════
              VUE CLASSIQUE (enseignant, directeur, principal)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
@@ -142,15 +142,22 @@ export default function Dashboard() {
   const router   = useRouter()
   const supabase = createClient()
 
-  useEffect(() => {
-    if (!profilLoading && profil) chargerDonnees()
-  }, [profil, profilLoading])
+  const ensLoadedRef = useRef(false)
 
   useEffect(() => {
-    if (periodeEnsId && profil?.role === 'enseignant') {
-      chargerDonneesEnseignant(periodeEnsId)
+    if (!profilLoading && profil) {
+      // Pour l'enseignant, ne charger qu'une fois au démarrage
+      if (profil.role === 'enseignant' && ensLoadedRef.current) return
+      ensLoadedRef.current = true
+      chargerDonnees()
     }
-  }, [periodeEnsId])
+  }, [profil, profilLoading])
+
+  // Quand l'enseignant change de période manuellement
+  function changerPeriodeEns(newId: string) {
+    setPeriodeEnsId(newId)
+    chargerDonneesEnseignant(newId)
+  }
 
   async function chargerDonnees() {
     if (!profil) return
@@ -1047,7 +1054,7 @@ export default function Dashboard() {
                 </span>
                 {periodesEns.map(p => (
                   <button key={p.id}
-                    onClick={() => setPeriodeEnsId(p.id)}
+                    onClick={() => changerPeriodeEns(p.id)}
                     style={{
                       padding: '7px 16px', borderRadius: 8, border: '1.5px solid',
                       borderColor: periodeEnsId === p.id ? 'var(--accent-gold)' : 'var(--border-main)',

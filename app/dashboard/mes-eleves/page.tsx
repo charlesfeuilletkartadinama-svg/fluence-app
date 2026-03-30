@@ -16,7 +16,7 @@ type EleveRow = {
   prenom: string
   statut: EleveStatut
   score: number | null
-  evolution: { code: string; score: number | null; ne: boolean; absent: boolean }[]
+  evolution: { code: string; annee: string; score: number | null; ne: boolean; absent: boolean }[]
 }
 
 type ClasseGroup = {
@@ -116,24 +116,25 @@ export default function MesEleves() {
 
     const { data: passData } = await supabase
       .from('passations')
-      .select('eleve_id, score, non_evalue, absent, periode:periodes(code)')
+      .select('eleve_id, score, non_evalue, absent, periode:periodes(code, annee_scolaire)')
       .in('eleve_id', tousEleves.map(e => e.id))
 
-    // Construire la map période courante + évolution complète
+    // Construire la map période courante + évolution complète multi-années
     const passMap: Record<string, { score: number | null; non_evalue: boolean; absent: boolean }> = {}
-    const evoMap: Record<string, { code: string; score: number | null; ne: boolean; absent: boolean }[]> = {}
+    const evoMap: Record<string, { code: string; annee: string; score: number | null; ne: boolean; absent: boolean }[]> = {}
     for (const p of (passData || []) as any[]) {
       const code = p.periode?.code
+      const annee = p.periode?.annee_scolaire || ''
       if (!code) continue
       if (code === periodeCode) {
         passMap[p.eleve_id] = { score: p.score, non_evalue: p.non_evalue, absent: p.absent }
       }
       if (!evoMap[p.eleve_id]) evoMap[p.eleve_id] = []
-      evoMap[p.eleve_id].push({ code, score: p.score, ne: p.non_evalue, absent: p.absent })
+      evoMap[p.eleve_id].push({ code, annee, score: p.score, ne: p.non_evalue, absent: p.absent })
     }
-    // Trier l'évolution par code période
+    // Trier par année puis par T1<T2<T3
     const prio = (c: string) => { const m = c.match(/^T(\d)/); return m ? parseInt(m[1]) : 99 }
-    for (const arr of Object.values(evoMap)) arr.sort((a, b) => prio(a.code) - prio(b.code))
+    for (const arr of Object.values(evoMap)) arr.sort((a, b) => a.annee.localeCompare(b.annee) || prio(a.code) - prio(b.code))
 
     setClasses(prev => prev.map(c => ({
       ...c,
@@ -257,8 +258,8 @@ export default function MesEleves() {
                             </span>
                             {evo.length > 1 && (
                               <div style={{ display: 'flex', gap: 3, marginLeft: 6 }}>
-                                {evo.map(e => (
-                                  <span key={e.code} style={{
+                                {evo.map((e, idx) => (
+                                  <span key={`${e.annee}-${e.code}`} style={{
                                     fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
                                     background: e.score != null ? (e.score >= 130 ? '#dcfce7' : e.score >= 80 ? '#fef9c3' : '#fef2f2') : '#f3f4f6',
                                     color: e.score != null ? (e.score >= 130 ? '#16a34a' : e.score >= 80 ? '#a16207' : '#dc2626') : '#94a3b8',
@@ -296,14 +297,17 @@ export default function MesEleves() {
           const maxS = Math.max(...scores, 1)
           const minS = Math.min(...scores, 0)
           const range = Math.max(maxS - minS, 20)
+          const annees = [...new Set(evo.map(e => e.annee))].sort()
+          const shortAnnee = (a: string) => a ? a.replace(/^20(\d\d)-20(\d\d)$/, '$1-$2') : ''
 
           // SVG courbe
-          const svgW = 280, svgH = 140, padX = 30, padY = 20
+          const svgW = 320, svgH = 160, padX = 30, padY = 20
           const plotW = svgW - padX * 2, plotH = svgH - padY * 2
           const points = evo.map((e, i) => ({
             x: padX + (evo.length > 1 ? (i / (evo.length - 1)) * plotW : plotW / 2),
             y: e.score != null ? padY + plotH - ((e.score - minS + 10) / (range + 20)) * plotH : padY + plotH,
-            score: e.score, code: e.code, ne: e.ne, absent: e.absent,
+            score: e.score, code: e.code, annee: e.annee, ne: e.ne, absent: e.absent,
+            label: `${e.code}${annees.length > 1 ? ' ' + shortAnnee(e.annee) : ''}`,
           }))
           const polyline = points.filter(p => p.score != null).map(p => `${p.x},${p.y}`).join(' ')
 
@@ -369,7 +373,7 @@ export default function MesEleves() {
                             <text x={p.x} y={p.y - 10} fontSize={11} fontWeight={700} fill="var(--primary-dark)" textAnchor="middle">
                               {p.score ?? (p.ne ? 'NÉ' : 'Abs')}
                             </text>
-                            <text x={p.x} y={svgH - 4} fontSize={10} fontWeight={600} fill="#64748b" textAnchor="middle">{p.code}</text>
+                            <text x={p.x} y={svgH - 4} fontSize={annees.length > 1 ? 8 : 10} fontWeight={600} fill="#64748b" textAnchor="middle">{p.label}</text>
                           </g>
                         ))}
                       </svg>
@@ -389,8 +393,15 @@ export default function MesEleves() {
                       {evo.map((e, idx) => {
                         const prev = idx > 0 ? evo[idx - 1].score : null
                         const diff = e.score != null && prev != null ? e.score - prev : null
+                        const showAnneeHeader = annees.length > 1 && (idx === 0 || e.annee !== evo[idx - 1].annee)
                         return (
-                          <div key={e.code} style={{
+                          <div key={`${e.annee}-${e.code}`}>
+                          {showAnneeHeader && (
+                            <div style={{ fontSize: 11, fontWeight: 800, color: '#2563eb', marginBottom: 6, marginTop: idx > 0 ? 8 : 0, padding: '4px 10px', background: 'rgba(37,99,235,0.06)', borderRadius: 6, display: 'inline-block' }}>
+                              {e.annee}
+                            </div>
+                          )}
+                          <div style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                             padding: '10px 14px', borderRadius: 10,
                             background: e.score != null ? (e.score >= 130 ? '#f0fdf4' : e.score >= 80 ? '#fefce8' : '#fef2f2') : '#f8fafc',
@@ -413,6 +424,7 @@ export default function MesEleves() {
                               </span>
                               {e.score != null && <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>m/min</span>}
                             </div>
+                          </div>
                           </div>
                         )
                       })}

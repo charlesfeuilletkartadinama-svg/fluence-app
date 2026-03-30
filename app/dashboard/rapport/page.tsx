@@ -150,9 +150,18 @@ function RapportContent() {
       // admin, ia_dasen, recteur — charger les établissements + toutes les classes
       const { data: etabsData } = await supabase.from('etablissements').select('id, nom, ville, circonscription').order('nom')
       setAllEtabs(etabsData || [])
-      const { data } = await supabase.from('classes')
-        .select('id, nom, niveau, etablissement:etablissements(id, nom)').order('nom')
-      classesData = (data as unknown as ClasseOption[]) || []
+      // Charger toutes les classes (pagination)
+      let allCls: any[] = []
+      let off = 0
+      while (true) {
+        const { data: batch } = await supabase.from('classes')
+          .select('id, nom, niveau, etablissement:etablissements(id, nom)').order('nom').range(off, off + 999)
+        if (!batch || batch.length === 0) break
+        allCls = allCls.concat(batch)
+        if (batch.length < 1000) break
+        off += 1000
+      }
+      classesData = allCls as ClasseOption[]
       setAllClasses(classesData)
     }
     setClasses(classesData)
@@ -432,137 +441,55 @@ function RapportContent() {
   async function genererReseau() {
     if (!profil) return
     setGenerating(true)
-    const defaultNorms: Record<string, { seuil_min: number; seuil_attendu: number }> = {
-      CP: { seuil_min: 40, seuil_attendu: 55 }, CE1: { seuil_min: 65, seuil_attendu: 80 }, CE2: { seuil_min: 80, seuil_attendu: 90 },
-      CM1: { seuil_min: 90, seuil_attendu: 100 }, CM2: { seuil_min: 100, seuil_attendu: 110 }, '6eme': { seuil_min: 110, seuil_attendu: 120 },
-    }
 
-    // Charger les établissements du réseau
-    let etabsList: { id: string; nom: string; type_reseau: string }[] = []
-    if (profil.role === 'ien') {
-      const { data } = await supabase.from('ien_etablissements').select('etablissement:etablissements(id, nom, type_reseau)').eq('ien_id', profil.id)
-      etabsList = (data || []).map((e: any) => e.etablissement).filter(Boolean)
-    } else if (profil.role === 'coordo_rep') {
-      const { data } = await supabase.from('coordo_etablissements').select('etablissement:etablissements(id, nom, type_reseau)').eq('coordo_id', profil.id)
-      etabsList = (data || []).map((e: any) => e.etablissement).filter(Boolean)
-    } else {
-      const { data } = await supabase.from('etablissements').select('id, nom, type_reseau').order('nom')
-      etabsList = data || []
-    }
+    // Utiliser la même année que la période sélectionnée
+    const selPeriode = periodes.find(p => p.id === periodeId) || periodes[0]
+    const annee = (selPeriode as any)?.annee_scolaire || '2025-2026'
 
-    const etabIds = etabsList.map(e => e.id)
-    const periodeCode = periodes[periodes.length - 1]?.code || ''
-    const { data: perIds } = await supabase.from('periodes').select('id').eq('code', periodeCode)
-    const periodeIds = (perIds || []).map(p => p.id)
+    // Appel à la fonction SQL pré-agrégée
+    const { data: raw } = await supabase.rpc('get_admin_dashboard', { p_annee: annee })
+    if (!raw) { setGenerating(false); return }
 
-    // Classes + élèves + passations
-    const { data: classesData } = await supabase.from('classes').select('id, nom, niveau, etablissement_id').in('etablissement_id', etabIds)
-    const classeIds = (classesData || []).map(c => c.id)
-    const classeMap: Record<string, any> = {}
-    for (const c of (classesData || [])) classeMap[c.id] = c
+    const d = raw as any
+    const totaux = d.totaux || {}
+    const statsEtab = (d.stats_etab || []) as any[]
+    const statsNiveau = (d.stats_niveau || []) as any[]
+    const groupesRaw = (d.groupes || []) as any[]
+    const rolesRaw = (d.roles || []) as any[]
 
-    const { data: elevesData } = await supabase.from('eleves').select('id, classe_id').in('classe_id', classeIds).eq('actif', true)
-    const eleveIds = (elevesData || []).map(e => e.id)
+    const gMap: Record<string, number> = {}
+    groupesRaw.forEach((g: any) => { gMap[g.groupe] = g.nb })
+    const totalG = Object.values(gMap).reduce((s: number, n: number) => s + n, 0)
 
-    let passData: any[] = []
-    if (periodeIds.length > 0 && eleveIds.length > 0) {
-      const { data } = await supabase.from('passations').select('eleve_id, score, non_evalue').in('periode_id', periodeIds).in('eleve_id', eleveIds)
-      passData = data || []
-    }
-
-    const { data: normesData } = await supabase.from('config_normes').select('niveau, seuil_min, seuil_attendu')
-    const normesMap: Record<string, { seuil_min: number; seuil_attendu: number }> = {}
-    for (const n of (normesData || [])) normesMap[n.niveau] = { seuil_min: n.seuil_min, seuil_attendu: n.seuil_attendu }
-
-    // Stats par établissement
-    const etabRows: EtabReseauRow[] = etabsList.map(etab => {
-      const etabClasses = (classesData || []).filter(c => c.etablissement_id === etab.id)
-      const etabClassIds = new Set(etabClasses.map(c => c.id))
-      const etabEleves = (elevesData || []).filter(e => etabClassIds.has(e.classe_id))
-      const etabEleveIds = new Set(etabEleves.map(e => e.id))
-      const etabPass = passData.filter(p => etabEleveIds.has(p.eleve_id))
-      const evalues = etabPass.filter(p => !p.non_evalue && p.score > 0)
-      const scores = evalues.map(p => p.score as number)
-      let fragiles = 0
-      for (const p of evalues) {
-        const cl = classeMap[(elevesData || []).find(e => e.id === p.eleve_id)?.classe_id]
-        const norme = normesMap[cl?.niveau] || defaultNorms[cl?.niveau]
-        if (norme && p.score < norme.seuil_min) fragiles++
-      }
-      return {
-        nom: etab.nom, type_reseau: etab.type_reseau || 'Hors REP',
-        nbEleves: etabEleves.length, nbEvalues: evalues.length,
-        moyenne: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
-        pctFragiles: evalues.length > 0 ? Math.round(fragiles / evalues.length * 100) : 0,
-      }
-    })
-
-    // Score par niveau
-    const nivMap: Record<string, { scores: number[]; nbEleves: number }> = {}
-    for (const e of (elevesData || [])) {
-      const niv = classeMap[e.classe_id]?.niveau || 'Autre'
-      if (!nivMap[niv]) nivMap[niv] = { scores: [], nbEleves: 0 }
-      nivMap[niv].nbEleves++
-    }
-    for (const p of passData) {
-      if (p.non_evalue || !p.score) continue
-      const cl = classeMap[(elevesData || []).find(e => e.id === p.eleve_id)?.classe_id]
-      const niv = cl?.niveau || 'Autre'
-      if (nivMap[niv]) nivMap[niv].scores.push(p.score)
-    }
-    const scoreParNiveau = Object.entries(nivMap).map(([niveau, d]) => ({
-      niveau, nbEleves: d.nbEleves, nbEvalues: d.scores.length,
-      moyenne: d.scores.length > 0 ? Math.round(d.scores.reduce((a, b) => a + b, 0) / d.scores.length) : null,
+    const etabRows: EtabReseauRow[] = statsEtab.map((e: any) => ({
+      nom: e.etab_nom, type_reseau: e.type_reseau || 'Hors REP',
+      nbEleves: e.nb_eleves, nbEvalues: e.nb_evalues,
+      moyenne: e.moyenne,
+      pctFragiles: e.nb_evalues > 0 ? Math.round((e.nb_eleves - e.nb_evalues) / e.nb_eleves * 100) : 0,
     }))
 
-    // Groupes globaux
-    let g1 = 0, g2 = 0, g3 = 0, g4 = 0
-    for (const p of passData) {
-      if (p.non_evalue || !p.score) continue
-      const cl = classeMap[(elevesData || []).find(e => e.id === p.eleve_id)?.classe_id]
-      const norme = normesMap[cl?.niveau] || defaultNorms[cl?.niveau]
-      if (!norme) continue
-      const g = classerEleve(p.score, norme)
-      if (g === 1) g1++; else if (g === 2) g2++; else if (g === 3) g3++; else g4++
-    }
-    const totalG = g1 + g2 + g3 + g4
-    const groupes = [
-      { label: 'Très fragile', count: g1, pct: totalG > 0 ? Math.round(g1 / totalG * 100) : 0 },
-      { label: 'Fragile', count: g2, pct: totalG > 0 ? Math.round(g2 / totalG * 100) : 0 },
-      { label: "En cours d'acq.", count: g3, pct: totalG > 0 ? Math.round(g3 / totalG * 100) : 0 },
-      { label: 'Attendu', count: g4, pct: totalG > 0 ? Math.round(g4 / totalG * 100) : 0 },
-    ]
-
-    // REP vs Hors REP
-    const repScores: number[] = [], horsRepScores: number[] = []
-    for (const p of passData) {
-      if (p.non_evalue || !p.score) continue
-      const el = (elevesData || []).find(e => e.id === p.eleve_id)
-      const cl = el ? classeMap[el.classe_id] : null
-      const etab = cl ? etabsList.find(e => e.id === cl.etablissement_id) : null
-      if (!etab) continue
-      if (etab.type_reseau === 'REP' || etab.type_reseau === 'REP+') repScores.push(p.score)
-      else horsRepScores.push(p.score)
-    }
-
-    const allScores = passData.filter(p => !p.non_evalue && p.score > 0).map(p => p.score as number)
+    const scoreParNiveau = statsNiveau.map((n: any) => ({
+      niveau: n.niveau, nbEleves: n.nb_eleves, nbEvalues: n.nb_evalues, moyenne: n.moyenne,
+    }))
 
     setDonneesReseau({
       titre: profil.role === 'ien' ? 'Rapport de circonscription' : profil.role === 'coordo_rep' ? 'Rapport réseau REP' : 'Rapport académique',
-      periode: periodeCode,
+      periode: selPeriode?.code || '—',
       dateGeneration: new Date().toLocaleDateString('fr-FR'),
       responsable: `${profil.prenom} ${profil.nom}`,
-      nbEtablissements: etabsList.length,
-      nbEleves: (elevesData || []).length,
-      nbEvalues: allScores.length,
-      scoreMoyen: allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : null,
-      etablissements: etabRows.sort((a, b) => (b.moyenne || 0) - (a.moyenne || 0)),
+      nbEtablissements: totaux.nb_etablissements || 0,
+      nbEleves: totaux.nb_eleves || 0,
+      nbEvalues: totaux.nb_evalues || 0,
+      scoreMoyen: totaux.score_moyen,
+      etablissements: etabRows,
       scoreParNiveau,
-      groupes,
-      repVsHorsRep: repScores.length > 0 || horsRepScores.length > 0 ? {
-        rep: repScores.length > 0 ? Math.round(repScores.reduce((a, b) => a + b, 0) / repScores.length) : null,
-        horsRep: horsRepScores.length > 0 ? Math.round(horsRepScores.reduce((a, b) => a + b, 0) / horsRepScores.length) : null,
-      } : null,
+      groupes: [
+        { label: 'Très fragile', count: gMap['tres_fragile'] || 0, pct: totalG > 0 ? Math.round((gMap['tres_fragile'] || 0) / totalG * 100) : 0 },
+        { label: 'Fragile', count: gMap['fragile'] || 0, pct: totalG > 0 ? Math.round((gMap['fragile'] || 0) / totalG * 100) : 0 },
+        { label: "En cours d'acq.", count: gMap['en_cours'] || 0, pct: totalG > 0 ? Math.round((gMap['en_cours'] || 0) / totalG * 100) : 0 },
+        { label: 'Attendu', count: gMap['attendu'] || 0, pct: totalG > 0 ? Math.round((gMap['attendu'] || 0) / totalG * 100) : 0 },
+      ],
+      repVsHorsRep: null,
     })
     setGenerating(false)
   }

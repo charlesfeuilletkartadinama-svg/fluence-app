@@ -346,9 +346,10 @@ function PassationContent() {
   async function cloreSessionEleve(seId: string) {
     const eleve = liveEleves.find(e => e.id === seId)
     if (!eleve) return
-    // Calculer temps total
+    // Calculer temps total, cappé à la durée max
     const debut = eleve.timer_reset_at || eleve.debut_test
-    const tempsSec = debut ? Math.floor((Date.now() - new Date(debut).getTime()) / 1000) : null
+    let tempsSec = debut ? Math.floor((Date.now() - new Date(debut).getTime()) / 1000) : null
+    if (tempsSec !== null && tempsSec > liveSessionDuree) tempsSec = liveSessionDuree
     await supabase.from('session_eleves').update({
       termine: true,
       fin_test: new Date().toISOString(),

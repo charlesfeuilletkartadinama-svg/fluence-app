@@ -65,13 +65,11 @@ export default function TestEleve() {
   async function autoSubmit() {
     if (submitCalledRef.current) return
     submitCalledRef.current = true
+    if (pollRef.current) clearInterval(pollRef.current)
     const currentReponses = reponsesRef.current
     const answersArray = questions.map(q => currentReponses[q.numero] || '')
-    // Si au moins une réponse
-    if (answersArray.some(a => a)) {
-      const { data, error } = await supabase.rpc('submit_qcm_individual', { p_code: sessionCode, p_answers: answersArray })
-      if (!error && data?.results) { setResultats(data.results); setEtape('resultat') }
-    }
+    const { data, error } = await supabase.rpc('submit_qcm_individual', { p_code: sessionCode, p_answers: answersArray })
+    if (!error && data?.results) { setResultats(data.results); setEtape('resultat') }
   }
 
   // Envoyer une réponse au serveur en temps réel

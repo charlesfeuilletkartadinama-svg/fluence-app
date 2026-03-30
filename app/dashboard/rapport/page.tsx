@@ -660,7 +660,169 @@ function RapportContent() {
 
         {loading ? (
           <div className={styles.loading}>Chargement…</div>
+        ) : isReseauRole ? (
+          /* ══════════════════════════════════════════
+             VUE ENTONNOIR (admin, ia_dasen, recteur, ien, coordo)
+          ══════════════════════════════════════════ */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Sélecteur année */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>Année :</span>
+              {[...new Set(periodes.map(p => (p as any).annee_scolaire).filter(Boolean))].sort().reverse().map(a => (
+                <button key={a} onClick={() => { /* TODO: filtrer */ }} style={{
+                  padding: '5px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)', border: '1.5px solid var(--border-main)', background: 'white', color: 'var(--text-secondary)',
+                }}>{a}</button>
+              ))}
+            </div>
+
+            {/* Entonnoir */}
+            <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 28 }}>
+              <h3 style={{ fontWeight: 800, fontSize: 15, color: 'var(--primary-dark)', marginBottom: 20, fontFamily: 'var(--font-sans)' }}>
+                Sélectionnez le périmètre du rapport
+              </h3>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+                {/* Circonscription */}
+                <div>
+                  <label className={styles.label}>Circonscription</label>
+                  <select value={filtreCirco} onChange={e => { setFiltreCirco(e.target.value); setFiltreVille(''); setFiltreEtabId(''); setClasseId(''); setEleveId('') }} className={styles.select}>
+                    <option value="">— Toutes —</option>
+                    {[...new Set(allEtabs.map(e => e.circonscription).filter(Boolean))].sort().map(c => (
+                      <option key={c!} value={c!}>{c}</option>
+                    ))}
+                  </select>
+                  {filtreCirco && !filtreEtabId && (
+                    <button onClick={() => { onModeChange('reseau'); genererReseau() }} disabled={generating}
+                      style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 8, border: 'none', background: '#16A34A', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
+                      {generating ? '⏳' : '📄'} PDF Circonscription
+                    </button>
+                  )}
+                </div>
+
+                {/* Établissement */}
+                <div>
+                  <label className={styles.label}>Établissement</label>
+                  <select value={filtreEtabId} onChange={e => { filtrerParEtab(e.target.value); setClasseId(''); setEleveId('') }} className={styles.select}>
+                    <option value="">— Tous —</option>
+                    {allEtabs.filter(e => (!filtreCirco || e.circonscription === filtreCirco)).map(e => (
+                      <option key={e.id} value={e.id}>{e.nom}</option>
+                    ))}
+                  </select>
+                  {filtreEtabId && !classeId && (
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                      <button onClick={() => { onModeChange('etablissement'); setPeriodeEtabId(periodes[0]?.id || ''); genererEtab() }} disabled={generating}
+                        style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', background: '#2563EB', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
+                        📄 PDF Étab.
+                      </button>
+                      <button onClick={() => { onModeChange('complet'); genererComplet() }} disabled={generating}
+                        style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', background: '#7C3AED', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
+                        📄 PDF Complet
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Période */}
+                <div>
+                  <label className={styles.label}>Période</label>
+                  <select value={periodeId} onChange={e => { setPeriodeId(e.target.value); setPeriodeEtabId(e.target.value) }} className={styles.select}>
+                    {periodes.map(p => <option key={p.id} value={p.id}>{p.code}{(p as any).annee_scolaire ? ` (${(p as any).annee_scolaire})` : ''}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Classe + Élève */}
+              {filtreEtabId && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+                  <div>
+                    <label className={styles.label}>Classe</label>
+                    <select value={classeId} onChange={e => { setClasseId(e.target.value); setEleveId('') }} className={styles.select}>
+                      <option value="">— Choisir —</option>
+                      {classes.map(c => <option key={c.id} value={c.id}>{c.nom} · {c.niveau}</option>)}
+                    </select>
+                    {classeId && (
+                      <button onClick={() => { onModeChange('classe'); genererClasse() }} disabled={generating}
+                        style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 8, border: 'none', background: '#D97706', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
+                        {generating ? '⏳' : '📄'} PDF Classe
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    <label className={styles.label}>Élève (recherche)</label>
+                    <input value={rechercheEleve} onChange={e => rechercherElevePDF(e.target.value)}
+                      placeholder="Nom, prénom ou INE…"
+                      className={styles.select} style={{ width: '100%' }} />
+                    {resultatsEleve.length > 0 && (
+                      <div style={{ background: 'var(--bg-gray)', borderRadius: 8, border: '1px solid var(--border-light)', maxHeight: 150, overflowY: 'auto', marginTop: 4 }}>
+                        {resultatsEleve.map(r => (
+                          <button key={r.id} onClick={() => { setEleveId(r.id); setRechercheEleve(`${r.nom} ${r.prenom}`); setResultatsEleve([]) }}
+                            style={{ display: 'block', width: '100%', padding: '8px 12px', border: 'none', borderBottom: '1px solid var(--border-light)', background: 'transparent', cursor: 'pointer', fontSize: 12, textAlign: 'left', fontFamily: 'var(--font-sans)', color: 'var(--primary-dark)' }}>
+                            <strong>{r.nom}</strong> {r.prenom} <span style={{ color: 'var(--text-tertiary)' }}>· {r.classe}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {eleveId && (
+                      <button onClick={() => { onModeChange('eleve'); genererEleve() }} disabled={generating}
+                        style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 8, border: 'none', background: '#DC2626', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
+                        {generating ? '⏳' : '📄'} PDF Élève
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Résultat + Téléchargement */}
+            {donneesPrete && (
+              <div style={{ background: 'white', borderRadius: 16, padding: 28, border: '1.5px solid var(--border-light)' }}>
+                <h3 style={{ fontWeight: 800, fontSize: 16, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: '0 0 16px 0' }}>
+                  Rapport prêt ✅
+                </h3>
+                <PDFDownloadLink
+                  document={
+                    mode === 'classe' && donneesClasse ? <RapportPDF donnees={donneesClasse} />
+                    : mode === 'etablissement' && donneesEtab ? <RapportEtabPDF donnees={donneesEtab} />
+                    : mode === 'reseau' && donneesReseau ? <RapportReseauPDF donnees={donneesReseau} />
+                    : mode === 'eleve' && donneesEleve ? <RapportElevePDF donnees={donneesEleve} />
+                    : donneesComplet ? <RapportCompletPDF donnees={donneesComplet} />
+                    : <></>
+                  }
+                  fileName={
+                    mode === 'classe' && donneesClasse ? `rapport-classe-${donneesClasse.classe}.pdf`
+                    : mode === 'etablissement' && donneesEtab ? `rapport-etab-${donneesEtab.etablissement}.pdf`
+                    : mode === 'reseau' && donneesReseau ? `rapport-reseau-${donneesReseau.periode}.pdf`
+                    : mode === 'eleve' && donneesEleve ? `rapport-eleve-${donneesEleve.nom}-${donneesEleve.prenom}.pdf`
+                    : `rapport-complet.pdf`
+                  }
+                >
+                  {({ loading: pdfLoading }: { loading: boolean }) => (
+                    <button style={{
+                      width: '100%', padding: '14px 0', borderRadius: 12, border: 'none',
+                      background: pdfLoading ? 'var(--bg-gray)' : '#16A34A', fontFamily: 'var(--font-sans)',
+                      color: pdfLoading ? 'var(--text-secondary)' : 'white',
+                      fontWeight: 700, fontSize: 15, cursor: pdfLoading ? 'default' : 'pointer',
+                    }}>
+                      {pdfLoading ? '⏳ Préparation du PDF…' : '⬇ Télécharger le PDF'}
+                    </button>
+                  )}
+                </PDFDownloadLink>
+              </div>
+            )}
+
+            {/* Rapport réseau global */}
+            {!filtreCirco && !filtreEtabId && (
+              <button onClick={() => { onModeChange('reseau'); genererReseau() }} disabled={generating}
+                style={{ padding: '14px 28px', borderRadius: 12, border: 'none', background: 'var(--primary-dark)', color: 'white', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: generating ? 0.5 : 1 }}>
+                {generating ? '⏳ Génération…' : '📄 Générer le rapport global (tous établissements)'}
+              </button>
+            )}
+          </div>
         ) : (
+          /* ══════════════════════════════════════════
+             VUE CLASSIQUE (enseignant, directeur, principal)
+          ══════════════════════════════════════════ */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
             {/* ── Sélecteur de type ── */}

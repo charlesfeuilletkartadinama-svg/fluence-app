@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
@@ -26,7 +26,22 @@ export default function Sidebar() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<{ id: string; nom: string; prenom: string; classe: string }[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
+  const [allowedClasseIds, setAllowedClasseIds] = useState<string[] | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Charger les classes autorisées pour l'enseignant (filtre recherche)
+  useEffect(() => {
+    if (!profil) return
+    if (profil.role === 'enseignant') {
+      supabase.from('enseignant_classes').select('classe_id').eq('enseignant_id', profil.id)
+        .then(({ data }) => setAllowedClasseIds((data || []).map((r: any) => r.classe_id)))
+    } else if (['directeur', 'principal'].includes(profil.role) && profil.etablissement_id) {
+      supabase.from('classes').select('id').eq('etablissement_id', profil.etablissement_id)
+        .then(({ data }) => setAllowedClasseIds((data || []).map((r: any) => r.id)))
+    } else {
+      setAllowedClasseIds(null) // admin/réseau : pas de filtre
+    }
+  }, [profil])
 
   function onSearch(q: string) {
     setSearchQuery(q)
@@ -34,12 +49,19 @@ export default function Sidebar() {
     if (q.trim().length < 2) { setSearchResults([]); return }
     debounceRef.current = setTimeout(async () => {
       setSearchLoading(true)
-      const { data } = await supabase
+      let query = supabase
         .from('eleves')
         .select('id, nom, prenom, classe:classes(nom)')
         .or(`nom.ilike.%${q.trim()}%,prenom.ilike.%${q.trim()}%`)
         .eq('actif', true)
         .limit(8)
+      // Filtrer par classes autorisées pour enseignant/direction
+      if (allowedClasseIds && allowedClasseIds.length > 0) {
+        query = query.in('classe_id', allowedClasseIds)
+      } else if (allowedClasseIds && allowedClasseIds.length === 0) {
+        setSearchResults([]); setSearchLoading(false); return
+      }
+      const { data } = await query
       setSearchResults((data || []).map((e: any) => ({
         id: e.id, nom: e.nom, prenom: e.prenom, classe: e.classe?.nom || '',
       })))

@@ -330,8 +330,12 @@ function Statistiques() {
     const niveauxUniq = [...new Set((classesData as any[]).map((c: any) => c.niveau).filter(Boolean))].sort()
     setNiveaux(niveauxUniq)
 
-    // Périodes — déduplication par code+année, filtrées par année sélectionnée
-    const { data: perData } = await supabase.from('periodes').select('id, code, label, annee_scolaire').order('annee_scolaire', { ascending: false }).order('code')
+    // Périodes — filtrées par établissement pour enseignant/directeur/principal
+    let perQuery = supabase.from('periodes').select('id, code, label, annee_scolaire').order('annee_scolaire', { ascending: false }).order('code')
+    if (profil.etablissement_id && ['enseignant', 'directeur', 'principal'].includes(profil.role)) {
+      perQuery = perQuery.eq('etablissement_id', profil.etablissement_id)
+    }
+    const { data: perData } = await perQuery
     // Toutes les années disponibles (pour le sélecteur)
     const toutesAnnees = [...new Set((perData || []).map((p: any) => p.annee_scolaire).filter(Boolean))].sort().reverse()
     // Filtrer par année sélectionnée et dédupliquer par code

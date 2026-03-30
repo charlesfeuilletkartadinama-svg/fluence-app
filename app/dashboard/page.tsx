@@ -138,6 +138,11 @@ export default function Dashboard() {
   const [compREP, setCompREP]                 = useState<{ rep: number | null; horsRep: number | null }>({ rep: null, horsRep: null })
   const [scoreParCirco, setScoreParCirco]     = useState<{ circo: string; moyenne: number | null; nbEleves: number }[]>([])
   const [progressionFragiles, setProgressionFragiles] = useState<{ ameliores: number; stables: number; regresses: number; total: number }>({ ameliores: 0, stables: 0, regresses: 0, total: 0 })
+  // Enseignant enrichi
+  const [ensProgression, setEnsProgression] = useState<number | null>(null) // +/- m/min vs période précédente
+  const [ensSeuilAttendu, setEnsSeuilAttendu] = useState<{ above: number; total: number; seuil: number }>({ above: 0, total: 0, seuil: 130 })
+  const [ensRegressifs, setEnsRegressifs] = useState<{ nom: string; prenom: string; scorePrev: number; scoreCur: number }[]>([])
+  const [ensActions, setEnsActions] = useState<string[]>([])
   const { profil, loading: profilLoading } = useProfil()
   const router   = useRouter()
   const supabase = createClient()
@@ -317,6 +322,51 @@ export default function Dashboard() {
       return { code: per.code, moyenne: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null }
     })
     setEvolutionData(evoData)
+
+    // 5d-bis. Progression vs période précédente
+    const tPeriodes = deduped.filter(p => /^T\d/.test(p.code))
+    const currentIdx = tPeriodes.findIndex(p => p.id === periodeActuelle?.id)
+    if (currentIdx > 0) {
+      const prevEvo = evoData.find(e => e.code === tPeriodes[currentIdx - 1].code)
+      const curEvo = evoData.find(e => e.code === periodeActuelle?.code)
+      if (prevEvo?.moyenne != null && curEvo?.moyenne != null) {
+        setEnsProgression(curEvo.moyenne - prevEvo.moyenne)
+      } else { setEnsProgression(null) }
+    } else { setEnsProgression(null) }
+
+    // 5d-ter. Seuil attendu — nb d'élèves au-dessus
+    const niveauClasse = (assignees as any[])[0]?.classe?.niveau || '3eme'
+    const normeRef = normesMap[niveauClasse] || defaultNorms[niveauClasse] || { seuil_min: 80, seuil_attendu: 130 }
+    const elevesAvecScore = toutesPass.filter(p => !p.non_evalue && p.score > 0)
+    const aboveSeuil = elevesAvecScore.filter(p => p.score >= normeRef.seuil_attendu).length
+    setEnsSeuilAttendu({ above: aboveSeuil, total: elevesAvecScore.length, seuil: normeRef.seuil_attendu })
+
+    // 5d-quater. Élèves en régression (score baisse vs période précédente)
+    const regressifs: typeof ensRegressifs = []
+    if (currentIdx > 0) {
+      const prevPerIds = (periodesBrutes || []).filter((p: any) => p.code === tPeriodes[currentIdx - 1].code).map((p: any) => p.id)
+      const prevPass = allPassForEvo.filter(p => prevPerIds.includes(p.periode_id) && !p.non_evalue && p.score > 0)
+      const prevMap: Record<string, number> = {}
+      for (const p of prevPass) prevMap[p.eleve_id] = p.score
+      for (const p of elevesAvecScore) {
+        const prev = prevMap[p.eleve_id]
+        if (prev != null && p.score < prev) {
+          const el = tousEleves.find((e: any) => e.id === p.eleve_id)
+          if (el) regressifs.push({ nom: el.nom, prenom: el.prenom, scorePrev: prev, scoreCur: p.score })
+        }
+      }
+      regressifs.sort((a, b) => (a.scoreCur - a.scorePrev) - (b.scoreCur - b.scorePrev)) // pire régression en premier
+    }
+    setEnsRegressifs(regressifs)
+
+    // 5d-quint. Actions recommandées
+    const actions: string[] = []
+    const nbNonRens = statsC.reduce((s, c) => s + c.nbNonRenseignes, 0)
+    const nbQcmManquant = qcmS.reduce((s, q) => s + (q.total - q.complete), 0)
+    if (nbNonRens > 0) actions.push(`${nbNonRens} élève${nbNonRens > 1 ? 's' : ''} non évalué${nbNonRens > 1 ? 's' : ''} en ${periodeActuelle?.code || ''}`)
+    if (regressifs.length > 0) actions.push(`${regressifs.length} élève${regressifs.length > 1 ? 's' : ''} en régression — entretien recommandé`)
+    if (nbQcmManquant > 0) actions.push(`${nbQcmManquant} élève${nbQcmManquant > 1 ? 's' : ''} n'ont pas passé le QCM ${periodeActuelle?.code || ''}`)
+    setEnsActions(actions)
 
     // 5e. QCM complétion par classe
     const qcmS = (assignees as any[]).map(a => ({ classeNom: a.classe?.nom || '', complete: 0, total: tousEleves.filter((e: any) => e.classe_id === a.classe_id).length }))
@@ -1069,8 +1119,45 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ── KPI globaux (enseignant et réseau — pas admin qui a son overview) ── */}
-            {!isDirection && (isEnseignant || isReseau) && (
+            {/* ── KPI globaux (enseignant) ── */}
+            {isEnseignant && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
+                <div className={`${styles.statCard} ${styles.featured}`}>
+                  <div className={styles.statLabel}>Score moyen</div>
+                  <div className={styles.statNum}>{stats?.scoreMoyen ?? '—'}</div>
+                  <div className={styles.statUnit}>mots / minute</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Progression</div>
+                  <div className={styles.statNum} style={{ color: ensProgression != null ? (ensProgression > 0 ? '#16a34a' : ensProgression < 0 ? '#dc2626' : undefined) : undefined }}>
+                    {ensProgression != null ? `${ensProgression > 0 ? '+' : ''}${ensProgression}` : '—'}
+                  </div>
+                  <div className={styles.statUnit}>vs période préc.</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Seuil attendu</div>
+                  <div className={styles.statNum} style={{ color: ensSeuilAttendu.total > 0 && ensSeuilAttendu.above / ensSeuilAttendu.total >= 0.5 ? '#16a34a' : '#d97706' }}>
+                    {ensSeuilAttendu.above}/{ensSeuilAttendu.total}
+                  </div>
+                  <div className={styles.statUnit}>au-dessus de {ensSeuilAttendu.seuil}</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Évalués</div>
+                  <div className={styles.statNum}>{stats?.nbPassations ?? '—'}/{stats?.nbEleves ?? '—'}</div>
+                  <div className={styles.statUnit}>{stats?.nbEleves && stats.nbPassations ? Math.round(stats.nbPassations / stats.nbEleves * 100) : 0}% complété</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>En régression</div>
+                  <div className={styles.statNum} style={{ color: ensRegressifs.length > 0 ? '#dc2626' : '#16a34a' }}>
+                    {ensRegressifs.length}
+                  </div>
+                  <div className={styles.statUnit}>élève{ensRegressifs.length > 1 ? 's' : ''}</div>
+                </div>
+              </div>
+            )}
+
+            {/* ── KPI réseau (pas enseignant) ── */}
+            {!isDirection && !isEnseignant && isReseau && (
               <div className={styles.statsGrid}>
                 <div className={`${styles.statCard} ${styles.featured}`}>
                   <div className={styles.statLabel}>Score moyen</div>
@@ -1089,10 +1176,39 @@ export default function Dashboard() {
                 </div>
                 <div className={styles.statCard}>
                   <div className={styles.statLabel}>Non évalués</div>
-                  <div className={`${styles.statNum} ${(stats?.txNE || 0) > 10 ? styles.statGold : ''}`}>
-                    {stats?.txNE ?? 0}%
-                  </div>
+                  <div className={`${styles.statNum} ${(stats?.txNE || 0) > 10 ? styles.statGold : ''}`}>{stats?.txNE ?? 0}%</div>
                   <div className={styles.statUnit}>des passations</div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Actions recommandées (enseignant) ── */}
+            {isEnseignant && ensActions.length > 0 && (
+              <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 14, padding: '16px 20px', marginBottom: 20, fontFamily: 'var(--font-sans)' }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: '#92400e', marginBottom: 10 }}>Actions recommandées</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {ensActions.map((a, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#78350f' }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />
+                      {a}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Élèves en régression (enseignant) ── */}
+            {isEnseignant && ensRegressifs.length > 0 && (
+              <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 14, padding: '16px 20px', marginBottom: 20, fontFamily: 'var(--font-sans)' }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: '#991b1b', marginBottom: 10 }}>Élèves en régression</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {ensRegressifs.map((e, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'white', border: '1px solid #fecaca', borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
+                      <strong style={{ color: '#991b1b' }}>{e.nom} {e.prenom}</strong>
+                      <span style={{ color: '#dc2626', fontWeight: 700 }}>{e.scorePrev} → {e.scoreCur}</span>
+                      <span style={{ color: '#dc2626', fontWeight: 800 }}>({e.scoreCur - e.scorePrev})</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

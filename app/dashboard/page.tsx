@@ -195,11 +195,14 @@ export default function Dashboard() {
     const deduped = (periodesBrutes || []).filter(p => {
       if (seen.has(p.code)) return false; seen.add(p.code); return true
     })
+    // Trier : T1, T2, T3 en premier, puis les autres
+    const priorite = (code: string) => { const m = code.match(/^T(\d)/); return m ? parseInt(m[1]) : 99 }
+    deduped.sort((a, b) => priorite(a.code) - priorite(b.code))
     setPeriodesEns(deduped)
 
     const periodeActuelle = (selectedPeriodeId
       ? deduped.find(p => p.id === selectedPeriodeId)
-      : null) ?? deduped[0] ?? null
+      : null) ?? deduped[deduped.length - 1] ?? null
     if (periodeActuelle && !periodeEnsId) setPeriodeEnsId(periodeActuelle.id)
 
     // 3. TOUS les élèves actifs en une seule requête (remplace N requêtes)

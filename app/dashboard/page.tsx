@@ -294,45 +294,7 @@ export default function Dashboard() {
       { label: 'Attendu', count: g4, color: '#16A34A' },
     ])
 
-    // 5d. Évolution par période (charger toutes les passations pour les périodes de l'établissement)
-    const allPerIds = (periodesBrutes || []).map((p: any) => p.id)
-    let allPassForEvo: any[] = []
-    if (eleveIds.length > 0 && allPerIds.length > 0) {
-      const { data } = await supabase.from('passations')
-        .select('eleve_id, score, non_evalue, periode_id')
-        .in('eleve_id', eleveIds).in('periode_id', allPerIds)
-      allPassForEvo = data || []
-    }
-    const perIdToCode: Record<string, string> = {}
-    for (const p of (periodesBrutes || [])) perIdToCode[p.id] = p.code
-    const evoData = deduped.map(per => {
-      const perIdsForCode = (periodesBrutes || []).filter((p: any) => p.code === per.code).map((p: any) => p.id)
-      const passP = allPassForEvo.filter(p => perIdsForCode.includes(p.periode_id) && !p.non_evalue && p.score > 0)
-      const scores = passP.map(p => p.score as number)
-      return { code: per.code, moyenne: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null }
-    })
-    setEvolutionData(evoData)
-
-    // 5e. QCM complétion par classe (pour la période active uniquement)
-    const qcmS = (assignees as any[]).map(a => ({ classeNom: a.classe?.nom || '', complete: 0, total: tousEleves.filter((e: any) => e.classe_id === a.classe_id).length }))
-    if (eleveIds.length > 0 && periodeActuelle) {
-      const perIdsForCode = (periodesBrutes || []).filter((p: any) => p.code === periodeActuelle.code).map((p: any) => p.id)
-      const { data: qcmPass } = await supabase.from('passations')
-        .select('eleve_id, q1, periode_id')
-        .in('eleve_id', eleveIds).in('periode_id', perIdsForCode)
-        .not('q1', 'is', null)
-      for (const s of qcmS) {
-        const asg = (assignees as any[]).find(a => a.classe?.nom === s.classeNom)
-        if (!asg) continue
-        const classEleveIds = tousEleves.filter((e: any) => e.classe_id === asg.classe_id).map((e: any) => e.id)
-        s.complete = (qcmPass || []).filter(p => classEleveIds.includes(p.eleve_id)).length
-      }
-    }
-    setQcmStats(qcmS)
-
-    setStatsClasses(statsC)
-    setAlertes(alertesGlobal)
-    setPeriodeCode(periodeActuelle?.code || '')
+    // 5d-5e sont calculés plus bas après le chargement par periode_id
 
     // 6. KPIs globaux calculés en mémoire
     const totalEvalues = statsC.reduce((s, c) => s + c.nbEvalues, 0)

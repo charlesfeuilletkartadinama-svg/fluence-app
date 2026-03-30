@@ -554,9 +554,27 @@ function Saisie() {
             </div>
 
             {/* Onglets Fluence / QCM */}
-            <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '2px solid var(--border-light)' }}>
-              <button onClick={() => setOnglet('fluence')} style={tabStyle(onglet === 'fluence')}>Fluence</button>
-              <button onClick={() => setOnglet('qcm')} style={tabStyle(onglet === 'qcm')}>QCM Compréhension</button>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+              <button onClick={() => setOnglet('fluence')} style={{
+                padding: '16px 20px', borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)',
+                border: `2px solid ${onglet === 'fluence' ? 'var(--primary-dark)' : 'var(--border-light)'}`,
+                background: onglet === 'fluence' ? 'rgba(0,24,69,0.04)' : 'white',
+                transition: 'all 0.15s',
+              }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>📖</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: onglet === 'fluence' ? 'var(--primary-dark)' : 'var(--text-secondary)' }}>Test de fluence</div>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Saisir les scores de lecture (mots/minute)</div>
+              </button>
+              <button onClick={() => setOnglet('qcm')} style={{
+                padding: '16px 20px', borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)',
+                border: `2px solid ${onglet === 'qcm' ? '#2563EB' : 'var(--border-light)'}`,
+                background: onglet === 'qcm' ? 'rgba(37,99,235,0.04)' : 'white',
+                transition: 'all 0.15s',
+              }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>🧠</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: onglet === 'qcm' ? '#2563EB' : 'var(--text-secondary)' }}>Compréhension (QCM)</div>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Saisir ou faire passer le test de compréhension</div>
+              </button>
             </div>
 
             {/* ── Onglet Fluence ── */}
@@ -813,7 +831,7 @@ function Saisie() {
 
                     <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, marginBottom: 24 }}>
                       <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
-                        Créez un code pour que les élèves passent le QCM sur tablette via <strong>/test</strong>. La session expire après 2 heures.
+                        Générez un code de session que les élèves saisiront sur leur tablette pour passer le test de compréhension en autonomie. La session expire après 2 heures.
                       </p>
                       <button onClick={creerSession} disabled={creatingSession} style={{
                         background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '11px 22px',

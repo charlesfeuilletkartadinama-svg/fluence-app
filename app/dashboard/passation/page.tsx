@@ -634,21 +634,25 @@ function PassationContent() {
             </div>
 
             {/* Onglets */}
-            <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '2px solid var(--border-light)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
               <button onClick={() => setOngletPass('fluence')} style={{
-                padding: '10px 24px', fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-sans)',
-                background: 'none', border: 'none', cursor: 'pointer', marginBottom: -2,
-                borderBottom: `2px solid ${ongletPass === 'fluence' ? 'var(--primary-dark)' : 'transparent'}`,
-                color: ongletPass === 'fluence' ? 'var(--primary-dark)' : 'var(--text-secondary)',
-                transition: 'all 0.15s',
-              }}>Fluence</button>
+                padding: '16px 20px', borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)',
+                border: `2px solid ${ongletPass === 'fluence' ? 'var(--primary-dark)' : 'var(--border-light)'}`,
+                background: ongletPass === 'fluence' ? 'rgba(0,24,69,0.04)' : 'white', transition: 'all 0.15s',
+              }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>📖</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: ongletPass === 'fluence' ? 'var(--primary-dark)' : 'var(--text-secondary)' }}>Test de fluence</div>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Chronomètre 60s + comptage erreurs</div>
+              </button>
               <button onClick={() => setOngletPass('qcm')} style={{
-                padding: '10px 24px', fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-sans)',
-                background: 'none', border: 'none', cursor: 'pointer', marginBottom: -2,
-                borderBottom: `2px solid ${ongletPass === 'qcm' ? 'var(--primary-dark)' : 'transparent'}`,
-                color: ongletPass === 'qcm' ? 'var(--primary-dark)' : 'var(--text-secondary)',
-                transition: 'all 0.15s',
-              }}>QCM Compréhension</button>
+                padding: '16px 20px', borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)',
+                border: `2px solid ${ongletPass === 'qcm' ? '#2563EB' : 'var(--border-light)'}`,
+                background: ongletPass === 'qcm' ? 'rgba(37,99,235,0.04)' : 'white', transition: 'all 0.15s',
+              }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>🧠</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: ongletPass === 'qcm' ? '#2563EB' : 'var(--text-secondary)' }}>Compréhension (QCM)</div>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Faire passer le test de compréhension</div>
+              </button>
             </div>
 
             {/* ── Onglet Fluence ── */}
@@ -850,7 +854,7 @@ function PassationContent() {
                     </div>
                     <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, marginBottom: 24 }}>
                       <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
-                        Créez un code pour que les élèves passent le QCM sur tablette via <strong>/test</strong>. La session expire après 2 heures.
+                        Générez un code de session que les élèves saisiront sur leur tablette pour passer le test de compréhension en autonomie. La session expire après 2 heures.
                       </p>
                       <button onClick={creerQcmSession} disabled={creatingQcm} style={{
                         background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '11px 22px',

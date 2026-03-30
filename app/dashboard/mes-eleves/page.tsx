@@ -77,8 +77,16 @@ export default function MesEleves() {
       for (const p of (rawPer || [])) {
         if (!seen.has(p.code)) { seen.add(p.code); perDedup.push(p) }
       }
+      // Trier T1, T2, T3 en premier
+      const prio = (c: string) => { const m = c.match(/^T(\d)/); return m ? parseInt(m[1]) : 99 }
+      perDedup.sort((a, b) => prio(a.code) - prio(b.code))
       setPeriodes(perDedup)
-      if (perDedup[0]) setPeriodeCode(perDedup[0].code)
+      // Sélectionner la dernière période T* par défaut
+      if (!periodeCode) {
+        const lastT = [...perDedup].reverse().find(p => /^T\d/.test(p.code))
+        if (lastT) setPeriodeCode(lastT.code)
+        else if (perDedup[0]) setPeriodeCode(perDedup[0].code)
+      }
     }
 
     // Construire les groupes par classe (sans passations pour l'instant)

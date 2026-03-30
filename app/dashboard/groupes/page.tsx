@@ -207,7 +207,7 @@ export default function Groupes() {
     if (etabId) perQuery = perQuery.eq('etablissement_id', etabId)
     const { data: rawPer } = await perQuery
 
-    // Dédupliquer par code (sécurité si plusieurs établissements)
+    // Dédupliquer par code + trier T1>T2>T3>autres
     const seenCodes = new Set<string>()
     const perDedup: Periode[] = []
     for (const p of (rawPer || [])) {
@@ -216,8 +216,15 @@ export default function Groupes() {
         perDedup.push({ id: p.id, code: p.code, label: p.label })
       }
     }
+    const prio = (c: string) => { const m = c.match(/^T(\d)/); return m ? parseInt(m[1]) : 99 }
+    perDedup.sort((a, b) => prio(a.code) - prio(b.code))
     setPeriodes(perDedup)
-    if (perDedup.length > 0) setPeriodeId(perDedup[0].id)
+    // Sélectionner la dernière T* par défaut, ne pas écraser si déjà défini
+    if (!periodeId) {
+      const lastT = [...perDedup].reverse().find(p => /^T\d/.test(p.code))
+      if (lastT) setPeriodeId(lastT.id)
+      else if (perDedup[0]) setPeriodeId(perDedup[0].id)
+    }
 
     setLoading(false)
   }

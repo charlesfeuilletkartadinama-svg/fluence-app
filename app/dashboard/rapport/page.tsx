@@ -94,8 +94,10 @@ function RapportContent() {
   const [donneesClasse,     setDonneesClasse]     = useState<DonneesClasse | null>(null)
   const [donneesEtab,       setDonneesEtab]       = useState<DonneesEtab | null>(null)
   const [donneesComplet,    setDonneesComplet]    = useState<DonneesComplet | null>(null)
-  // Admin filtres
-  const [allEtabs, setAllEtabs]       = useState<{ id: string; nom: string }[]>([])
+  // Admin filtres entonnoir
+  const [allEtabs, setAllEtabs]       = useState<{ id: string; nom: string; ville: string | null; circonscription: string | null }[]>([])
+  const [filtreCirco, setFiltreCirco] = useState('')
+  const [filtreVille, setFiltreVille] = useState('')
   const [filtreEtabId, setFiltreEtabId] = useState('')
   const [allClasses, setAllClasses]   = useState<ClasseOption[]>([])
   const [donneesReseau,     setDonneesReseau]     = useState<DonneesReseau | null>(null)
@@ -133,7 +135,7 @@ function RapportContent() {
       }
     } else {
       // admin, ia_dasen, recteur — charger les établissements + toutes les classes
-      const { data: etabsData } = await supabase.from('etablissements').select('id, nom').order('nom')
+      const { data: etabsData } = await supabase.from('etablissements').select('id, nom, ville, circonscription').order('nom')
       setAllEtabs(etabsData || [])
       const { data } = await supabase.from('classes')
         .select('id, nom, niveau, etablissement:etablissements(id, nom)').order('nom')
@@ -257,15 +259,16 @@ function RapportContent() {
   // ── Génération rapport établissement ─────────────────────────────────
 
   async function genererEtab() {
-    if (!profil?.etablissement_id || !periodeEtabId) return
+    const etabIdPourRapport = filtreEtabId || profil?.etablissement_id
+    if (!etabIdPourRapport || !periodeEtabId) { setGenerating(false); return }
     setGenerating(true); setDonneesEtab(null)
 
     const { data: etabData } = await supabase.from('etablissements')
-      .select('nom').eq('id', profil.etablissement_id).single()
+      .select('nom').eq('id', etabIdPourRapport).single()
     const { data: periodeData } = await supabase.from('periodes')
       .select('code').eq('id', periodeEtabId).single()
     const { data: classesData } = await supabase.from('classes')
-      .select('id, nom, niveau').eq('etablissement_id', profil.etablissement_id).order('niveau')
+      .select('id, nom, niveau').eq('etablissement_id', etabIdPourRapport).order('niveau')
     const { data: normesData } = await supabase.from('config_normes')
       .select('niveau, seuil_min, seuil_attendu')
 
@@ -332,13 +335,14 @@ function RapportContent() {
   // ── Génération rapport complet ────────────────────────────────────────
 
   async function genererComplet() {
-    if (!profil?.etablissement_id || periodes.length === 0) return
+    const etabIdPourComplet = filtreEtabId || profil?.etablissement_id
+    if (!etabIdPourComplet || periodes.length === 0) { setGenerating(false); return }
     setGenerating(true); setDonneesComplet(null)
 
     const { data: etabData } = await supabase.from('etablissements')
-      .select('nom').eq('id', profil.etablissement_id).single()
+      .select('nom').eq('id', etabIdPourComplet).single()
     const { data: classesData } = await supabase.from('classes')
-      .select('id, nom, niveau').eq('etablissement_id', profil.etablissement_id).order('niveau')
+      .select('id, nom, niveau').eq('etablissement_id', etabIdPourComplet).order('niveau')
     const { data: normesData } = await supabase.from('config_normes')
       .select('niveau, seuil_min, seuil_attendu')
 
@@ -597,14 +601,36 @@ function RapportContent() {
                 Paramètres
               </h3>
 
-              {/* Filtre établissement (admin) */}
+              {/* Entonnoir admin : circo → ville → établissement */}
               {allEtabs.length > 0 && (mode === 'classe' || mode === 'etablissement' || mode === 'complet') && (
-                <div style={{ marginBottom: 16 }}>
-                  <label className={styles.label}>Établissement</label>
-                  <select value={filtreEtabId} onChange={e => filtrerParEtab(e.target.value)} className={styles.select}>
-                    <option value="">— Tous les établissements —</option>
-                    {allEtabs.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16, padding: '16px 20px', background: 'var(--bg-gray)', borderRadius: 12 }}>
+                  <div>
+                    <label className={styles.label}>Circonscription</label>
+                    <select value={filtreCirco} onChange={e => { setFiltreCirco(e.target.value); setFiltreVille(''); setFiltreEtabId(''); setClasses(allClasses) }} className={styles.select}>
+                      <option value="">— Toutes —</option>
+                      {[...new Set(allEtabs.map(e => e.circonscription).filter(Boolean))].sort().map(c => (
+                        <option key={c!} value={c!}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={styles.label}>Ville</label>
+                    <select value={filtreVille} onChange={e => { setFiltreVille(e.target.value); setFiltreEtabId(''); setClasses(allClasses.filter((c: any) => !e.target.value || allEtabs.find(et => et.id === c.etablissement?.id)?.ville === e.target.value)) }} className={styles.select}>
+                      <option value="">— Toutes —</option>
+                      {[...new Set(allEtabs.filter(e => !filtreCirco || e.circonscription === filtreCirco).map(e => e.ville).filter(Boolean))].sort().map(v => (
+                        <option key={v!} value={v!}>{v}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={styles.label}>Établissement</label>
+                    <select value={filtreEtabId} onChange={e => filtrerParEtab(e.target.value)} className={styles.select}>
+                      <option value="">— Tous —</option>
+                      {allEtabs.filter(e => (!filtreCirco || e.circonscription === filtreCirco) && (!filtreVille || e.ville === filtreVille)).map(e => (
+                        <option key={e.id} value={e.id}>{e.nom}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
 

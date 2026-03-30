@@ -312,9 +312,25 @@ function PassationContent() {
     }
 
     const charger = async () => {
+      const duree = sess?.duree_timer || 300
       const { data } = await supabase.from('session_eleves')
         .select('id, code_individuel, connecte, termine, debut_test, timer_reset_at, reponses_live, temps_total_secondes, eleve:eleves(nom, prenom)')
         .eq('session_id', sessionId).order('created_at')
+
+      // Auto-close les élèves dont le timer est expiré (filet de sécurité côté enseignant)
+      for (const se of (data || [])) {
+        if ((se as any).termine || !(se as any).debut_test) continue
+        const ref = (se as any).timer_reset_at || (se as any).debut_test
+        const elapsed = Math.floor((Date.now() - new Date(ref).getTime()) / 1000)
+        if (elapsed >= duree + 5) { // +5s de marge pour laisser le navigateur élève soumettre d'abord
+          await supabase.from('session_eleves').update({
+            termine: true, fin_test: new Date().toISOString(), temps_total_secondes: duree,
+          }).eq('id', (se as any).id);
+          (se as any).termine = true;
+          (se as any).temps_total_secondes = duree
+        }
+      }
+
       setLiveEleves((data || []).map((se: any) => ({
         id: se.id, nom: se.eleve?.nom || '', prenom: se.eleve?.prenom || '',
         code: se.code_individuel, connecte: se.connecte, termine: se.termine,

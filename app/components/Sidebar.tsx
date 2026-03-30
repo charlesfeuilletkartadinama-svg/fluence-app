@@ -81,7 +81,7 @@ export default function Sidebar() {
     ...(canSaisie ? [{
       href: '/dashboard/saisie', icon: '✏️', label: 'Évaluations',
       children: [
-        { href: '/dashboard/saisie',    label: 'Mode Saisie' },
+        { href: '/dashboard/saisie',    label: 'Saisie manuelle' },
         { href: '/dashboard/passation', label: 'Mode Passation' },
       ],
     }] : []),

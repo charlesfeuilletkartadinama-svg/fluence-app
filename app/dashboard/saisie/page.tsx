@@ -440,7 +440,7 @@ function Saisie() {
         {etape === 'etablissement' && (
           <>
             <div style={{ marginBottom: 32 }}>
-              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode Saisie</h2>
+              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Saisie manuelle</h2>
               <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez un établissement</p>
             </div>
             <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
@@ -472,7 +472,7 @@ function Saisie() {
         {etape === 'periode' && (
           <>
             <div style={{ marginBottom: 32 }}>
-              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode Saisie</h2>
+              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Saisie manuelle</h2>
               <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Choisissez une période</p>
             </div>
             {!localStorage.getItem('fluence-info-saisie') && (
@@ -483,9 +483,9 @@ function Saisie() {
               }}>
                 <span style={{ fontSize: 24, flexShrink: 0 }}>ℹ️</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1D4ED8', marginBottom: 6 }}>À quoi sert le Mode Saisie ?</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1D4ED8', marginBottom: 6 }}>À quoi sert la Saisie manuelle ?</div>
                   <p style={{ fontSize: 13, color: '#1E40AF', lineHeight: 1.6, margin: 0 }}>
-                    Le Mode Saisie est destiné aux enseignants qui ont <strong>déjà fait passer le test de fluence</strong> (sur papier ou avec un autre outil)
+                    Le Saisie manuelle est destiné aux enseignants qui ont <strong>déjà fait passer le test de fluence</strong> (sur papier ou avec un autre outil)
                     et qui souhaitent <strong>entrer les résultats a posteriori</strong> dans l'application.<br />
                     Saisissez le score en mots/minute, marquez les élèves non évalués ou absents, et renseignez les réponses de compréhension.
                   </p>
@@ -549,7 +549,7 @@ function Saisie() {
                 style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14, fontFamily: 'var(--font-sans)', marginBottom: 12, padding: 0, display: 'block' }}>
                 ← Retour
               </button>
-              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Mode Saisie</h2>
+              <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>Saisie manuelle</h2>
               <p style={{ color: 'var(--text-secondary)', marginTop: 6, fontSize: 15, fontFamily: 'var(--font-sans)' }}>Période · {periode?.code} — Choisissez la classe</p>
             </div>
             <div style={{ background: 'white', borderRadius: 16, padding: 24, border: '1.5px solid var(--border-light)' }}>
@@ -589,33 +589,7 @@ function Saisie() {
               </div>
             </div>
 
-            {/* Onglets Fluence / QCM */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
-              <button onClick={() => setOnglet('fluence')} style={{
-                padding: '16px 20px', borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)',
-                border: `2px solid ${onglet === 'fluence' ? 'var(--primary-dark)' : 'var(--border-light)'}`,
-                background: onglet === 'fluence' ? 'rgba(0,24,69,0.04)' : 'white',
-                transition: 'all 0.15s',
-              }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>📖</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: onglet === 'fluence' ? 'var(--primary-dark)' : 'var(--text-secondary)' }}>Test de fluence</div>
-                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Saisir les scores de lecture (mots/minute)</div>
-              </button>
-              <button onClick={() => setOnglet('qcm')} style={{
-                padding: '16px 20px', borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)',
-                border: `2px solid ${onglet === 'qcm' ? '#2563EB' : 'var(--border-light)'}`,
-                background: onglet === 'qcm' ? 'rgba(37,99,235,0.04)' : 'white',
-                transition: 'all 0.15s',
-              }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>🧠</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: onglet === 'qcm' ? '#2563EB' : 'var(--text-secondary)' }}>Compréhension (QCM)</div>
-                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Saisir ou faire passer le test de compréhension</div>
-              </button>
-            </div>
-
-            {/* ── Onglet Fluence ── */}
-            {onglet === 'fluence' && (
-              <>
+            {/* ── Scores + Compréhension ── */}
                 <p style={{ color: 'var(--text-secondary)', marginTop: 0, marginBottom: 16, fontSize: 14, fontFamily: 'var(--font-sans)' }}>
                   {nbSaisis} / {eleves.length} élèves saisis
                 </p>
@@ -662,7 +636,24 @@ function Saisie() {
                           cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'var(--font-sans)',
                         }}>Absent</button>
                       </div>
-                    </div>
+                    {!eleve.ne && !eleve.absent && eleve.score !== '' && (
+                      <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, fontFamily: 'var(--font-sans)', marginRight: 4 }}>Compréhension :</span>
+                        {(['q1','q2','q3','q4','q5','q6'] as const).map(q => {
+                          const val = (eleve as any)[q]
+                          return (
+                            <button key={q} onClick={() => toggleQ(idx, q)} style={{
+                              width: 40, height: 40, borderRadius: 10, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                              fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
+                              border: val === true ? '2px solid #22c55e' : val === false ? '2px solid #ef4444' : '2px solid var(--border-main)',
+                              background: val === true ? '#f0fdf4' : val === false ? '#fef2f2' : 'var(--bg-gray)',
+                              color: val === true ? '#16a34a' : val === false ? '#dc2626' : 'var(--text-tertiary)',
+                            }}>{q.toUpperCase()}</button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                   ))}
                 </div>
 
@@ -676,309 +667,7 @@ function Saisie() {
                     Voir le récapitulatif →
                   </button>
                 </div>
-              </>
-            )}
 
-            {/* ── Onglet QCM ── */}
-            {onglet === 'qcm' && (
-              <div>
-                {/* Choix du mode */}
-                {qcmMode === 'choix' && (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-                      <button onClick={() => { setQcmMode('individuelle'); if (!qcmTestLoaded) chargerQcmQuestions() }} style={{
-                        background: 'white', border: '1.5px solid var(--border-light)', borderRadius: 16, padding: '28px 24px',
-                        cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
-                      }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary-dark)' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-light)' }}
-                      >
-                        <div style={{ fontSize: 28, marginBottom: 12 }}>👤</div>
-                        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--primary-dark)', marginBottom: 6 }}>Passation individuelle</div>
-                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                          L'enseignant sélectionne un élève et saisit ses réponses au QCM en tête-à-tête.
-                        </div>
-                      </button>
-                      <button onClick={() => setQcmMode('collective')} style={{
-                        background: 'white', border: '1.5px solid var(--border-light)', borderRadius: 16, padding: '28px 24px',
-                        cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
-                      }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary-dark)' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-light)' }}
-                      >
-                        <div style={{ fontSize: 28, marginBottom: 12 }}>📱</div>
-                        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--primary-dark)', marginBottom: 6 }}>Session collective</div>
-                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                          Générez un code pour que les élèves passent le QCM en autonomie sur tablette.
-                        </div>
-                      </button>
-                    </div>
-
-                    {/* Résultats QCM */}
-                    <QcmResultatsTable eleves={eleves} qcmResultats={qcmResultats} />
-                  </>
-                )}
-
-                {/* ── Mode individuel ── */}
-                {qcmMode === 'individuelle' && !qcmEleveId && !qcmDone && (
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                      <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
-                        Passation individuelle — Sélectionner un élève
-                      </h3>
-                      <button onClick={() => { setQcmMode('choix'); setQcmEleveId(null) }} style={{
-                        background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
-                        padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                      }}>← Retour</button>
-                    </div>
-                    {qcmNoTest && (
-                      <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#c2410c', fontFamily: 'var(--font-sans)' }}>
-                        Aucun test QCM configuré pour ce niveau et cette période. Créez-en un dans Administration → QCM.
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {eleves.map(e => {
-                        const r = qcmResultats[e.id]
-                        const hasResult = r && [r.q1, r.q2, r.q3, r.q4, r.q5, r.q6].some(q => q !== null)
-                        return (
-                          <button key={e.id} onClick={() => !qcmNoTest && ouvrirQcmIndividuel(e.id)} disabled={qcmNoTest} style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            background: hasResult ? '#f0fdf4' : 'white',
-                            border: `1.5px solid ${hasResult ? '#bbf7d0' : 'var(--border-light)'}`,
-                            borderRadius: 14, padding: '16px 20px', cursor: qcmNoTest ? 'not-allowed' : 'pointer',
-                            fontFamily: 'var(--font-sans)', transition: 'all 0.15s', textAlign: 'left',
-                            opacity: qcmNoTest ? 0.5 : 1,
-                          }}>
-                            <div>
-                              <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--primary-dark)' }}>{e.nom}</span>
-                              <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 14 }}>{e.prenom}</span>
-                              {hasResult && (
-                                <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: 6 }}>
-                                  {[r!.q1, r!.q2, r!.q3, r!.q4, r!.q5, r!.q6].filter(q => q === 'Correct').length}/6
-                                </span>
-                              )}
-                            </div>
-                            {hasResult ? <span style={{ color: '#16a34a', fontSize: 18 }}>✓</span> : <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>→</span>}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Mode individuel : questions ── */}
-                {qcmMode === 'individuelle' && qcmEleveId && !qcmDone && (
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                      <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
-                        QCM — {eleves.find(e => e.id === qcmEleveId)?.prenom} {eleves.find(e => e.id === qcmEleveId)?.nom}
-                      </h3>
-                      <button onClick={() => setQcmEleveId(null)} style={{
-                        background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
-                        padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                      }}>← Retour</button>
-                    </div>
-
-                    {qcmErreur && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#dc2626', fontFamily: 'var(--font-sans)' }}>{qcmErreur}</div>}
-
-                    {qcmQuestions.map((q, idx) => (
-                      <div key={q.id} style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 20, marginBottom: 12 }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
-                          <span style={{ background: qcmReponses[q.numero] ? '#16a34a' : 'var(--primary-dark)', color: 'white', borderRadius: 10, minWidth: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, flexShrink: 0, fontFamily: 'var(--font-sans)' }}>
-                            {q.numero}
-                          </span>
-                          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--primary-dark)', margin: 0, lineHeight: 1.5, fontFamily: 'var(--font-sans)' }}>{q.question_text}</p>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, paddingLeft: 48 }}>
-                          {(['A', 'B', 'C', 'D'] as const).map(letter => {
-                            const selected = qcmReponses[q.numero] === letter
-                            return (
-                              <button key={letter} onClick={() => setQcmReponses(prev => ({ ...prev, [q.numero]: letter }))} style={{
-                                padding: '12px 14px', borderRadius: 10, textAlign: 'left',
-                                border: `2px solid ${selected ? '#3b82f6' : 'var(--border-light)'}`,
-                                background: selected ? '#eff6ff' : 'white',
-                                cursor: 'pointer', fontSize: 14, fontWeight: selected ? 700 : 500,
-                                color: selected ? 'var(--primary-dark)' : 'var(--text-secondary)',
-                                fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
-                              }}>
-                                <span style={{ fontWeight: 800, marginRight: 8, color: selected ? '#3b82f6' : 'var(--text-tertiary)' }}>{letter}.</span>
-                                {(q as any)[`option_${letter.toLowerCase()}`]}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ))}
-
-                    <button onClick={soumettreQcmIndividuel} disabled={qcmSubmitting || Object.keys(qcmReponses).length < qcmQuestions.length} style={{
-                      width: '100%', background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '14px', borderRadius: 12,
-                      fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer', marginTop: 8,
-                      opacity: (qcmSubmitting || Object.keys(qcmReponses).length < qcmQuestions.length) ? 0.5 : 1,
-                    }}>
-                      {qcmSubmitting ? 'Enregistrement…' : 'Valider les réponses'}
-                    </button>
-                  </div>
-                )}
-
-                {/* ── Mode individuel : résultat ── */}
-                {qcmMode === 'individuelle' && qcmDone && qcmScore && (
-                  <div style={{ background: 'white', borderRadius: 20, padding: '40px 32px', border: '1.5px solid var(--border-light)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 48, fontWeight: 800, color: qcmScore.filter(r => r === 'Correct').length >= 4 ? '#16a34a' : '#d97706', marginBottom: 12, fontFamily: 'var(--font-sans)' }}>
-                      {qcmScore.filter(r => r === 'Correct').length} / {qcmScore.length}
-                    </div>
-                    <p style={{ fontSize: 15, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 8 }}>
-                      {eleves.find(e => e.id === qcmEleveId)?.prenom} {eleves.find(e => e.id === qcmEleveId)?.nom}
-                    </p>
-                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
-                      {qcmScore.map((r, i) => (
-                        <span key={i} style={{
-                          padding: '6px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)',
-                          background: r === 'Correct' ? '#f0fdf4' : '#fef2f2',
-                          color: r === 'Correct' ? '#16a34a' : '#dc2626',
-                          border: `1px solid ${r === 'Correct' ? '#bbf7d0' : '#fecaca'}`,
-                        }}>Q{i + 1} {r === 'Correct' ? '✓' : '✗'}</span>
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-                      <button onClick={qcmEleveSuivant} style={{
-                        background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '13px 28px', borderRadius: 12,
-                        fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                      }}>Élève suivant</button>
-                      <button onClick={() => { setQcmMode('choix'); setQcmEleveId(null); setQcmDone(false) }} style={{
-                        background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
-                        padding: '13px 28px', borderRadius: 12, fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                      }}>Retour</button>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Mode collectif ── */}
-                {qcmMode === 'collective' && (
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                      <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', margin: 0 }}>
-                        Session collective
-                      </h3>
-                      <button onClick={() => setQcmMode('choix')} style={{
-                        background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
-                        padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                      }}>← Retour</button>
-                    </div>
-
-                    <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, marginBottom: 24 }}>
-                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
-                        Générez un code de session que les élèves saisiront sur leur tablette pour passer le test de compréhension en autonomie. La session expire après 2 heures.
-                        <br /><br />
-                        <strong>Lien à donner aux élèves :</strong>{' '}
-                        <span style={{ background: 'var(--primary-dark)', color: 'white', padding: '3px 10px', borderRadius: 6, fontSize: 13, fontFamily: 'monospace', userSelect: 'all' as const }}>
-                          {typeof window !== 'undefined' ? `${window.location.origin}/test` : '/test'}
-                        </span>
-                      </p>
-                      <button onClick={creerSession} disabled={creatingSession} style={{
-                        background: 'var(--primary-dark)', color: 'white', border: 'none', padding: '11px 22px',
-                        borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                        opacity: creatingSession ? 0.6 : 1,
-                      }}>
-                        {creatingSession ? 'Création…' : '+ Nouvelle session'}
-                      </button>
-                    </div>
-
-                    {sessions.length > 0 && (
-                      <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', overflow: 'hidden', marginBottom: 24 }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg-gray)' }}>
-                              <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>CODE</th>
-                              <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>STATUT</th>
-                              <th style={{ padding: '12px 20px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1 }}>ACTIONS</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {sessions.map(s => {
-                              const expired = new Date(s.expires_at) < new Date()
-                              const isActive = s.active && !expired
-                              return (
-                                <React.Fragment key={s.id}>
-                                <tr style={{ borderTop: '1px solid var(--border-light)' }}>
-                                  <td style={{ padding: '14px 20px', fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'monospace', fontSize: 16, letterSpacing: 2 }}>{s.code}</td>
-                                  <td style={{ padding: '14px 20px', textAlign: 'center' }}>
-                                    <span style={{
-                                      fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, fontFamily: 'var(--font-sans)',
-                                      background: isActive ? '#f0fdf4' : '#f3f4f6', color: isActive ? '#16a34a' : '#6b7280',
-                                    }}>{isActive ? 'Active' : !s.active ? 'Désactivée' : 'Expirée'}</span>
-                                  </td>
-                                  <td style={{ padding: '14px 20px', textAlign: 'center' }}>
-                                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                                      <button onClick={() => copierCode(s.code)} style={{
-                                        background: 'transparent', color: 'var(--text-secondary)', border: '1.5px solid var(--border-light)',
-                                        padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                      }}>{copiedCode === s.code ? 'Copié !' : 'Copier'}</button>
-                                      {isActive && (
-                                        <>
-                                          <button onClick={() => ouvrirSuiviLive(s.id)} style={{
-                                            background: liveSessionId === s.id ? '#2563EB' : 'transparent', color: liveSessionId === s.id ? 'white' : '#2563EB', border: '1.5px solid #93c5fd',
-                                            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                          }}>{liveSessionId === s.id ? '● Suivi en cours' : 'Suivi live'}</button>
-                                          <button onClick={() => desactiverSession(s.id)} style={{
-                                            background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5',
-                                            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                          }}>Désactiver</button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                                {/* Panel suivi live */}
-                                {liveSessionId === s.id && (
-                                  <tr><td colSpan={4} style={{ padding: 0 }}>
-                                    <div style={{ background: '#eff6ff', padding: '16px 20px', borderTop: '1px solid #bfdbfe' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                                        <h4 style={{ fontSize: 14, fontWeight: 800, color: '#1d4ed8', margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                          Codes individuels · {liveEleves.filter(e => e.termine).length}/{liveEleves.length} terminés
-                                        </h4>
-                                        <div style={{ display: 'flex', gap: 8, fontSize: 11, fontFamily: 'var(--font-sans)' }}>
-                                          <span style={{ color: '#16a34a' }}>● Terminé</span>
-                                          <span style={{ color: '#2563eb' }}>● Connecté</span>
-                                          <span style={{ color: '#94a3b8' }}>● En attente</span>
-                                        </div>
-                                      </div>
-                                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
-                                        {liveEleves.map(e => (
-                                          <div key={e.id} style={{
-                                            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10,
-                                            background: 'white', border: `1.5px solid ${e.termine ? '#bbf7d0' : e.connecte ? '#93c5fd' : 'var(--border-light)'}`,
-                                          }}>
-                                            <div style={{
-                                              width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                                              background: e.termine ? '#16a34a' : e.connecte ? '#2563eb' : '#d1d5db',
-                                              animation: e.connecte && !e.termine ? 'pulse 1.5s infinite' : 'none',
-                                            }} />
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.nom} {e.prenom}</div>
-                                              <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#64748b', letterSpacing: 1 }}>{e.code}</div>
-                                            </div>
-                                            <span style={{ fontSize: 10, fontWeight: 700, color: e.termine ? '#16a34a' : e.connecte ? '#2563eb' : '#94a3b8', fontFamily: 'var(--font-sans)' }}>
-                                              {e.termine ? '✓ Fait' : e.connecte ? 'En cours' : 'Attente'}
-                                            </span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </td></tr>
-                                )}
-                                </React.Fragment>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-
-                    <QcmResultatsTable eleves={eleves} qcmResultats={qcmResultats} />
-                  </div>
-                )}
-              </div>
-            )}
           </>
         )}
 

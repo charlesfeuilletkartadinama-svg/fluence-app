@@ -359,15 +359,6 @@ export default function Dashboard() {
     }
     setEnsRegressifs(regressifs)
 
-    // 5d-quint. Actions recommandées
-    const actions: string[] = []
-    const nbNonRens = statsC.reduce((s, c) => s + c.nbNonRenseignes, 0)
-    const nbQcmManquant = qcmS.reduce((s, q) => s + (q.total - q.complete), 0)
-    if (nbNonRens > 0) actions.push(`${nbNonRens} élève${nbNonRens > 1 ? 's' : ''} non évalué${nbNonRens > 1 ? 's' : ''} en ${periodeActuelle?.code || ''}`)
-    if (regressifs.length > 0) actions.push(`${regressifs.length} élève${regressifs.length > 1 ? 's' : ''} en régression — entretien recommandé`)
-    if (nbQcmManquant > 0) actions.push(`${nbQcmManquant} élève${nbQcmManquant > 1 ? 's' : ''} n'ont pas passé le QCM ${periodeActuelle?.code || ''}`)
-    setEnsActions(actions)
-
     // 5e. QCM complétion par classe
     const qcmS = (assignees as any[]).map(a => ({ classeNom: a.classe?.nom || '', complete: 0, total: tousEleves.filter((e: any) => e.classe_id === a.classe_id).length }))
     if (eleveIds.length > 0 && periodeActuelle) {
@@ -384,6 +375,15 @@ export default function Dashboard() {
       }
     }
     setQcmStats(qcmS)
+
+    // 5f. Actions recommandées (après QCM pour avoir qcmS)
+    const actions: string[] = []
+    const nbNonRens = statsC.reduce((s, c) => s + c.nbNonRenseignes, 0)
+    const nbQcmManquant = qcmS.reduce((s, q) => s + (q.total - q.complete), 0)
+    if (nbNonRens > 0) actions.push(`${nbNonRens} élève${nbNonRens > 1 ? 's' : ''} non évalué${nbNonRens > 1 ? 's' : ''} en ${periodeActuelle?.code || ''}`)
+    if (regressifs.length > 0) actions.push(`${regressifs.length} élève${regressifs.length > 1 ? 's' : ''} en régression — entretien recommandé`)
+    if (nbQcmManquant > 0) actions.push(`${nbQcmManquant} élève${nbQcmManquant > 1 ? 's' : ''} n'ont pas passé le QCM ${periodeActuelle?.code || ''}`)
+    setEnsActions(actions)
 
     setStatsClasses(statsC)
     setAlertes(alertesGlobal)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useProfil } from '@/app/lib/useProfil'
 import { useRouter } from 'next/navigation'
@@ -30,20 +30,23 @@ export default function MesEleves() {
   const [periodes, setPeriodes]   = useState<Periode[]>([])
   const [periodeCode, setPeriodeCode] = useState<string>('')
   const [loading, setLoading]     = useState(true)
-  const { profil } = useProfil()
+  const { profil, loading: profilLoading } = useProfil()
   const router = useRouter()
   const supabase = createClient()
+  const loadedRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!profil) return
-    const ALLOWED_ROLES = ['enseignant']
-    if (!ALLOWED_ROLES.includes(profil.role)) { router.push('/dashboard'); return }
+    if (profilLoading || !profil) return
+    if (profil.role !== 'enseignant') { router.push('/dashboard'); return }
+    // Ne charger qu'une fois par profil.id
+    if (loadedRef.current === profil.id) return
+    loadedRef.current = profil.id
     charger()
-  }, [profil])
+  }, [profil, profilLoading])
 
   useEffect(() => {
-    if (profil && periodeCode) chargerPassations()
-  }, [periodeCode])
+    if (profil && periodeCode && classes.length > 0) chargerPassations()
+  }, [periodeCode, classes])
 
   async function charger() {
     if (!profil) return

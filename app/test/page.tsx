@@ -16,6 +16,7 @@ export default function TestEleve() {
   const [eleveNom, setEleveNom] = useState('')
   const [elevePrenom, setElevePrenom] = useState('')
   const [sessionCode, setSessionCode] = useState('')
+  const [sessionEleveId, setSessionEleveId] = useState('')
   const [texteReference, setTexteReference] = useState('')
   const [titreTest, setTitreTest] = useState('')
   const [questions, setQuestions] = useState<Question[]>([])
@@ -23,28 +24,127 @@ export default function TestEleve() {
   const [resultats, setResultats] = useState<string[] | null>(null)
   const [submitting, setSubmitting] = useState(false)
   // Timer
+  const [dureeTimer, setDureeTimer] = useState(300)
   const [timer, setTimer] = useState(300)
   const [timerActive, setTimerActive] = useState(false)
   const [timerExpired, setTimerExpired] = useState(false)
+  const [closedByTeacher, setClosedByTeacher] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const pollRef = useRef<NodeJS.Timeout | null>(null)
+  const reponsesRef = useRef<Record<number, string>>({})
+  const submitCalledRef = useRef(false)
+
+  // Keep reponsesRef in sync
+  useEffect(() => { reponsesRef.current = reponses }, [reponses])
 
   useEffect(() => {
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
   }, [])
 
-  function startTimer() {
-    setTimer(300); setTimerActive(true); setTimerExpired(false)
+  function startTimer(duree: number) {
+    setTimer(duree); setTimerActive(true); setTimerExpired(false)
     if (timerRef.current) clearInterval(timerRef.current)
     timerRef.current = setInterval(() => {
       setTimer(t => {
         if (t <= 1) {
           if (timerRef.current) clearInterval(timerRef.current)
           setTimerActive(false); setTimerExpired(true); playEndBeep()
+          // Auto-submit
+          autoSubmit()
           return 0
         }
         return t - 1
       })
     }, 1000)
+  }
+
+  // Auto-submit quand le timer expire (soumet les réponses saisies, même incomplètes)
+  async function autoSubmit() {
+    if (submitCalledRef.current) return
+    submitCalledRef.current = true
+    const currentReponses = reponsesRef.current
+    const answersArray = questions.map(q => currentReponses[q.numero] || '')
+    // Si au moins une réponse
+    if (answersArray.some(a => a)) {
+      const { data, error } = await supabase.rpc('submit_qcm_individual', { p_code: sessionCode, p_answers: answersArray })
+      if (!error && data?.results) { setResultats(data.results); setEtape('resultat') }
+    }
+  }
+
+  // Envoyer une réponse au serveur en temps réel
+  async function envoyerReponseLive(questionNum: number, lettre: string) {
+    if (!sessionEleveId) return
+    const newReponses = { ...reponsesRef.current, [questionNum]: lettre }
+    setReponses(newReponses)
+    // UPDATE reponses_live en base
+    await supabase.from('session_eleves').update({
+      reponses_live: newReponses
+    }).eq('id', sessionEleveId)
+  }
+
+  // Polling : vérifier si l'enseignant a modifié qqch
+  function startPolling(seId: string, duree: number) {
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = setInterval(async () => {
+      const { data } = await supabase
+        .from('session_eleves')
+        .select('reponses_live, timer_reset_at, termine')
+        .eq('id', seId)
+        .single()
+      if (!data) return
+
+      // 1. Session close par l'enseignant
+      if (data.termine) {
+        if (timerRef.current) clearInterval(timerRef.current)
+        if (pollRef.current) clearInterval(pollRef.current)
+        setTimerActive(false)
+        setClosedByTeacher(true)
+        // Soumettre automatiquement
+        if (!submitCalledRef.current) {
+          submitCalledRef.current = true
+          const answersArray = questions.map(q => reponsesRef.current[q.numero] || '')
+          const { data: res } = await supabase.rpc('submit_qcm_individual', { p_code: sessionCode, p_answers: answersArray })
+          if (res?.results) { setResultats(res.results); setEtape('resultat') }
+        }
+        return
+      }
+
+      // 2. Réponses modifiées par l'enseignant (réponse retirée)
+      const serverReponses = data.reponses_live || {}
+      const localReponses = reponsesRef.current
+      let changed = false
+      for (const key of Object.keys(localReponses)) {
+        if (!(key in serverReponses)) {
+          changed = true
+          break
+        }
+      }
+      if (changed) {
+        // Synchroniser avec le serveur (réponses retirées)
+        const newLocal: Record<number, string> = {}
+        for (const [k, v] of Object.entries(serverReponses)) {
+          newLocal[parseInt(k)] = v as string
+        }
+        setReponses(newLocal)
+      }
+
+      // 3. Timer reset par l'enseignant
+      if (data.timer_reset_at) {
+        const resetAt = new Date(data.timer_reset_at).getTime()
+        const now = Date.now()
+        const elapsed = Math.floor((now - resetAt) / 1000)
+        const remaining = Math.max(0, duree - elapsed)
+        setTimer(remaining)
+        if (remaining <= 0 && !timerExpired) {
+          if (timerRef.current) clearInterval(timerRef.current)
+          setTimerActive(false); setTimerExpired(true); playEndBeep()
+          autoSubmit()
+        }
+      }
+    }, 3000)
   }
 
   // ── Étape 1 : Valider le code individuel ──
@@ -61,7 +161,7 @@ export default function TestEleve() {
     // Chercher le code individuel
     const { data: se } = await supabase
       .from('session_eleves')
-      .select('id, session_id, eleve_id, termine, eleve:eleves(id, nom, prenom, classe:classes(niveau))')
+      .select('id, session_id, eleve_id, termine, timer_reset_at, reponses_live, eleve:eleves(id, nom, prenom, classe:classes(niveau))')
       .eq('code_individuel', code)
       .single()
 
@@ -69,16 +169,36 @@ export default function TestEleve() {
     if ((se as any).termine) { setErreur('Tu as déjà passé ce test.'); return }
 
     // Vérifier que la session est active
-    const { data: session } = await supabase.from('test_sessions').select('id, code, periode_id, active, expires_at').eq('id', (se as any).session_id).single()
+    const { data: session } = await supabase.from('test_sessions').select('id, code, periode_id, active, expires_at, duree_timer').eq('id', (se as any).session_id).single()
     if (!session || !session.active) { setErreur('Cette session a été désactivée.'); return }
     if (new Date(session.expires_at) < new Date()) { setErreur('Cette session a expiré.'); return }
 
+    const duree = session.duree_timer || 300
+    setDureeTimer(duree)
     setSessionCode(code)
+    setSessionEleveId((se as any).id)
     setEleveNom((se as any).eleve?.nom || '')
     setElevePrenom((se as any).eleve?.prenom || '')
+    submitCalledRef.current = false
 
-    // Marquer comme connecté
-    await supabase.from('session_eleves').update({ connecte: true, debut_test: new Date().toISOString() }).eq('id', (se as any).id)
+    // Marquer comme connecté + debut_test
+    await supabase.from('session_eleves').update({
+      connecte: true,
+      debut_test: new Date().toISOString(),
+      reponses_live: {},
+    }).eq('id', (se as any).id)
+
+    // Restaurer les réponses live si existantes (reconnexion)
+    const existingReponses = (se as any).reponses_live || {}
+    if (Object.keys(existingReponses).length > 0) {
+      const restored: Record<number, string> = {}
+      for (const [k, v] of Object.entries(existingReponses)) {
+        restored[parseInt(k)] = v as string
+      }
+      setReponses(restored)
+    } else {
+      setReponses({})
+    }
 
     // Charger le test QCM
     const niveau = (se as any).eleve?.classe?.niveau || ''
@@ -91,21 +211,34 @@ export default function TestEleve() {
     const { data: qs } = await supabase.from('qcm_questions').select('id, numero, question_text, option_a, option_b, option_c, option_d').eq('qcm_test_id', test.id).order('numero')
     if (!qs || qs.length === 0) { setErreur('Les questions ne sont pas encore prêtes.'); return }
     setQuestions(qs)
-    setReponses({})
 
-    if (test.texte_reference) { setEtape('lecture') } else { setEtape('questions'); startTimer() }
+    // Démarrer le polling
+    startPolling((se as any).id, duree)
+
+    if (test.texte_reference) {
+      setEtape('lecture')
+    } else {
+      setEtape('questions')
+      startTimer(duree)
+    }
   }
 
-  // ── Soumettre ──
+  // ── Soumettre (bouton manuel) ──
   async function soumettre() {
     if (timerRef.current) clearInterval(timerRef.current)
+    if (pollRef.current) clearInterval(pollRef.current)
     setTimerActive(false)
     setErreur('')
-    const toutRepondu = questions.every(q => reponses[q.numero])
-    if (!toutRepondu) { setErreur('Réponds à toutes les questions avant de valider.'); return }
+
+    // Accepter soumission même incomplète si timer expiré
+    if (!timerExpired) {
+      const toutRepondu = questions.every(q => reponses[q.numero])
+      if (!toutRepondu) { setErreur('Réponds à toutes les questions avant de valider.'); return }
+    }
 
     setSubmitting(true)
-    const answersArray = questions.map(q => reponses[q.numero])
+    submitCalledRef.current = true
+    const answersArray = questions.map(q => reponses[q.numero] || '')
     const { data, error } = await supabase.rpc('submit_qcm_individual', { p_code: sessionCode, p_answers: answersArray })
     setSubmitting(false)
 
@@ -117,9 +250,11 @@ export default function TestEleve() {
 
   function retourAccueil() {
     if (timerRef.current) clearInterval(timerRef.current)
-    setTimerActive(false); setTimerExpired(false)
+    if (pollRef.current) clearInterval(pollRef.current)
+    setTimerActive(false); setTimerExpired(false); setClosedByTeacher(false)
     setCodeInput(''); setErreur(''); setEtape('code')
     setQuestions([]); setReponses({}); setResultats(null)
+    setSessionEleveId(''); submitCalledRef.current = false
   }
 
   // ── Styles ──
@@ -169,7 +304,7 @@ export default function TestEleve() {
             fontFamily: 'Georgia, serif', marginBottom: 24, maxHeight: 400, overflowY: 'auto',
             whiteSpace: 'pre-wrap',
           }}>{texteReference}</div>
-          <button onClick={() => { setEtape('questions'); startTimer() }} style={btnPrimary}>J'ai lu le texte</button>
+          <button onClick={() => { setEtape('questions'); startTimer(dureeTimer) }} style={btnPrimary}>J'ai lu le texte</button>
         </div>
       )}
 
@@ -211,7 +346,7 @@ export default function TestEleve() {
                 {(['A', 'B', 'C', 'D'] as const).map(letter => {
                   const selected = reponses[q.numero] === letter
                   return (
-                    <button key={letter} onClick={() => setReponses(prev => ({ ...prev, [q.numero]: letter }))} style={{
+                    <button key={letter} onClick={() => envoyerReponseLive(q.numero, letter)} style={{
                       padding: '14px 16px', borderRadius: 10, border: `2px solid ${selected ? '#3b82f6' : '#e2e8f0'}`,
                       background: selected ? '#eff6ff' : 'white', cursor: 'pointer', fontSize: 14,
                       fontWeight: selected ? 700 : 500, color: selected ? '#1e3a5f' : '#475569',
@@ -229,11 +364,12 @@ export default function TestEleve() {
           {/* GROS BOUTON VALIDER */}
           <button
             onClick={soumettre}
-            disabled={submitting || Object.keys(reponses).length < questions.length}
+            disabled={submitting || (!timerExpired && Object.keys(reponses).length < questions.length)}
             style={{
               width: '100%', padding: '20px', borderRadius: 16, border: 'none',
-              background: (submitting || Object.keys(reponses).length < questions.length) ? '#94a3b8' : '#16a34a',
-              color: 'white', fontSize: 20, fontWeight: 800, cursor: (submitting || Object.keys(reponses).length < questions.length) ? 'default' : 'pointer',
+              background: (submitting || (!timerExpired && Object.keys(reponses).length < questions.length)) ? '#94a3b8' : '#16a34a',
+              color: 'white', fontSize: 20, fontWeight: 800,
+              cursor: (submitting || (!timerExpired && Object.keys(reponses).length < questions.length)) ? 'default' : 'pointer',
               marginTop: 12, boxShadow: '0 4px 12px rgba(22,163,74,0.3)',
               transition: 'all 0.2s',
             }}
@@ -247,6 +383,11 @@ export default function TestEleve() {
       {etape === 'resultat' && resultats && (
         <div style={card}>
           <h1 style={title}>Bravo {elevePrenom} !</h1>
+          {closedByTeacher && (
+            <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 10, padding: '8px 16px', marginBottom: 16, fontSize: 13, color: '#1d4ed8', textAlign: 'center', fontWeight: 600 }}>
+              Ton enseignant a clos ta session.
+            </div>
+          )}
           <div style={{
             fontSize: 56, fontWeight: 800, textAlign: 'center', margin: '16px 0 24px',
             color: resultats.filter(r => r === 'Correct').length >= 4 ? '#16a34a' : resultats.filter(r => r === 'Correct').length >= 2 ? '#d97706' : '#dc2626',
@@ -257,12 +398,12 @@ export default function TestEleve() {
             {resultats.map((r, i) => (
               <div key={i} style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRadius: 10,
-                background: r === 'Correct' ? '#f0fdf4' : '#fef2f2',
-                border: `1px solid ${r === 'Correct' ? '#bbf7d0' : '#fecaca'}`,
+                background: r === 'Correct' ? '#f0fdf4' : r === 'Incorrect' ? '#fef2f2' : '#f8fafc',
+                border: `1px solid ${r === 'Correct' ? '#bbf7d0' : r === 'Incorrect' ? '#fecaca' : '#e2e8f0'}`,
               }}>
-                <span style={{ fontSize: 20 }}>{r === 'Correct' ? '✓' : '✗'}</span>
-                <span style={{ fontSize: 14, fontWeight: 600, color: r === 'Correct' ? '#16a34a' : '#dc2626' }}>
-                  Question {i + 1} — {r === 'Correct' ? 'Bonne réponse' : 'Mauvaise réponse'}
+                <span style={{ fontSize: 20 }}>{r === 'Correct' ? '✓' : r === 'Incorrect' ? '✗' : '—'}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: r === 'Correct' ? '#16a34a' : r === 'Incorrect' ? '#dc2626' : '#94a3b8' }}>
+                  Question {i + 1} — {r === 'Correct' ? 'Bonne réponse' : r === 'Incorrect' ? 'Mauvaise réponse' : 'Non répondu'}
                 </span>
               </div>
             ))}

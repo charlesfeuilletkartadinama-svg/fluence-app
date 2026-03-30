@@ -240,102 +240,44 @@ export default function MesEleves() {
                   <div style={{ padding: '4px 0' }}>
                     {classe.eleves.map((eleve, i) => {
                       const cfg = statutConfig[eleve.statut]
-                      const isOpen = openEleve === eleve.id
-                      const evo = eleve.evolution || []
-                      // Progression entre premières et dernière passation
+                      const evo = eleve.evolution?.filter(e => /^T\d/.test(e.code)) || []
                       const scores = evo.filter(e => e.score != null).map(e => e.score!)
                       const progression = scores.length >= 2 ? scores[scores.length - 1] - scores[0] : null
                       return (
-                        <div key={eleve.id}>
-                          <button onClick={() => setOpenEleve(isOpen ? null : eleve.id)} style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '10px 24px', width: '100%', border: 'none', cursor: 'pointer',
-                            borderBottom: (i < classe.eleves.length - 1 && !isOpen) ? '1px solid var(--border-light)' : 'none',
-                            background: isOpen ? 'rgba(0,24,69,0.03)' : eleve.statut === 'evalue' ? 'transparent' : cfg.bg,
-                            transition: 'background 0.1s', textAlign: 'left',
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontSize: 10, color: 'var(--text-tertiary)', transition: 'transform 0.2s', transform: isOpen ? 'rotate(90deg)' : 'none' }}>▶</span>
-                              <span style={{ fontFamily: 'var(--font-sans)', fontSize: 14, color: 'var(--primary-dark)' }}>
-                                <strong>{eleve.nom}</strong> {eleve.prenom}
-                              </span>
-                              {/* Mini évolution inline */}
-                              {evo.length > 1 && (
-                                <div style={{ display: 'flex', gap: 3, marginLeft: 8 }}>
-                                  {evo.filter(e => /^T\d/.test(e.code)).map(e => (
-                                    <span key={e.code} style={{
-                                      fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
-                                      background: e.score != null ? (e.score >= 130 ? '#dcfce7' : e.score >= 80 ? '#fef9c3' : '#fef2f2') : '#f3f4f6',
-                                      color: e.score != null ? (e.score >= 130 ? '#16a34a' : e.score >= 80 ? '#a16207' : '#dc2626') : '#94a3b8',
-                                      fontFamily: 'var(--font-sans)',
-                                    }}>{e.score ?? '—'}</span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              {progression !== null && (
-                                <span style={{
-                                  fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-sans)',
-                                  color: progression > 0 ? '#16a34a' : progression < 0 ? '#dc2626' : '#94a3b8',
-                                }}>
-                                  {progression > 0 ? '+' : ''}{progression}
-                                </span>
-                              )}
-                              <span style={{
-                                fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 700,
-                                color: cfg.color, minWidth: 70, textAlign: 'right',
-                              }}>
-                                {eleve.statut === 'evalue' ? `${eleve.score} m/min` : cfg.label}
-                              </span>
-                            </div>
-                          </button>
-                          {/* Panel évolution dépliable */}
-                          {isOpen && (
-                            <div style={{ padding: '12px 24px 16px 48px', background: 'rgba(0,24,69,0.02)', borderBottom: '1px solid var(--border-light)' }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 10, fontFamily: 'var(--font-sans)', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                                Évolution
+                        <button key={eleve.id} onClick={() => setOpenEleve(openEleve === eleve.id ? null : eleve.id)} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '10px 24px', width: '100%', border: 'none', cursor: 'pointer',
+                          borderBottom: i < classe.eleves.length - 1 ? '1px solid var(--border-light)' : 'none',
+                          background: openEleve === eleve.id ? 'rgba(37,99,235,0.06)' : eleve.statut === 'evalue' ? 'transparent' : cfg.bg,
+                          transition: 'background 0.1s', textAlign: 'left',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 14, color: 'var(--primary-dark)' }}>
+                              <strong>{eleve.nom}</strong> {eleve.prenom}
+                            </span>
+                            {evo.length > 1 && (
+                              <div style={{ display: 'flex', gap: 3, marginLeft: 6 }}>
+                                {evo.map(e => (
+                                  <span key={e.code} style={{
+                                    fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+                                    background: e.score != null ? (e.score >= 130 ? '#dcfce7' : e.score >= 80 ? '#fef9c3' : '#fef2f2') : '#f3f4f6',
+                                    color: e.score != null ? (e.score >= 130 ? '#16a34a' : e.score >= 80 ? '#a16207' : '#dc2626') : '#94a3b8',
+                                  }}>{e.score ?? '—'}</span>
+                                ))}
                               </div>
-                              {evo.length === 0 ? (
-                                <p style={{ fontSize: 13, color: 'var(--text-tertiary)', fontFamily: 'var(--font-sans)' }}>Aucune passation enregistrée</p>
-                              ) : (
-                                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 0 }}>
-                                  {evo.filter(e => /^T\d/.test(e.code)).map((e, idx, arr) => {
-                                    const maxScore = Math.max(...arr.filter(x => x.score != null).map(x => x.score!), 1)
-                                    const barH = e.score != null ? Math.max(8, (e.score / maxScore) * 80) : 8
-                                    const prev = idx > 0 ? arr[idx - 1].score : null
-                                    const diff = e.score != null && prev != null ? e.score - prev : null
-                                    return (
-                                      <div key={e.code} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 70 }}>
-                                        {/* Score */}
-                                        <span style={{
-                                          fontSize: 16, fontWeight: 800, fontFamily: 'var(--font-sans)', marginBottom: 4,
-                                          color: e.score != null ? (e.score >= 130 ? '#16a34a' : e.score >= 80 ? '#a16207' : '#dc2626') : '#94a3b8',
-                                        }}>
-                                          {e.ne ? 'N.É.' : e.absent ? 'Abs.' : e.score ?? '—'}
-                                        </span>
-                                        {/* Barre */}
-                                        <div style={{
-                                          width: 32, height: barH, borderRadius: '6px 6px 0 0',
-                                          background: e.score != null ? (e.score >= 130 ? '#16a34a' : e.score >= 80 ? '#eab308' : '#dc2626') : '#e2e8f0',
-                                          transition: 'height 0.3s',
-                                        }} />
-                                        {/* Période */}
-                                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', marginTop: 6, fontFamily: 'var(--font-sans)' }}>{e.code}</span>
-                                        {/* Diff */}
-                                        {diff !== null && (
-                                          <span style={{ fontSize: 10, fontWeight: 700, color: diff > 0 ? '#16a34a' : diff < 0 ? '#dc2626' : '#94a3b8', fontFamily: 'var(--font-sans)' }}>
-                                            {diff > 0 ? '+' : ''}{diff}
-                                          </span>
-                                        )}
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {progression !== null && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: progression > 0 ? '#16a34a' : progression < 0 ? '#dc2626' : '#94a3b8' }}>
+                                {progression > 0 ? '+' : ''}{progression}
+                              </span>
+                            )}
+                            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 700, color: cfg.color, minWidth: 70, textAlign: 'right' }}>
+                              {eleve.statut === 'evalue' ? `${eleve.score} m/min` : cfg.label}
+                            </span>
+                          </div>
+                        </button>
                       )
                     })}
                   </div>
@@ -344,6 +286,143 @@ export default function MesEleves() {
             })}
           </div>
         )}
+        {/* ── Drawer latéral fiche élève ── */}
+        {openEleve && (() => {
+          const eleve = classes.flatMap(c => c.eleves).find(e => e.id === openEleve)
+          if (!eleve) return null
+          const evo = (eleve.evolution || []).filter(e => /^T\d/.test(e.code))
+          const scores = evo.filter(e => e.score != null).map(e => e.score!)
+          const progression = scores.length >= 2 ? scores[scores.length - 1] - scores[0] : null
+          const maxS = Math.max(...scores, 1)
+          const minS = Math.min(...scores, 0)
+          const range = Math.max(maxS - minS, 20)
+
+          // SVG courbe
+          const svgW = 280, svgH = 140, padX = 30, padY = 20
+          const plotW = svgW - padX * 2, plotH = svgH - padY * 2
+          const points = evo.map((e, i) => ({
+            x: padX + (evo.length > 1 ? (i / (evo.length - 1)) * plotW : plotW / 2),
+            y: e.score != null ? padY + plotH - ((e.score - minS + 10) / (range + 20)) * plotH : padY + plotH,
+            score: e.score, code: e.code, ne: e.ne, absent: e.absent,
+          }))
+          const polyline = points.filter(p => p.score != null).map(p => `${p.x},${p.y}`).join(' ')
+
+          return (
+            <>
+              <div onClick={() => setOpenEleve(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 998 }} />
+              <div style={{
+                position: 'fixed', top: 0, right: 0, bottom: 0, width: 380, background: 'white', zIndex: 999,
+                boxShadow: '-8px 0 32px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column',
+                fontFamily: 'var(--font-sans)', overflowY: 'auto',
+              }}>
+                {/* Header */}
+                <div style={{ padding: '24px 28px 16px', borderBottom: '1.5px solid var(--border-light)' }}>
+                  <button onClick={() => setOpenEleve(null)} style={{ float: 'right', background: 'none', border: 'none', fontSize: 20, color: 'var(--text-tertiary)', cursor: 'pointer' }}>✕</button>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Fiche élève</div>
+                  <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>{eleve.nom} {eleve.prenom}</h2>
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
+                    {classes.find(c => c.eleves.some(e => e.id === openEleve))?.nom?.replace('[TEST] ', '')}
+                  </p>
+                </div>
+
+                {/* KPIs */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, padding: '16px 28px' }}>
+                  <div style={{ background: 'rgba(0,24,69,0.04)', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary-dark)' }}>{eleve.score ?? '—'}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>Score actuel</div>
+                  </div>
+                  <div style={{ background: progression !== null && progression > 0 ? 'rgba(22,163,74,0.06)' : 'rgba(0,24,69,0.04)', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: progression !== null ? (progression > 0 ? '#16a34a' : '#dc2626') : 'var(--text-tertiary)' }}>
+                      {progression !== null ? `${progression > 0 ? '+' : ''}${progression}` : '—'}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>Progression</div>
+                  </div>
+                  <div style={{ background: 'rgba(37,99,235,0.06)', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: '#2563eb' }}>{evo.length}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>Passations</div>
+                  </div>
+                </div>
+
+                {/* Courbe SVG */}
+                {evo.length > 0 && (
+                  <div style={{ padding: '8px 28px 16px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                      Courbe d'évolution
+                    </div>
+                    <div style={{ background: 'var(--bg-gray)', borderRadius: 14, padding: '16px 12px' }}>
+                      <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} style={{ display: 'block', margin: '0 auto' }}>
+                        {/* Grille horizontale */}
+                        {[0, 0.25, 0.5, 0.75, 1].map(pct => {
+                          const y = padY + plotH * (1 - pct)
+                          const val = Math.round(minS - 10 + (range + 20) * pct)
+                          return <g key={pct}>
+                            <line x1={padX} x2={svgW - padX} y1={y} y2={y} stroke="#e2e8f0" strokeWidth={1} />
+                            <text x={padX - 4} y={y + 4} fontSize={9} fill="#94a3b8" textAnchor="end">{val}</text>
+                          </g>
+                        })}
+                        {/* Courbe */}
+                        {polyline && <polyline points={polyline} fill="none" stroke="#2563eb" strokeWidth={2.5} strokeLinejoin="round" />}
+                        {/* Points + labels */}
+                        {points.map((p, i) => (
+                          <g key={i}>
+                            <circle cx={p.x} cy={p.y} r={5} fill={p.score != null ? (p.score >= 130 ? '#16a34a' : p.score >= 80 ? '#eab308' : '#dc2626') : '#d1d5db'} stroke="white" strokeWidth={2} />
+                            <text x={p.x} y={p.y - 10} fontSize={11} fontWeight={700} fill="var(--primary-dark)" textAnchor="middle">
+                              {p.score ?? (p.ne ? 'NÉ' : 'Abs')}
+                            </text>
+                            <text x={p.x} y={svgH - 4} fontSize={10} fontWeight={600} fill="#64748b" textAnchor="middle">{p.code}</text>
+                          </g>
+                        ))}
+                      </svg>
+                    </div>
+                  </div>
+                )}
+
+                {/* Détail par période */}
+                <div style={{ padding: '0 28px 24px' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                    Détail par période
+                  </div>
+                  {evo.length === 0 ? (
+                    <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Aucune passation</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {evo.map((e, idx) => {
+                        const prev = idx > 0 ? evo[idx - 1].score : null
+                        const diff = e.score != null && prev != null ? e.score - prev : null
+                        return (
+                          <div key={e.code} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '10px 14px', borderRadius: 10,
+                            background: e.score != null ? (e.score >= 130 ? '#f0fdf4' : e.score >= 80 ? '#fefce8' : '#fef2f2') : '#f8fafc',
+                            border: `1px solid ${e.score != null ? (e.score >= 130 ? '#bbf7d0' : e.score >= 80 ? '#fde68a' : '#fecaca') : '#e2e8f0'}`,
+                          }}>
+                            <div>
+                              <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--primary-dark)' }}>{e.code}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              {diff !== null && (
+                                <span style={{ fontSize: 12, fontWeight: 700, color: diff > 0 ? '#16a34a' : diff < 0 ? '#dc2626' : '#94a3b8' }}>
+                                  {diff > 0 ? '+' : ''}{diff}
+                                </span>
+                              )}
+                              <span style={{
+                                fontSize: 18, fontWeight: 800,
+                                color: e.score != null ? (e.score >= 130 ? '#16a34a' : e.score >= 80 ? '#a16207' : '#dc2626') : '#94a3b8',
+                              }}>
+                                {e.ne ? 'N.É.' : e.absent ? 'Abs.' : e.score != null ? `${e.score}` : '—'}
+                              </span>
+                              {e.score != null && <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>m/min</span>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )
+        })()}
       </main>
     </div>
   )

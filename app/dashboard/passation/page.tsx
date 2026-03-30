@@ -221,11 +221,24 @@ function PassationContent() {
     setCreatingQcm(true)
     let code = genererCode()
     let attempts = 0
+    let sessionId = ''
     while (attempts < 5) {
-      const { error } = await supabase.from('test_sessions').insert({ code, classe_id: classe.id, periode_id: periode.id, enseignant_id: profil.id })
-      if (!error) break
-      if (error.code === '23505') { code = genererCode(); attempts++ }
+      const { data, error } = await supabase.from('test_sessions').insert({ code, classe_id: classe.id, periode_id: periode.id, enseignant_id: profil.id }).select('id').single()
+      if (!error && data) { sessionId = data.id; break }
+      if (error?.code === '23505') { code = genererCode(); attempts++ }
       else { setCreatingQcm(false); return }
+    }
+    // Générer un code individuel par élève
+    if (sessionId) {
+      const { data: elevesData } = await supabase.from('eleves').select('id').eq('classe_id', classe.id).eq('actif', true)
+      if (elevesData && elevesData.length > 0) {
+        const rows = elevesData.map(e => ({
+          session_id: sessionId,
+          eleve_id: e.id,
+          code_individuel: code + '-' + Math.random().toString(36).substring(2, 6).toUpperCase(),
+        }))
+        await supabase.from('session_eleves').insert(rows)
+      }
     }
     setCreatingQcm(false)
     chargerQcmSessions(classe.id, periode.id)

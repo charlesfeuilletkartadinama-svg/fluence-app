@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/app/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
@@ -49,6 +49,9 @@ function Saisie() {
   const [sessions, setSessions]       = useState<TestSession[]>([])
   const [creatingSession, setCreatingSession] = useState(false)
   const [copiedCode, setCopiedCode]   = useState('')
+  const [liveSessionId, setLiveSessionId] = useState<string | null>(null)
+  const [liveEleves, setLiveEleves]   = useState<{ id: string; nom: string; prenom: string; code: string; connecte: boolean; termine: boolean }[]>([])
+  const liveIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [qcmResultats, setQcmResultats] = useState<Record<string, { q1: string|null, q2: string|null, q3: string|null, q4: string|null, q5: string|null, q6: string|null }>>({})
   // QCM individuel
   const [qcmMode, setQcmMode]         = useState<'choix' | 'individuelle' | 'collective'>('choix')
@@ -300,20 +303,53 @@ function Saisie() {
     setCreatingSession(true)
     let code = genererCode()
     let attempts = 0
+    let sessionId = ''
     while (attempts < 5) {
-      const { error } = await supabase.from('test_sessions').insert({
+      const { data, error } = await supabase.from('test_sessions').insert({
         code,
         classe_id: classe.id,
         periode_id: periode.id,
         enseignant_id: profil.id,
-      })
-      if (!error) break
-      if (error.code === '23505') { code = genererCode(); attempts++ }
+      }).select('id').single()
+      if (!error && data) { sessionId = data.id; break }
+      if (error?.code === '23505') { code = genererCode(); attempts++ }
       else { setCreatingSession(false); return }
+    }
+    // Générer un code individuel pour chaque élève de la classe
+    if (sessionId) {
+      const { data: elevesData } = await supabase.from('eleves').select('id').eq('classe_id', classe.id).eq('actif', true)
+      if (elevesData && elevesData.length > 0) {
+        const rows = elevesData.map(e => ({
+          session_id: sessionId,
+          eleve_id: e.id,
+          code_individuel: code + '-' + Math.random().toString(36).substring(2, 6).toUpperCase(),
+        }))
+        await supabase.from('session_eleves').insert(rows)
+      }
     }
     setCreatingSession(false)
     chargerSessions(classe.id, periode.id)
   }
+
+  async function ouvrirSuiviLive(sessionId: string) {
+    if (liveSessionId === sessionId) { setLiveSessionId(null); if (liveIntervalRef.current) clearInterval(liveIntervalRef.current); return }
+    setLiveSessionId(sessionId)
+    const charger = async () => {
+      const { data } = await supabase.from('session_eleves')
+        .select('id, code_individuel, connecte, termine, eleve:eleves(nom, prenom)')
+        .eq('session_id', sessionId).order('created_at')
+      setLiveEleves((data || []).map((se: any) => ({
+        id: se.id, nom: se.eleve?.nom || '', prenom: se.eleve?.prenom || '',
+        code: se.code_individuel, connecte: se.connecte, termine: se.termine,
+      })))
+    }
+    await charger()
+    // Polling toutes les 5s
+    if (liveIntervalRef.current) clearInterval(liveIntervalRef.current)
+    liveIntervalRef.current = setInterval(charger, 5000)
+  }
+
+  useEffect(() => { return () => { if (liveIntervalRef.current) clearInterval(liveIntervalRef.current) } }, [])
 
   async function desactiverSession(id: string) {
     await supabase.from('test_sessions').update({ active: false }).eq('id', id)
@@ -862,7 +898,8 @@ function Saisie() {
                               const expired = new Date(s.expires_at) < new Date()
                               const isActive = s.active && !expired
                               return (
-                                <tr key={s.id} style={{ borderTop: '1px solid var(--border-light)' }}>
+                                <React.Fragment key={s.id}>
+                                <tr style={{ borderTop: '1px solid var(--border-light)' }}>
                                   <td style={{ padding: '14px 20px', fontWeight: 800, color: 'var(--primary-dark)', fontFamily: 'monospace', fontSize: 16, letterSpacing: 2 }}>{s.code}</td>
                                   <td style={{ padding: '14px 20px', textAlign: 'center' }}>
                                     <span style={{
@@ -877,14 +914,59 @@ function Saisie() {
                                         padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
                                       }}>{copiedCode === s.code ? 'Copié !' : 'Copier'}</button>
                                       {isActive && (
-                                        <button onClick={() => desactiverSession(s.id)} style={{
-                                          background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5',
-                                          padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                                        }}>Désactiver</button>
+                                        <>
+                                          <button onClick={() => ouvrirSuiviLive(s.id)} style={{
+                                            background: liveSessionId === s.id ? '#2563EB' : 'transparent', color: liveSessionId === s.id ? 'white' : '#2563EB', border: '1.5px solid #93c5fd',
+                                            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                          }}>{liveSessionId === s.id ? '● Suivi en cours' : 'Suivi live'}</button>
+                                          <button onClick={() => desactiverSession(s.id)} style={{
+                                            background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5',
+                                            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                                          }}>Désactiver</button>
+                                        </>
                                       )}
                                     </div>
                                   </td>
                                 </tr>
+                                {/* Panel suivi live */}
+                                {liveSessionId === s.id && (
+                                  <tr><td colSpan={4} style={{ padding: 0 }}>
+                                    <div style={{ background: '#eff6ff', padding: '16px 20px', borderTop: '1px solid #bfdbfe' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                        <h4 style={{ fontSize: 14, fontWeight: 800, color: '#1d4ed8', margin: 0, fontFamily: 'var(--font-sans)' }}>
+                                          Codes individuels · {liveEleves.filter(e => e.termine).length}/{liveEleves.length} terminés
+                                        </h4>
+                                        <div style={{ display: 'flex', gap: 8, fontSize: 11, fontFamily: 'var(--font-sans)' }}>
+                                          <span style={{ color: '#16a34a' }}>● Terminé</span>
+                                          <span style={{ color: '#2563eb' }}>● Connecté</span>
+                                          <span style={{ color: '#94a3b8' }}>● En attente</span>
+                                        </div>
+                                      </div>
+                                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+                                        {liveEleves.map(e => (
+                                          <div key={e.id} style={{
+                                            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10,
+                                            background: 'white', border: `1.5px solid ${e.termine ? '#bbf7d0' : e.connecte ? '#93c5fd' : 'var(--border-light)'}`,
+                                          }}>
+                                            <div style={{
+                                              width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                                              background: e.termine ? '#16a34a' : e.connecte ? '#2563eb' : '#d1d5db',
+                                              animation: e.connecte && !e.termine ? 'pulse 1.5s infinite' : 'none',
+                                            }} />
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)', fontFamily: 'var(--font-sans)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.nom} {e.prenom}</div>
+                                              <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#64748b', letterSpacing: 1 }}>{e.code}</div>
+                                            </div>
+                                            <span style={{ fontSize: 10, fontWeight: 700, color: e.termine ? '#16a34a' : e.connecte ? '#2563eb' : '#94a3b8', fontFamily: 'var(--font-sans)' }}>
+                                              {e.termine ? '✓ Fait' : e.connecte ? 'En cours' : 'Attente'}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </td></tr>
+                                )}
+                                </React.Fragment>
                               )
                             })}
                           </tbody>

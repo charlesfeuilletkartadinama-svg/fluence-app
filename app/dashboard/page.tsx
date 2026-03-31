@@ -173,9 +173,8 @@ export default function Dashboard() {
 
   async function chargerDonnees() {
     if (!profil) return
-
     if (profil.role === 'enseignant') {
-      await chargerDonneesEnseignant()
+      try { await chargerDonneesEnseignant() } catch (e) { console.error('Dashboard enseignant:', e) }
     } else if (['directeur', 'principal'].includes(profil.role)) {
       await chargerDonneesDirection()
     } else if (['coordo_rep', 'ien', 'ia_dasen', 'recteur'].includes(profil.role)) {

@@ -95,8 +95,7 @@ export default function Sidebar() {
         }]
       : []),
     ...(isEnseignant ? [
-      { href: '/dashboard/eleves',     icon: '🏫', label: 'Mes classes'  },
-      { href: '/dashboard/mes-eleves', icon: '👥', label: 'Mes élèves'  },
+      { href: '/dashboard/mes-classes', icon: '🏫', label: 'Mes classes' },
     ] : !isDirection ? [
       { href: '/dashboard/eleves', icon: '👥', label: profil?.role === 'admin' ? 'Explorateur élèves' : (isReseau || isGlobal) ? "Réseau d'élèves" : 'Mes élèves' },
     ] : []),
@@ -107,8 +106,10 @@ export default function Sidebar() {
         { href: '/dashboard/passation', label: 'Mode Passation' },
       ],
     }] : []),
-    { href: '/dashboard/statistiques', icon: '📈', label: 'Statistiques' },
-    { href: '/dashboard/groupes',      icon: '🎯', label: 'Groupes & Remédiation' },
+    ...(!isEnseignant ? [
+      { href: '/dashboard/statistiques', icon: '📈', label: 'Statistiques' },
+      { href: '/dashboard/groupes',      icon: '🎯', label: 'Groupes & Remédiation' },
+    ] : []),
     { href: '/dashboard/rapport',      icon: '📄', label: 'Rapports PDF' },
     ...(profil && ['admin','ia_dasen','recteur','coordo_rep','ien'].includes(profil.role)
       ? [{

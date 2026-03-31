@@ -444,9 +444,9 @@ export default function MesClasses() {
                       </div>
                       {/* Placeholder remédiation IA */}
                       <div style={{ padding: '12px 20px', background: '#f8fafc', borderTop: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 16 }}>🤖</span>
+                        <span style={{ fontSize: 16 }}>💡</span>
                         <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-                          Suggestions de remédiation IA — bientôt disponible
+                          Suggestions de remédiation — bientôt disponible
                         </span>
                       </div>
                     </div>

@@ -11,7 +11,8 @@ import { classerEleve } from '@/app/lib/fluenceUtils'
 type EleveData = {
   id: string; nom: string; prenom: string; score: number | null
   ne: boolean; absent: boolean; groupe: number // 1=très fragile, 2=fragile, 3=en cours, 4=attendu
-  evolution: { code: string; annee: string; score: number | null; ne: boolean; absent: boolean }[]
+  qcmScore: number | null // /6 pour la période courante
+  evolution: { code: string; annee: string; score: number | null; ne: boolean; absent: boolean; qcm: number | null }[]
 }
 
 type ClasseData = {
@@ -90,7 +91,7 @@ export default function MesClasses() {
     let allPass: any[] = []
     if (eleveIds.length > 0) {
       const { data } = await supabase.from('passations')
-        .select('eleve_id, score, non_evalue, absent, periode:periodes(id, code, annee_scolaire)')
+        .select('eleve_id, score, non_evalue, absent, q1, q2, q3, q4, q5, q6, periode:periodes(id, code, annee_scolaire)')
         .in('eleve_id', eleveIds)
       allPass = data || []
     }
@@ -103,6 +104,13 @@ export default function MesClasses() {
       '3eme': { seuil_min: 80, seuil_attendu: 130 }, '6eme': { seuil_min: 65, seuil_attendu: 100 },
     }
     for (const n of (normesData || [])) normesMap[n.niveau] = { seuil_min: n.seuil_min, seuil_attendu: n.seuil_attendu }
+
+    // Helper QCM score
+    const calcQcm = (p: any): number | null => {
+      const qs = [p.q1, p.q2, p.q3, p.q4, p.q5, p.q6]
+      if (qs.every((q: any) => q == null)) return null
+      return qs.filter((q: any) => q === 'Correct').length
+    }
 
     // 6. Construire les classes avec données
     const prio = (c: string) => { const m = c.match(/^T(\d)/); return m ? parseInt(m[1]) : 99 }
@@ -117,15 +125,17 @@ export default function MesClasses() {
         const ne = passCurrent?.non_evalue || false
         const absent = passCurrent?.absent || false
         const groupe = score != null ? classerEleve(score, norme) : 0
+        const qcmScore = passCurrent ? calcQcm(passCurrent) : null
 
         // Évolution multi-années
         const evoRaw = allPass.filter((p: any) => p.eleve_id === e.id && /^T\d/.test(p.periode?.code || ''))
         const evolution = evoRaw.map((p: any) => ({
           code: p.periode?.code || '', annee: p.periode?.annee_scolaire || '',
           score: p.non_evalue || p.absent ? null : p.score, ne: p.non_evalue || false, absent: p.absent || false,
+          qcm: calcQcm(p),
         })).sort((a, b) => a.annee.localeCompare(b.annee) || prio(a.code) - prio(b.code))
 
-        return { id: e.id, nom: e.nom, prenom: e.prenom, score, ne, absent, groupe, evolution }
+        return { id: e.id, nom: e.nom, prenom: e.prenom, score, ne, absent, groupe, qcmScore, evolution }
       })
 
       const scores = elevesResult.filter(e => e.score != null).map(e => e.score!)
@@ -327,6 +337,12 @@ export default function MesClasses() {
                           {progression > 0 ? '+' : ''}{progression}
                         </span>
                       )}
+                      {e.qcmScore != null && (
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                          background: e.qcmScore >= 4 ? '#dcfce7' : e.qcmScore >= 2 ? '#fef9c3' : '#fef2f2',
+                          color: e.qcmScore >= 4 ? '#16a34a' : e.qcmScore >= 2 ? '#a16207' : '#dc2626',
+                        }}>{e.qcmScore}/6</span>
+                      )}
                       <span style={{ fontSize: 13, fontWeight: 700, minWidth: 65, textAlign: 'right',
                         color: e.score != null ? (gc?.color || 'var(--primary-dark)') : '#94a3b8',
                       }}>
@@ -351,9 +367,14 @@ export default function MesClasses() {
           const annees = [...new Set(evo.map(e => e.annee))].sort()
           const shortAnnee = (a: string) => a.replace(/^20(\d\d)-20(\d\d)$/, '$1-$2')
 
-          const svgW = 320, svgH = 160, padX = 30, padY = 20
-          const plotW = svgW - padX * 2, plotH = svgH - padY * 2
+          const svgW = 340, svgH = 180, padL = 32, padR = 28, padY = 20
+          const plotW = svgW - padL - padR, plotH = svgH - padY * 2
+          // Échelle gauche : fluence (m/min)
           const scoreToY = (s: number) => padY + plotH - ((s - minS + 10) / (range + 20)) * plotH
+          // Échelle droite : QCM (/6)
+          const qcmToY = (q: number) => padY + plotH - (q / 6) * plotH
+          const hasQcm = evo.some(e => e.qcm != null)
+
           let lastScore: number | null = null
           const points = evo.map((e, i) => {
             const hasScore = e.score != null
@@ -361,13 +382,15 @@ export default function MesClasses() {
             const y = displayScore != null ? scoreToY(displayScore) : padY + plotH
             if (hasScore) lastScore = e.score
             return {
-              x: padX + (evo.length > 1 ? (i / (evo.length - 1)) * plotW : plotW / 2),
+              x: padL + (evo.length > 1 ? (i / (evo.length - 1)) * plotW : plotW / 2),
               y, score: e.score, displayScore, code: e.code, annee: e.annee, ne: e.ne, absent: e.absent,
               isMissing: !hasScore && (e.ne || e.absent),
               label: `${e.code}${annees.length > 1 ? ' ' + shortAnnee(e.annee) : ''}`,
+              qcm: e.qcm, qcmY: e.qcm != null ? qcmToY(e.qcm) : null,
             }
           })
           const polyline = points.filter(p => p.displayScore != null).map(p => `${p.x},${p.y}`).join(' ')
+          const qcmPolyline = points.filter(p => p.qcm != null).map(p => `${p.x},${p.qcmY}`).join(' ')
 
           return (
             <>
@@ -387,20 +410,26 @@ export default function MesClasses() {
                 </div>
 
                 {/* KPIs */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, padding: '16px 28px' }}>
-                  <div style={{ background: 'rgba(0,24,69,0.04)', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary-dark)' }}>{eleveDrawer.score ?? '—'}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>Score actuel</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8, padding: '16px 28px' }}>
+                  <div style={{ background: 'rgba(0,24,69,0.04)', borderRadius: 12, padding: '10px 10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--primary-dark)' }}>{eleveDrawer.score ?? '—'}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>Fluence</div>
                   </div>
-                  <div style={{ background: progression != null && progression > 0 ? 'rgba(22,163,74,0.06)' : 'rgba(0,24,69,0.04)', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: progression != null ? (progression > 0 ? '#16a34a' : '#dc2626') : 'var(--text-tertiary)' }}>
+                  <div style={{ background: 'rgba(249,115,22,0.06)', borderRadius: 12, padding: '10px 10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: eleveDrawer.qcmScore != null ? '#f97316' : 'var(--text-tertiary)' }}>
+                      {eleveDrawer.qcmScore != null ? `${eleveDrawer.qcmScore}/6` : '—'}
+                    </div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>Compréhension</div>
+                  </div>
+                  <div style={{ background: progression != null && progression > 0 ? 'rgba(22,163,74,0.06)' : 'rgba(0,24,69,0.04)', borderRadius: 12, padding: '10px 10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: progression != null ? (progression > 0 ? '#16a34a' : '#dc2626') : 'var(--text-tertiary)' }}>
                       {progression != null ? `${progression > 0 ? '+' : ''}${progression}` : '—'}
                     </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>Progression totale</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>Progression</div>
                   </div>
-                  <div style={{ background: 'rgba(37,99,235,0.06)', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: '#2563eb' }}>{evo.length}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>Passations</div>
+                  <div style={{ background: 'rgba(37,99,235,0.06)', borderRadius: 12, padding: '10px 10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#2563eb' }}>{evo.length}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>Passations</div>
                   </div>
                 </div>
 
@@ -412,15 +441,24 @@ export default function MesClasses() {
                     </div>
                     <div style={{ background: 'var(--bg-gray)', borderRadius: 14, padding: '16px 12px' }}>
                       <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} style={{ display: 'block', margin: '0 auto' }}>
+                        {/* Grille + échelle gauche (fluence) */}
                         {[0, 0.25, 0.5, 0.75, 1].map(pct => {
                           const y = padY + plotH * (1 - pct)
                           const val = Math.round(minS - 10 + (range + 20) * pct)
                           return <g key={pct}>
-                            <line x1={padX} x2={svgW - padX} y1={y} y2={y} stroke="#e2e8f0" strokeWidth={1} />
-                            <text x={padX - 4} y={y + 4} fontSize={9} fill="#94a3b8" textAnchor="end">{val}</text>
+                            <line x1={padL} x2={svgW - padR} y1={y} y2={y} stroke="#e2e8f0" strokeWidth={1} />
+                            <text x={padL - 4} y={y + 4} fontSize={9} fill="#2563eb" textAnchor="end">{val}</text>
                           </g>
                         })}
+                        {/* Échelle droite (QCM /6) */}
+                        {hasQcm && [0, 2, 4, 6].map(q => (
+                          <text key={q} x={svgW - padR + 4} y={qcmToY(q) + 4} fontSize={9} fill="#f97316" textAnchor="start">{q}</text>
+                        ))}
+                        {/* Courbe fluence (bleue) */}
                         {polyline && <polyline points={polyline} fill="none" stroke="#2563eb" strokeWidth={2.5} strokeLinejoin="round" />}
+                        {/* Courbe QCM (orange, pointillée) */}
+                        {hasQcm && qcmPolyline && <polyline points={qcmPolyline} fill="none" stroke="#f97316" strokeWidth={2} strokeLinejoin="round" strokeDasharray="6 3" />}
+                        {/* Points fluence */}
                         {points.map((p, i) => (
                           <g key={i}>
                             {p.isMissing ? (
@@ -431,12 +469,26 @@ export default function MesClasses() {
                             ) : (
                               <>
                                 <circle cx={p.x} cy={p.y} r={5} fill={p.score != null ? (p.score >= 130 ? '#16a34a' : p.score >= 80 ? '#eab308' : '#dc2626') : '#d1d5db'} stroke="white" strokeWidth={2} />
-                                <text x={p.x} y={p.y - 10} fontSize={11} fontWeight={700} fill="var(--primary-dark)" textAnchor="middle">{p.score ?? '—'}</text>
+                                <text x={p.x} y={p.y - 10} fontSize={10} fontWeight={700} fill="var(--primary-dark)" textAnchor="middle">{p.score ?? '—'}</text>
                               </>
                             )}
-                            <text x={p.x} y={svgH - 4} fontSize={annees.length > 1 ? 8 : 10} fontWeight={600} fill="#64748b" textAnchor="middle">{p.label}</text>
+                            {/* Point QCM (losange orange) */}
+                            {p.qcm != null && p.qcmY != null && (
+                              <g>
+                                <rect x={p.x - 4} y={p.qcmY! - 4} width={8} height={8} rx={1} fill="#f97316" stroke="white" strokeWidth={1.5} transform={`rotate(45 ${p.x} ${p.qcmY})`} />
+                                <text x={p.x} y={p.qcmY! + 14} fontSize={9} fontWeight={700} fill="#f97316" textAnchor="middle">{p.qcm}/6</text>
+                              </g>
+                            )}
+                            <text x={p.x} y={svgH - 4} fontSize={annees.length > 1 ? 7 : 9} fontWeight={600} fill="#64748b" textAnchor="middle">{p.label}</text>
                           </g>
                         ))}
+                        {/* Légende */}
+                        <circle cx={padL + 4} cy={svgH - 16} r={3} fill="#2563eb" />
+                        <text x={padL + 10} y={svgH - 13} fontSize={8} fill="#64748b">Fluence</text>
+                        {hasQcm && <>
+                          <rect x={padL + 58} y={svgH - 19} width={6} height={6} rx={1} fill="#f97316" transform={`rotate(45 ${padL + 61} ${svgH - 16})`} />
+                          <text x={padL + 68} y={svgH - 13} fontSize={8} fill="#64748b">QCM /6</text>
+                        </>}
                       </svg>
                     </div>
                   </div>
@@ -471,6 +523,11 @@ export default function MesClasses() {
                                 <span style={{ fontSize: 11, fontWeight: 700, color: diff > 0 ? '#16a34a' : diff < 0 ? '#dc2626' : '#94a3b8' }}>
                                   {diff > 0 ? '+' : ''}{diff}
                                 </span>
+                              )}
+                              {e.qcm != null && (
+                                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                  background: e.qcm >= 4 ? '#fff7ed' : '#fef2f2', color: '#f97316',
+                                }}>{e.qcm}/6</span>
                               )}
                               <span style={{ fontSize: 16, fontWeight: 800, color: e.score != null ? (e.score >= 130 ? '#16a34a' : e.score >= 80 ? '#a16207' : '#dc2626') : '#dc2626' }}>
                                 {e.ne ? 'N.É.' : e.absent ? 'Abs.' : e.score ?? '—'}

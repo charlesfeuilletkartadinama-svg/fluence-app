@@ -1243,7 +1243,7 @@ export default function Dashboard() {
               <>
                 <div className={styles.sectionHeader} style={{ marginBottom: 16 }}>
                   <h2 className={styles.sectionTitle}>Mes classes · période {statsClasses[0].periode}</h2>
-                  <a href="/dashboard/statistiques" className={styles.sectionLink}>Voir statistiques →</a>
+                  <a href="/dashboard/mes-classes" className={styles.sectionLink}>Voir mes classes →</a>
                 </div>
                 <div className={styles.classeStatsGrid}>
                   {statsClasses.map(c => {

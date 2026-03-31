@@ -21,7 +21,16 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router   = useRouter()
   const supabase = createClient()
-  const { profil } = useProfil()
+  const { profil, profilReel } = useProfil()
+  const [hydrated, setHydrated] = useState(false)
+
+  // Attendre que l'impersonation soit hydratée avant de rendre les menus
+  useEffect(() => {
+    // Si le profil réel est admin et que le profil affiché est aussi admin,
+    // c'est que l'impersonation n'a peut-être pas encore hydraté → attendre 1 tick
+    const timer = setTimeout(() => setHydrated(true), 50)
+    return () => clearTimeout(timer)
+  }, [profil])
 
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<{ id: string; nom: string; prenom: string; classe: string }[]>([])

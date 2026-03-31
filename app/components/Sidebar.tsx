@@ -102,8 +102,8 @@ export default function Sidebar() {
     ...(canSaisie ? [{
       href: '/dashboard/saisie', icon: '✏️', label: 'Évaluations',
       children: [
-        { href: '/dashboard/saisie',    label: 'Saisie manuelle' },
-        { href: '/dashboard/passation', label: 'Mode Passation' },
+        { href: '/dashboard/saisie',    label: 'Saisir des résultats' },
+        { href: '/dashboard/passation', label: 'Faire passer un test' },
       ],
     }] : []),
     ...(!isEnseignant ? [

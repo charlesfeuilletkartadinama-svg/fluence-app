@@ -31,6 +31,7 @@ export default function MesClasses() {
   const [selectedClasse, setSelectedClasse] = useState<string | null>(null)
   const [openEleve, setOpenEleve] = useState<string | null>(null)
   const [filtreGroupe, setFiltreGroupe] = useState<number | null>(null)
+  const [classeTab, setClasseTab] = useState<'eleves' | 'groupes'>('eleves')
   const { profil, profilReel, loading: profilLoading } = useProfil()
   const router = useRouter()
   const supabase = createClient()
@@ -254,7 +255,7 @@ export default function MesClasses() {
               }}>← Retour aux classes</button>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
                 <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary-dark)', margin: 0 }}>{classeActive.nom.replace('[TEST] ', '')}</h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>
@@ -263,6 +264,22 @@ export default function MesClasses() {
               </div>
             </div>
 
+            {/* Onglets Élèves / Groupes & Remédiation */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'white', borderRadius: 10, padding: 3, border: '1.5px solid var(--border-light)', width: 'fit-content' }}>
+              <button onClick={() => setClasseTab('eleves')} style={{
+                padding: '8px 18px', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                background: classeTab === 'eleves' ? 'var(--primary-dark)' : 'transparent',
+                color: classeTab === 'eleves' ? 'white' : 'var(--text-secondary)',
+              }}>Élèves</button>
+              <button onClick={() => setClasseTab('groupes')} style={{
+                padding: '8px 18px', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                background: classeTab === 'groupes' ? 'var(--primary-dark)' : 'transparent',
+                color: classeTab === 'groupes' ? 'white' : 'var(--text-secondary)',
+              }}>Groupes & Remédiation</button>
+            </div>
+
+            {/* ── TAB ÉLÈVES ── */}
+            {classeTab === 'eleves' && (<>
             {/* Filtres par groupe */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
               <button onClick={() => setFiltreGroupe(null)} style={{
@@ -353,6 +370,105 @@ export default function MesClasses() {
                 )
               })}
             </div>
+            </>)}
+
+            {/* ── TAB GROUPES & REMÉDIATION ── */}
+            {classeTab === 'groupes' && (() => {
+              const total = classeActive.eleves.length
+              const groupesData = groupeConfig.map(g => ({
+                ...g,
+                eleves: classeActive.eleves.filter(e => e.groupe === g.id),
+                count: classeActive.eleves.filter(e => e.groupe === g.id).length,
+              }))
+              const nonEval = classeActive.eleves.filter(e => e.groupe === 0)
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* Barre de répartition */}
+                  <div style={{ background: 'white', borderRadius: 14, border: '1.5px solid var(--border-light)', padding: 20 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 12, letterSpacing: 0.5, textTransform: 'uppercase' }}>Répartition</div>
+                    <div style={{ display: 'flex', height: 28, borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
+                      {groupesData.filter(g => g.count > 0).map(g => (
+                        <div key={g.id} style={{ width: `${Math.round(g.count / total * 100)}%`, background: g.color, minWidth: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {g.count / total >= 0.1 && <span style={{ fontSize: 11, fontWeight: 800, color: 'white' }}>{g.count}</span>}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {groupesData.map(g => (
+                        <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 10, height: 10, borderRadius: 3, background: g.color, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{g.label}</span>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: g.color, marginLeft: 'auto' }}>{g.count}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{total > 0 ? Math.round(g.count / total * 100) : 0}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Groupes détaillés */}
+                  {groupesData.filter(g => g.count > 0).map(g => (
+                    <div key={g.id} style={{ background: 'white', borderRadius: 14, border: `1.5px solid ${g.color}22`, overflow: 'hidden' }}>
+                      <div style={{ padding: '14px 20px', background: g.bg, borderBottom: `1px solid ${g.color}22`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ width: 12, height: 12, borderRadius: 3, background: g.color }} />
+                          <span style={{ fontSize: 15, fontWeight: 800, color: g.color }}>{g.label}</span>
+                          <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>{g.count} élève{g.count > 1 ? 's' : ''}</span>
+                        </div>
+                      </div>
+                      <div>
+                        {g.eleves.map((e, i) => {
+                          const evoScores = e.evolution.filter(x => x.score != null).map(x => x.score!)
+                          const prog = evoScores.length >= 2 ? evoScores[evoScores.length - 1] - evoScores[0] : null
+                          return (
+                            <button key={e.id} onClick={() => setOpenEleve(e.id)} style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '9px 20px', width: '100%', border: 'none', cursor: 'pointer',
+                              borderBottom: i < g.eleves.length - 1 ? '1px solid var(--border-light)' : 'none',
+                              background: 'transparent', textAlign: 'left',
+                            }}>
+                              <span style={{ fontSize: 13, color: 'var(--primary-dark)' }}><strong>{e.nom}</strong> {e.prenom}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {e.qcmScore != null && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: '#fff7ed', color: '#f97316' }}>{e.qcmScore}/6</span>
+                                )}
+                                {prog != null && (
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: prog > 0 ? '#16a34a' : prog < 0 ? '#dc2626' : '#94a3b8' }}>
+                                    {prog > 0 ? '+' : ''}{prog}
+                                  </span>
+                                )}
+                                <span style={{ fontSize: 13, fontWeight: 700, color: g.color }}>{e.score ?? '—'} m/min</span>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {/* Placeholder remédiation IA */}
+                      <div style={{ padding: '12px 20px', background: '#f8fafc', borderTop: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 16 }}>🤖</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                          Suggestions de remédiation IA — bientôt disponible
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Non évalués */}
+                  {nonEval.length > 0 && (
+                    <div style={{ background: 'white', borderRadius: 14, border: '1.5px solid var(--border-light)', overflow: 'hidden' }}>
+                      <div style={{ padding: '14px 20px', background: '#f8fafc', borderBottom: '1px solid var(--border-light)' }}>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: '#64748b' }}>Non évalués</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginLeft: 8 }}>{nonEval.length} élève{nonEval.length > 1 ? 's' : ''}</span>
+                      </div>
+                      {nonEval.map((e, i) => (
+                        <div key={e.id} style={{ padding: '9px 20px', borderBottom: i < nonEval.length - 1 ? '1px solid var(--border-light)' : 'none', fontSize: 13, color: '#94a3b8' }}>
+                          {e.nom} {e.prenom} — {e.ne ? 'Non évalué' : e.absent ? 'Absent' : 'En attente'}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
 
@@ -367,12 +483,9 @@ export default function MesClasses() {
           const annees = [...new Set(evo.map(e => e.annee))].sort()
           const shortAnnee = (a: string) => a.replace(/^20(\d\d)-20(\d\d)$/, '$1-$2')
 
-          const svgW = 340, svgH = 180, padL = 32, padR = 28, padY = 20
-          const plotW = svgW - padL - padR, plotH = svgH - padY * 2
-          // Échelle gauche : fluence (m/min)
+          const svgW = 320, svgH = 140, padX = 30, padY = 20
+          const plotW = svgW - padX * 2, plotH = svgH - padY * 2
           const scoreToY = (s: number) => padY + plotH - ((s - minS + 10) / (range + 20)) * plotH
-          // Échelle droite : QCM (/6)
-          const qcmToY = (q: number) => padY + plotH - (q / 6) * plotH
           const hasQcm = evo.some(e => e.qcm != null)
 
           let lastScore: number | null = null
@@ -382,15 +495,24 @@ export default function MesClasses() {
             const y = displayScore != null ? scoreToY(displayScore) : padY + plotH
             if (hasScore) lastScore = e.score
             return {
-              x: padL + (evo.length > 1 ? (i / (evo.length - 1)) * plotW : plotW / 2),
+              x: padX + (evo.length > 1 ? (i / (evo.length - 1)) * plotW : plotW / 2),
               y, score: e.score, displayScore, code: e.code, annee: e.annee, ne: e.ne, absent: e.absent,
               isMissing: !hasScore && (e.ne || e.absent),
               label: `${e.code}${annees.length > 1 ? ' ' + shortAnnee(e.annee) : ''}`,
-              qcm: e.qcm, qcmY: e.qcm != null ? qcmToY(e.qcm) : null,
+              qcm: e.qcm,
             }
           })
           const polyline = points.filter(p => p.displayScore != null).map(p => `${p.x},${p.y}`).join(' ')
-          const qcmPolyline = points.filter(p => p.qcm != null).map(p => `${p.x},${p.qcmY}`).join(' ')
+          // QCM courbe séparée
+          const qcmSvgH = 100
+          const qcmPlotH = qcmSvgH - padY * 2
+          const qcmToY = (q: number) => padY + qcmPlotH - (q / 6) * qcmPlotH
+          const qcmPoints = evo.map((e, i) => ({
+            x: padX + (evo.length > 1 ? (i / (evo.length - 1)) * plotW : plotW / 2),
+            y: e.qcm != null ? qcmToY(e.qcm) : null,
+            qcm: e.qcm, label: `${e.code}${annees.length > 1 ? ' ' + shortAnnee(e.annee) : ''}`,
+          }))
+          const qcmPolyline = qcmPoints.filter(p => p.y != null).map(p => `${p.x},${p.y}`).join(' ')
 
           return (
             <>
@@ -439,26 +561,19 @@ export default function MesClasses() {
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
                       Courbe d'évolution
                     </div>
-                    <div style={{ background: 'var(--bg-gray)', borderRadius: 14, padding: '16px 12px' }}>
+                    {/* Courbe Fluence */}
+                    <div style={{ background: 'var(--bg-gray)', borderRadius: 14, padding: '12px 12px 8px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#2563eb', marginBottom: 4, textAlign: 'center' }}>Fluence (mots/min)</div>
                       <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} style={{ display: 'block', margin: '0 auto' }}>
-                        {/* Grille + échelle gauche (fluence) */}
                         {[0, 0.25, 0.5, 0.75, 1].map(pct => {
                           const y = padY + plotH * (1 - pct)
                           const val = Math.round(minS - 10 + (range + 20) * pct)
                           return <g key={pct}>
-                            <line x1={padL} x2={svgW - padR} y1={y} y2={y} stroke="#e2e8f0" strokeWidth={1} />
-                            <text x={padL - 4} y={y + 4} fontSize={9} fill="#2563eb" textAnchor="end">{val}</text>
+                            <line x1={padX} x2={svgW - padX} y1={y} y2={y} stroke="#e2e8f0" strokeWidth={1} />
+                            <text x={padX - 4} y={y + 4} fontSize={9} fill="#94a3b8" textAnchor="end">{val}</text>
                           </g>
                         })}
-                        {/* Échelle droite (QCM /6) */}
-                        {hasQcm && [0, 2, 4, 6].map(q => (
-                          <text key={q} x={svgW - padR + 4} y={qcmToY(q) + 4} fontSize={9} fill="#f97316" textAnchor="start">{q}</text>
-                        ))}
-                        {/* Courbe fluence (bleue) */}
                         {polyline && <polyline points={polyline} fill="none" stroke="#2563eb" strokeWidth={2.5} strokeLinejoin="round" />}
-                        {/* Courbe QCM (orange, pointillée) */}
-                        {hasQcm && qcmPolyline && <polyline points={qcmPolyline} fill="none" stroke="#f97316" strokeWidth={2} strokeLinejoin="round" strokeDasharray="6 3" />}
-                        {/* Points fluence */}
                         {points.map((p, i) => (
                           <g key={i}>
                             {p.isMissing ? (
@@ -472,25 +587,38 @@ export default function MesClasses() {
                                 <text x={p.x} y={p.y - 10} fontSize={10} fontWeight={700} fill="var(--primary-dark)" textAnchor="middle">{p.score ?? '—'}</text>
                               </>
                             )}
-                            {/* Point QCM (losange orange) */}
-                            {p.qcm != null && p.qcmY != null && (
-                              <g>
-                                <rect x={p.x - 4} y={p.qcmY! - 4} width={8} height={8} rx={1} fill="#f97316" stroke="white" strokeWidth={1.5} transform={`rotate(45 ${p.x} ${p.qcmY})`} />
-                                <text x={p.x} y={p.qcmY! + 14} fontSize={9} fontWeight={700} fill="#f97316" textAnchor="middle">{p.qcm}/6</text>
-                              </g>
-                            )}
                             <text x={p.x} y={svgH - 4} fontSize={annees.length > 1 ? 7 : 9} fontWeight={600} fill="#64748b" textAnchor="middle">{p.label}</text>
                           </g>
                         ))}
-                        {/* Légende */}
-                        <circle cx={padL + 4} cy={svgH - 16} r={3} fill="#2563eb" />
-                        <text x={padL + 10} y={svgH - 13} fontSize={8} fill="#64748b">Fluence</text>
-                        {hasQcm && <>
-                          <rect x={padL + 58} y={svgH - 19} width={6} height={6} rx={1} fill="#f97316" transform={`rotate(45 ${padL + 61} ${svgH - 16})`} />
-                          <text x={padL + 68} y={svgH - 13} fontSize={8} fill="#64748b">QCM /6</text>
-                        </>}
                       </svg>
                     </div>
+                    {/* Courbe Compréhension QCM */}
+                    {hasQcm && (
+                      <div style={{ background: 'var(--bg-gray)', borderRadius: 14, padding: '12px 12px 8px', marginTop: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#f97316', marginBottom: 4, textAlign: 'center' }}>Compréhension (/6)</div>
+                        <svg width={svgW} height={qcmSvgH} viewBox={`0 0 ${svgW} ${qcmSvgH}`} style={{ display: 'block', margin: '0 auto' }}>
+                          {[0, 2, 4, 6].map(q => {
+                            const y = qcmToY(q)
+                            return <g key={q}>
+                              <line x1={padX} x2={svgW - padX} y1={y} y2={y} stroke="#e2e8f0" strokeWidth={1} />
+                              <text x={padX - 4} y={y + 4} fontSize={9} fill="#94a3b8" textAnchor="end">{q}</text>
+                            </g>
+                          })}
+                          {qcmPolyline && <polyline points={qcmPolyline} fill="none" stroke="#f97316" strokeWidth={2.5} strokeLinejoin="round" />}
+                          {qcmPoints.map((p, i) => (
+                            <g key={i}>
+                              {p.qcm != null && p.y != null && (
+                                <>
+                                  <circle cx={p.x} cy={p.y} r={5} fill={p.qcm >= 4 ? '#16a34a' : p.qcm >= 2 ? '#f97316' : '#dc2626'} stroke="white" strokeWidth={2} />
+                                  <text x={p.x} y={p.y - 8} fontSize={10} fontWeight={700} fill={p.qcm >= 4 ? '#16a34a' : p.qcm >= 2 ? '#f97316' : '#dc2626'} textAnchor="middle">{p.qcm}/6</text>
+                                </>
+                              )}
+                              <text x={p.x} y={qcmSvgH - 4} fontSize={annees.length > 1 ? 7 : 9} fontWeight={600} fill="#64748b" textAnchor="middle">{p.label}</text>
+                            </g>
+                          ))}
+                        </svg>
+                      </div>
+                    )}
                   </div>
                 )}
 

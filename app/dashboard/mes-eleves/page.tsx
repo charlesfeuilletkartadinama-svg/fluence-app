@@ -79,13 +79,13 @@ export default function MesEleves() {
     const etabId = classesList[0]?.etablissement_id
     if (etabId) {
       const { data: rawPer } = await supabase
-        .from('periodes').select('id, code, label')
-        .eq('etablissement_id', etabId).eq('actif', true).order('code')
-      const seen = new Set<string>()
-      const perDedup: Periode[] = []
-      for (const p of (rawPer || [])) {
-        if (!seen.has(p.code)) { seen.add(p.code); perDedup.push(p) }
-      }
+        .from('periodes').select('id, code, label, annee_scolaire')
+        .eq('etablissement_id', etabId).eq('actif', true)
+        .order('annee_scolaire', { ascending: false }).order('code')
+      // Année la plus récente + T* uniquement
+      const latestAnnee = (rawPer || [])[0]?.annee_scolaire || ''
+      const perDedup: Periode[] = (rawPer || [])
+        .filter((p: any) => p.annee_scolaire === latestAnnee && /^T\d/.test(p.code))
       // Trier T1, T2, T3 en premier
       const prio = (c: string) => { const m = c.match(/^T(\d)/); return m ? parseInt(m[1]) : 99 }
       perDedup.sort((a, b) => prio(a.code) - prio(b.code))

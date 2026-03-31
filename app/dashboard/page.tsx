@@ -352,10 +352,10 @@ export default function Dashboard() {
 
     // 5d-quater. Élèves en régression (score baisse vs période précédente)
     const regressifs: typeof ensRegressifs = []
+    const prevMap: Record<string, number> = {}
     if (currentIdx > 0) {
       const prevPerIds = (periodesBrutes || []).filter((p: any) => p.code === tPeriodes[currentIdx - 1].code).map((p: any) => p.id)
       const prevPass = allPassForEvo.filter(p => prevPerIds.includes(p.periode_id) && !p.non_evalue && p.score > 0)
-      const prevMap: Record<string, number> = {}
       for (const p of prevPass) prevMap[p.eleve_id] = p.score
       for (const p of elevesAvecScore) {
         const prev = prevMap[p.eleve_id]

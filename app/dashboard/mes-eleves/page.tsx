@@ -300,16 +300,26 @@ export default function MesEleves() {
           const annees = [...new Set(evo.map(e => e.annee))].sort()
           const shortAnnee = (a: string) => a ? a.replace(/^20(\d\d)-20(\d\d)$/, '$1-$2') : ''
 
-          // SVG courbe
+          // SVG courbe — absent/NÉ = carré rouge à la hauteur du score précédent
           const svgW = 320, svgH = 160, padX = 30, padY = 20
           const plotW = svgW - padX * 2, plotH = svgH - padY * 2
-          const points = evo.map((e, i) => ({
-            x: padX + (evo.length > 1 ? (i / (evo.length - 1)) * plotW : plotW / 2),
-            y: e.score != null ? padY + plotH - ((e.score - minS + 10) / (range + 20)) * plotH : padY + plotH,
-            score: e.score, code: e.code, annee: e.annee, ne: e.ne, absent: e.absent,
-            label: `${e.code}${annees.length > 1 ? ' ' + shortAnnee(e.annee) : ''}`,
-          }))
-          const polyline = points.filter(p => p.score != null).map(p => `${p.x},${p.y}`).join(' ')
+          const scoreToY = (s: number) => padY + plotH - ((s - minS + 10) / (range + 20)) * plotH
+          let lastScore: number | null = null
+          const points = evo.map((e, i) => {
+            const hasScore = e.score != null
+            // Pour absent/NÉ : utiliser le score précédent pour le Y
+            const displayScore = hasScore ? e.score! : lastScore
+            const y = displayScore != null ? scoreToY(displayScore) : padY + plotH
+            if (hasScore) lastScore = e.score
+            return {
+              x: padX + (evo.length > 1 ? (i / (evo.length - 1)) * plotW : plotW / 2),
+              y, score: e.score, displayScore, code: e.code, annee: e.annee, ne: e.ne, absent: e.absent,
+              isMissing: !hasScore && (e.ne || e.absent),
+              label: `${e.code}${annees.length > 1 ? ' ' + shortAnnee(e.annee) : ''}`,
+            }
+          })
+          // Polyline inclut les points manquants (à la hauteur du précédent) pour continuité
+          const polyline = points.filter(p => p.displayScore != null).map(p => `${p.x},${p.y}`).join(' ')
 
           return (
             <>
@@ -369,10 +379,23 @@ export default function MesEleves() {
                         {/* Points + labels */}
                         {points.map((p, i) => (
                           <g key={i}>
-                            <circle cx={p.x} cy={p.y} r={5} fill={p.score != null ? (p.score >= 130 ? '#16a34a' : p.score >= 80 ? '#eab308' : '#dc2626') : '#d1d5db'} stroke="white" strokeWidth={2} />
-                            <text x={p.x} y={p.y - 10} fontSize={11} fontWeight={700} fill="var(--primary-dark)" textAnchor="middle">
-                              {p.score ?? (p.ne ? 'NÉ' : 'Abs')}
-                            </text>
+                            {p.isMissing ? (
+                              <>
+                                {/* Carré rouge pour absent / NÉ */}
+                                <rect x={p.x - 12} y={p.y - 10} width={24} height={20} rx={4} fill="#dc2626" stroke="white" strokeWidth={2} />
+                                <text x={p.x} y={p.y + 4} fontSize={8} fontWeight={800} fill="white" textAnchor="middle">
+                                  {p.absent ? 'ABS' : 'NÉ'}
+                                </text>
+                              </>
+                            ) : (
+                              <>
+                                {/* Point normal coloré */}
+                                <circle cx={p.x} cy={p.y} r={5} fill={p.score != null ? (p.score >= 130 ? '#16a34a' : p.score >= 80 ? '#eab308' : '#dc2626') : '#d1d5db'} stroke="white" strokeWidth={2} />
+                                <text x={p.x} y={p.y - 10} fontSize={11} fontWeight={700} fill="var(--primary-dark)" textAnchor="middle">
+                                  {p.score ?? '—'}
+                                </text>
+                              </>
+                            )}
                             <text x={p.x} y={svgH - 4} fontSize={annees.length > 1 ? 8 : 10} fontWeight={600} fill="#64748b" textAnchor="middle">{p.label}</text>
                           </g>
                         ))}

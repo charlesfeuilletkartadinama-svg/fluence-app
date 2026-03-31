@@ -62,15 +62,16 @@ export default function MesClasses() {
     const classeIds = classesList.map((c: any) => c.id)
     const etabId = classesList[0]?.etablissement_id
 
-    // 2. Périodes
+    // 2. Périodes (toutes, avec annee_scolaire pour distinguer)
+    let allPeriodesEtab: any[] = []
     if (etabId) {
-      const { data: rawPer } = await supabase.from('periodes').select('id, code, label')
-        .eq('etablissement_id', etabId).eq('actif', true).order('code')
-      const seen = new Set<string>()
-      const perDedup: PeriodeOpt[] = []
-      for (const p of (rawPer || [])) {
-        if (!seen.has(p.code) && /^T\d/.test(p.code)) { seen.add(p.code); perDedup.push(p) }
-      }
+      const { data: rawPer } = await supabase.from('periodes').select('id, code, label, annee_scolaire')
+        .eq('etablissement_id', etabId).eq('actif', true).order('annee_scolaire', { ascending: false }).order('code')
+      allPeriodesEtab = rawPer || []
+      // Pour le sélecteur : uniquement les T* de l'année la plus récente
+      const latestAnnee = allPeriodesEtab[0]?.annee_scolaire || ''
+      const perDedup = allPeriodesEtab
+        .filter(p => p.annee_scolaire === latestAnnee && /^T\d/.test(p.code))
       const prio = (c: string) => { const m = c.match(/^T(\d)/); return m ? parseInt(m[1]) : 99 }
       perDedup.sort((a, b) => prio(a.code) - prio(b.code))
       setPeriodes(perDedup)
@@ -81,6 +82,9 @@ export default function MesClasses() {
       }
     }
     const codeActuel = selectedCode || periodeCode
+    // Trouver le periode_id exact pour l'année courante
+    const latestAnnee = allPeriodesEtab[0]?.annee_scolaire || ''
+    const periodeIdActuel = allPeriodesEtab.find(p => p.code === codeActuel && p.annee_scolaire === latestAnnee)?.id || null
 
     // 3. Élèves
     const { data: elevesData } = await supabase.from('eleves').select('id, nom, prenom, classe_id')
@@ -120,8 +124,8 @@ export default function MesClasses() {
       const norme = normesMap[c.niveau] || defaultNorms[c.niveau] || { seuil_min: 80, seuil_attendu: 130 }
 
       const elevesResult: EleveData[] = elevesC.map(e => {
-        // Passation courante
-        const passCurrent = allPass.find((p: any) => p.eleve_id === e.id && p.periode?.code === codeActuel)
+        // Passation courante (par periode_id exact, pas par code)
+        const passCurrent = allPass.find((p: any) => p.eleve_id === e.id && p.periode?.id === periodeIdActuel)
         const score = passCurrent && !passCurrent.non_evalue && !passCurrent.absent ? passCurrent.score : null
         const ne = passCurrent?.non_evalue || false
         const absent = passCurrent?.absent || false

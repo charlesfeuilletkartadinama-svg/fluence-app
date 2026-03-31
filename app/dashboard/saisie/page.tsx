@@ -434,15 +434,11 @@ function Saisie() {
   return (
     <div style={{ marginLeft: 'var(--sidebar-width)', padding: 32, maxWidth: 900, minHeight: '100vh', background: 'var(--bg-light)' }}>
 
-        {/* Toggle Saisie / Passation */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'white', borderRadius: 10, padding: 3, border: '1.5px solid var(--border-light)', width: 'fit-content' }}>
-          <div style={{ padding: '8px 18px', borderRadius: 7, fontSize: 13, fontWeight: 700, background: 'var(--primary-dark)', color: 'white' }}>
-            Saisir des résultats
-          </div>
-          <button onClick={() => router.push('/dashboard/passation')} style={{ padding: '8px 18px', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)' }}>
-            Faire passer un test
-          </button>
-        </div>
+        {/* Retour */}
+        <button onClick={() => router.push('/dashboard/evaluations')} style={{
+          background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: 13,
+          cursor: 'pointer', padding: 0, marginBottom: 20, fontFamily: 'var(--font-sans)',
+        }}>← Retour aux évaluations</button>
 
         {/* ÉTAPE ADMIN : Choix de l'établissement */}
         {etape === 'etablissement' && (

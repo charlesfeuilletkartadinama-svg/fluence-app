@@ -99,13 +99,9 @@ export default function Sidebar() {
     ] : !isDirection ? [
       { href: '/dashboard/eleves', icon: '👥', label: profil?.role === 'admin' ? 'Explorateur élèves' : (isReseau || isGlobal) ? "Réseau d'élèves" : 'Mes élèves' },
     ] : []),
-    ...(canSaisie ? [{
-      href: '/dashboard/saisie', icon: '✏️', label: 'Évaluations',
-      children: [
-        { href: '/dashboard/saisie',    label: 'Saisir des résultats' },
-        { href: '/dashboard/passation', label: 'Faire passer un test' },
-      ],
-    }] : []),
+    ...(canSaisie ? [
+      { href: '/dashboard/evaluations', icon: '✏️', label: 'Évaluations' },
+    ] : []),
     ...(!isEnseignant ? [
       { href: '/dashboard/statistiques', icon: '📈', label: 'Statistiques' },
       { href: '/dashboard/groupes',      icon: '🎯', label: 'Groupes & Remédiation' },

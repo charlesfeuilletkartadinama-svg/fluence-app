@@ -642,16 +642,12 @@ function PassationContent() {
     <div style={{ minHeight: '100vh', background: 'var(--bg-light)' }}>
       <div style={{ marginLeft: 'var(--sidebar-width)' }}>
 
-        {/* Toggle Saisie / Passation */}
-        <div style={{ padding: '32px 32px 0', maxWidth: 640 }}>
-          <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'white', borderRadius: 10, padding: 3, border: '1.5px solid var(--border-light)', width: 'fit-content' }}>
-            <button onClick={() => router.push('/dashboard/saisie')} style={{ padding: '8px 18px', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)' }}>
-              Saisir des résultats
-            </button>
-            <div style={{ padding: '8px 18px', borderRadius: 7, fontSize: 13, fontWeight: 700, background: 'var(--primary-dark)', color: 'white' }}>
-              Faire passer un test
-            </div>
-          </div>
+        {/* Retour */}
+        <div style={{ padding: '24px 32px 0' }}>
+          <button onClick={() => router.push('/dashboard/evaluations')} style={{
+            background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: 13,
+            cursor: 'pointer', padding: 0, fontFamily: 'var(--font-sans)',
+          }}>← Retour aux évaluations</button>
         </div>
 
         {/* ── Choix établissement (admin) ── */}

@@ -143,6 +143,7 @@ export default function Dashboard() {
   const [ensSeuilAttendu, setEnsSeuilAttendu] = useState<{ above: number; total: number; seuil: number }>({ above: 0, total: 0, seuil: 130 })
   const [ensRegressifs, setEnsRegressifs] = useState<{ nom: string; prenom: string; scorePrev: number; scoreCur: number }[]>([])
   const [ensActions, setEnsActions] = useState<string[]>([])
+  const [ensQcmParQuestion, setEnsQcmParQuestion] = useState<{ question: number; pct: number; total: number }[]>([])
   const { profil, loading: profilLoading } = useProfil()
   const router   = useRouter()
   const supabase = createClient()
@@ -382,22 +383,35 @@ export default function Dashboard() {
       }
     }
 
-    // 5e. QCM complétion par classe
+    // 5e. QCM complétion par classe + taux par question
     const qcmS = (assignees as any[]).map(a => ({ classeNom: a.classe?.nom || '', complete: 0, total: tousEleves.filter((e: any) => e.classe_id === a.classe_id).length }))
+    let qcmPassAll: any[] = []
     if (eleveIds.length > 0 && periodeActuelle) {
       const perIdsForCode = (periodesBrutes || []).filter((p: any) => p.code === periodeActuelle.code).map((p: any) => p.id)
       const { data: qcmPass } = await supabase.from('passations')
-        .select('eleve_id, q1, periode_id')
+        .select('eleve_id, q1, q2, q3, q4, q5, q6, periode_id')
         .in('eleve_id', eleveIds).in('periode_id', perIdsForCode)
         .not('q1', 'is', null)
+      qcmPassAll = qcmPass || []
       for (const s of qcmS) {
         const asg = (assignees as any[]).find(a => a.classe?.nom === s.classeNom)
         if (!asg) continue
         const classEleveIds = tousEleves.filter((e: any) => e.classe_id === asg.classe_id).map((e: any) => e.id)
-        s.complete = (qcmPass || []).filter(p => classEleveIds.includes(p.eleve_id)).length
+        s.complete = qcmPassAll.filter(p => classEleveIds.includes(p.eleve_id)).length
       }
     }
     setQcmStats(qcmS)
+
+    // Taux de bonnes réponses par question
+    if (qcmPassAll.length > 0) {
+      const parQ = [1, 2, 3, 4, 5, 6].map(n => {
+        const key = `q${n}` as string
+        const answered = qcmPassAll.filter(p => p[key] != null)
+        const correct = answered.filter(p => p[key] === 'Correct')
+        return { question: n, pct: answered.length > 0 ? Math.round(correct.length / answered.length * 100) : 0, total: answered.length }
+      })
+      setEnsQcmParQuestion(parQ)
+    } else { setEnsQcmParQuestion([]) }
 
     // 5f. Actions recommandées (après QCM pour avoir qcmS)
     const actions: string[] = []
@@ -1358,22 +1372,47 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* QCM complétion */}
+                {/* QCM complétion + taux par question */}
                 {qcmStats.length > 0 && (
                   <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid var(--border-light)', padding: 24, fontFamily: 'var(--font-sans)', marginBottom: 24 }}>
                     <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', margin: '0 0 16px 0' }}>Compréhension QCM</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(qcmStats.length, 4)}, 1fr)`, gap: 12 }}>
+                    {/* Complétion par classe */}
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(qcmStats.length, 4)}, 1fr)`, gap: 12, marginBottom: ensQcmParQuestion.length > 0 ? 20 : 0 }}>
                       {qcmStats.map(s => {
                         const pct = s.total > 0 ? Math.round(s.complete / s.total * 100) : 0
                         return (
                           <div key={s.classeNom} style={{ background: 'var(--bg-gray)', borderRadius: 12, padding: 16, textAlign: 'center' }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>{s.classeNom}</div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>{s.classeNom.replace('[TEST] ', '')}</div>
                             <div style={{ fontSize: 24, fontWeight: 800, color: pct >= 80 ? '#16a34a' : pct >= 50 ? '#d97706' : 'var(--primary-dark)' }}>{pct}%</div>
                             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{s.complete}/{s.total} élèves</div>
                           </div>
                         )
                       })}
                     </div>
+                    {/* Taux de réussite par question */}
+                    {ensQcmParQuestion.length > 0 && (
+                      <>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>Taux de réussite par question</div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {ensQcmParQuestion.map(q => (
+                            <div key={q.question} style={{ flex: 1, textAlign: 'center' }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6 }}>Q{q.question}</div>
+                              <div style={{
+                                height: 60, background: 'var(--bg-gray)', borderRadius: 6, position: 'relative', overflow: 'hidden',
+                                display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+                              }}>
+                                <div style={{
+                                  height: `${q.pct}%`, borderRadius: '4px 4px 0 0',
+                                  background: q.pct >= 70 ? '#16a34a' : q.pct >= 40 ? '#d97706' : '#dc2626',
+                                  transition: 'height 0.3s',
+                                }} />
+                              </div>
+                              <div style={{ fontSize: 12, fontWeight: 800, marginTop: 4, color: q.pct >= 70 ? '#16a34a' : q.pct >= 40 ? '#d97706' : '#dc2626' }}>{q.pct}%</div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </>

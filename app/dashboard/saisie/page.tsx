@@ -214,10 +214,9 @@ function Saisie() {
   }
 
   async function chargerQcmResultats(classeId: string, periodeId: string) {
-    const { data: elevesData } = await supabase
-      .from('eleves').select('id').eq('classe_id', classeId).eq('actif', true)
-    if (!elevesData || elevesData.length === 0) return
-    const ids = elevesData.map(e => e.id)
+    // Utiliser les élèves déjà chargés (évite un SELECT dupliqué)
+    const ids = eleves.map(e => e.id)
+    if (ids.length === 0) return
     const { data: passData } = await supabase
       .from('passations')
       .select('eleve_id, q1, q2, q3, q4, q5, q6')

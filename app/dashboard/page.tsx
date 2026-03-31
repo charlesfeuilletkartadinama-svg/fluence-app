@@ -161,6 +161,13 @@ export default function Dashboard() {
   // Quand l'enseignant change de période manuellement
   function changerPeriodeEns(newId: string) {
     setPeriodeEnsId(newId)
+    // Synchroniser via URL pour les autres pages
+    const per = periodesEns.find(p => p.id === newId)
+    if (per) {
+      const url = new URL(window.location.href)
+      url.searchParams.set('periode', per.code)
+      window.history.replaceState({}, '', url.toString())
+    }
     chargerDonneesEnseignant(newId)
   }
 
@@ -212,11 +219,13 @@ export default function Dashboard() {
     deduped.sort((a, b) => priorite(a.code) - priorite(b.code))
     setPeriodesEns(deduped)
 
-    // Sélectionner la dernière période T* (pas EN)
+    // Sélectionner la période : URL param > selectedPeriodeId > dernière T*
+    const urlPeriode = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('periode') : null
     const lastT = [...deduped].reverse().find(p => /^T\d/.test(p.code))
+    const fromUrl = urlPeriode ? deduped.find(p => p.code === urlPeriode) : null
     const periodeActuelle = selectedPeriodeId
       ? deduped.find(p => p.id === selectedPeriodeId) ?? lastT ?? deduped[0]
-      : lastT ?? deduped[0] ?? null
+      : fromUrl ?? lastT ?? deduped[0] ?? null
     if (periodeActuelle && !selectedPeriodeId) setPeriodeEnsId(periodeActuelle.id)
 
     // 3. TOUS les élèves actifs en une seule requête
@@ -359,6 +368,21 @@ export default function Dashboard() {
     }
     setEnsRegressifs(regressifs)
 
+    // 5d-quint. Élèves en stagnation (fragiles qui ne progressent pas)
+    const stagnants: string[] = []
+    if (currentIdx > 0) {
+      for (const p of elevesAvecScore) {
+        if (p.score >= normeRef.seuil_min) continue // pas fragile, pas concerné
+        const prev = prevMap[p.eleve_id]
+        if (prev != null && Math.abs(p.score - prev) <= 5) { // progression < 5 = stagnation
+          const el = tousEleves.find((e: any) => e.id === p.eleve_id)
+          if (el && !regressifs.some(r => r.nom === el.nom && r.prenom === el.prenom)) {
+            stagnants.push(`${el.nom} ${el.prenom}`)
+          }
+        }
+      }
+    }
+
     // 5e. QCM complétion par classe
     const qcmS = (assignees as any[]).map(a => ({ classeNom: a.classe?.nom || '', complete: 0, total: tousEleves.filter((e: any) => e.classe_id === a.classe_id).length }))
     if (eleveIds.length > 0 && periodeActuelle) {
@@ -382,7 +406,9 @@ export default function Dashboard() {
     const nbQcmManquant = qcmS.reduce((s, q) => s + (q.total - q.complete), 0)
     if (nbNonRens > 0) actions.push(`${nbNonRens} élève${nbNonRens > 1 ? 's' : ''} non évalué${nbNonRens > 1 ? 's' : ''} en ${periodeActuelle?.code || ''}`)
     if (regressifs.length > 0) actions.push(`${regressifs.length} élève${regressifs.length > 1 ? 's' : ''} en régression — entretien recommandé`)
+    if (stagnants.length > 0) actions.push(`${stagnants.length} élève${stagnants.length > 1 ? 's' : ''} fragile${stagnants.length > 1 ? 's' : ''} en stagnation (${stagnants.slice(0, 3).join(', ')}${stagnants.length > 3 ? '…' : ''})`)
     if (nbQcmManquant > 0) actions.push(`${nbQcmManquant} élève${nbQcmManquant > 1 ? 's' : ''} n'ont pas passé le QCM ${periodeActuelle?.code || ''}`)
+    if (aboveSeuil < elevesAvecScore.length * 0.5) actions.push(`Moins de 50% des élèves au seuil attendu (${aboveSeuil}/${elevesAvecScore.length})`)
     setEnsActions(actions)
 
     setStatsClasses(statsC)

@@ -76,9 +76,12 @@ export default function MesClasses() {
       perDedup.sort((a, b) => prio(a.code) - prio(b.code))
       setPeriodes(perDedup)
       if (!selectedCode && !periodeCode && perDedup.length > 0) {
-        const lastT = perDedup[perDedup.length - 1]
-        setPeriodeCode(lastT.code)
-        selectedCode = lastT.code
+        // Lire depuis URL si dispo
+        const urlP = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('periode') : null
+        const fromUrl = urlP ? perDedup.find(p => p.code === urlP) : null
+        const pick = fromUrl || perDedup[perDedup.length - 1]
+        setPeriodeCode(pick.code)
+        selectedCode = pick.code
       }
     }
     const codeActuel = selectedCode || periodeCode
@@ -162,7 +165,28 @@ export default function MesClasses() {
     setPeriodeCode(code)
     setOpenEleve(null)
     setFiltreGroupe(null)
+    // Sync URL
+    const url = new URL(window.location.href)
+    url.searchParams.set('periode', code)
+    window.history.replaceState({}, '', url.toString())
     charger(code)
+  }
+
+  function exporterCSV() {
+    if (!classeActive) return
+    const gc = (id: number) => groupeConfig.find(g => g.id === id)?.label || 'Non évalué'
+    const header = 'Nom,Prénom,Score (m/min),Groupe,QCM (/6),Progression totale'
+    const rows = classeActive.eleves.map(e => {
+      const scores = (e.evolution || []).filter(x => x.score != null).map(x => x.score!)
+      const prog = scores.length >= 2 ? scores[scores.length - 1] - scores[0] : ''
+      return `${e.nom},${e.prenom},${e.score ?? ''},${gc(e.groupe)},${e.qcmScore ?? ''},${prog}`
+    })
+    const csv = '\uFEFF' + [header, ...rows].join('\n') // BOM UTF-8 pour Excel
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `${classeActive.nom.replace(/[^a-zA-Z0-9]/g, '_')}_${periodeCode}.csv`
+    a.click(); URL.revokeObjectURL(url)
   }
 
   const groupeConfig = [
@@ -266,6 +290,11 @@ export default function MesClasses() {
                   {classeActive.niveau} · {classeActive.eleves.length} élèves · Moyenne : {classeActive.moyenne ?? '—'} m/min
                 </p>
               </div>
+              <button onClick={exporterCSV} style={{
+                background: 'white', border: '1.5px solid var(--border-light)', borderRadius: 8,
+                padding: '7px 14px', fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}>Exporter CSV</button>
             </div>
 
             {/* Onglets Élèves / Groupes & Remédiation */}

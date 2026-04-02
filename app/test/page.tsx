@@ -69,6 +69,7 @@ export default function TestEleve() {
     const currentReponses = reponsesRef.current
     const answersArray = questions.map(q => currentReponses[q.numero] || '')
     const { data, error } = await supabase.rpc('submit_qcm_individual', { p_code: sessionCode, p_answers: answersArray })
+    if (data?.error === 'too_late') { setErreur('Le temps imparti est dépassé. Tes réponses n\'ont pas pu être enregistrées.'); setTimerExpired(true); return }
     if (!error && data?.results) { setResultats(data.results); setEtape('resultat') }
   }
 
@@ -241,7 +242,8 @@ export default function TestEleve() {
     setSubmitting(false)
 
     if (error) { setErreur(error.message); return }
-    if (data?.error) { setErreur(data.error); return }
+    if (data?.error === 'too_late') { setErreur('Le temps imparti est dépassé. Tes réponses n\'ont pas pu être enregistrées.'); return }
+    if (data?.error) { setErreur(data.message || data.error); return }
     setResultats(data.results)
     setEtape('resultat')
   }

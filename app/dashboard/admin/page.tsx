@@ -2178,6 +2178,16 @@ function NormesTab({ supabase, periodes, profil }: { supabase: any; periodes: Pe
 
   return (
     <div>
+      {/* Alerte si aucune norme configurée */}
+      {normes.length === 0 && periodeId && (
+        <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 12, padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12, fontFamily: 'var(--font-sans)' }}>
+          <span style={{ fontSize: 22 }}>&#9888;</span>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14, color: '#991b1b' }}>Aucune norme configurée pour cette période</div>
+            <div style={{ fontSize: 12, color: '#dc2626', marginTop: 2 }}>Les seuils par défaut hardcodés sont utilisés. Configurez les normes ou cliquez "Charger les seuils par défaut".</div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' as const }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>Période :</span>
         {periodes.map(p => (

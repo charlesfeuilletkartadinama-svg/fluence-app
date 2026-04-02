@@ -1,3 +1,10 @@
+/**
+ * Route canonique : FICHE ÉLÈVE INDIVIDUELLE
+ * URL : /dashboard/eleve/[id]
+ * Affiche le profil complet d'un élève avec graphe de progression multi-années.
+ * Utiliser cette route pour tout lien vers un profil élève.
+ * Voir ROUTING_AUDIT.md pour la consolidation future.
+ */
 'use client'
 
 import { use, useEffect, useState } from 'react'

@@ -11,6 +11,7 @@ export type Profil = {
   etablissement_id: string | null
   circonscription_id: string | null
   academie_id: string | null
+  onboarding_done?: boolean
 }
 
 export function useProfil() {
@@ -30,7 +31,7 @@ export function useProfil() {
       if (!session?.user) { router.push('/'); return }
 
       const { data, error } = await supabase
-        .from('profils').select('id, nom, prenom, role, etablissement_id, circonscription_id, academie_id').eq('id', session.user.id).single()
+        .from('profils').select('id, nom, prenom, role, etablissement_id, circonscription_id, academie_id, onboarding_done').eq('id', session.user.id).single()
 
       if (error || !data) { router.push('/dashboard/profil'); return }
 
@@ -62,5 +63,11 @@ export function useProfil() {
   // Le vrai rôle (pas simulé) — pour savoir si on est admin
   const roleReel = profilReel?.role || null
 
-  return { profil, profilReel, roleReel, loading }
+  // Onboarding : directeur/principal sans onboarding_done
+  // TODO: exécuter migration 002_add_onboarding_done_to_profils.sql pour activer
+  const needsOnboarding = profilReel
+    && ['directeur', 'principal'].includes(profilReel.role)
+    && profilReel.onboarding_done === false
+
+  return { profil, profilReel, roleReel, loading, needsOnboarding }
 }

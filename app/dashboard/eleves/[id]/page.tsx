@@ -1,3 +1,10 @@
+/**
+ * Route : FICHE CLASSE DÉTAILLÉE
+ * URL : /dashboard/eleves/[id] (id = classe_id)
+ * Affiche les élèves d'une classe avec scores récents.
+ * NE PAS CONFONDRE avec /dashboard/eleve/[id] (fiche élève individuelle).
+ * Voir ROUTING_AUDIT.md pour la consolidation future.
+ */
 'use client'
 
 import { use, useEffect, useState } from 'react'

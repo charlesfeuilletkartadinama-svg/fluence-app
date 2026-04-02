@@ -173,8 +173,8 @@ export default function MesClasses() {
     setRechercheLoading(true)
     const { data } = await supabase
       .from('eleves')
-      .select('id, nom, prenom, numero_ine, classe:classes(id, nom)')
-      .or(`numero_ine.ilike.%${query}%,nom.ilike.%${query}%,prenom.ilike.%${query}%`)
+      .select('id, nom, prenom, classe:classes(id, nom)')
+      .or(`nom.ilike.%${query}%,prenom.ilike.%${query}%`)
       .eq('actif', true).limit(15)
     setResultats((data || []).map((e: any) => ({
       id: e.id, nom: e.nom, prenom: e.prenom,

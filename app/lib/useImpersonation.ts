@@ -26,7 +26,7 @@ type ImpersonationStore = {
 }
 
 const STORAGE_KEY = 'fluence-impersonation'
-const EXPIRY_MS   = 8 * 60 * 60 * 1000  // 8 heures
+const EXPIRY_MS   = 30 * 60 * 1000  // 30 minutes
 
 export const useImpersonation = create<ImpersonationStore>((set) => ({
   roleImpersonne: null,

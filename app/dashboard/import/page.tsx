@@ -23,6 +23,19 @@ type EleveCSV = {
   _erreur?: string
 }
 
+import { z } from 'zod'
+
+const IMPORT_LIMIT = 500
+
+const EleveCSVSchema = z.object({
+  nom: z.string().min(1, 'Nom manquant').max(100),
+  prenom: z.string().min(1, 'Prénom manquant').max(100),
+  classe: z.string().min(1, 'Classe manquante').max(100),
+  date_naissance: z.string().optional(),
+  sexe: z.string().optional(),
+  numero_ine: z.string().max(20).optional(),
+})
+
 // ── Parser CSV ────────────────────────────────────────────────────────────
 
 function normaliserEntete(h: string): string {
@@ -44,25 +57,27 @@ function parseCSV(texte: string): EleveCSV[] {
   const sep = lignes[0].includes(';') ? ';' : ','
   const entetes = lignes[0].split(sep).map(normaliserEntete)
 
-  return lignes.slice(1)
-    .filter(l => l.trim())
-    .map(ligne => {
+  const rows = lignes.slice(1).filter(l => l.trim())
+  if (rows.length > IMPORT_LIMIT) {
+    return [{ nom: '', prenom: '', date_naissance: '', sexe: '', classe: '', numero_ine: '', _valid: false, _erreur: `Trop d'élèves (${rows.length}/${IMPORT_LIMIT} max)` }]
+  }
+  return rows.slice(0, IMPORT_LIMIT).map(ligne => {
       const cols = ligne.split(sep).map(c => c.trim().replace(/^["']|["']$/g, ''))
       const get = (key: string) => cols[entetes.indexOf(key)] || ''
 
-      const nom = get('nom').toUpperCase().replace(/[<>{}|\\^`]/g, '').trim()
-      const prenom = get('prenom').replace(/[<>{}|\\^`]/g, '').trim()
-      const classe = get('classe').replace(/[<>{}|\\^`]/g, '').trim()
-
-      return {
-        nom,
-        prenom,
+      const raw = {
+        nom: get('nom').toUpperCase().replace(/[<>{}|\\^`]/g, '').trim(),
+        prenom: get('prenom').replace(/[<>{}|\\^`]/g, '').trim(),
+        classe: get('classe').replace(/[<>{}|\\^`]/g, '').trim(),
         date_naissance: get('date_naissance'),
-        sexe:           get('sexe'),
-        classe,
-        numero_ine:     get('numero_ine'),
-        _valid:         !!(nom && prenom && classe),
-        _erreur:        !nom ? 'Nom manquant' : !prenom ? 'Prénom manquant' : !classe ? 'Classe manquante' : undefined,
+        sexe: get('sexe'),
+        numero_ine: get('numero_ine'),
+      }
+      const result = EleveCSVSchema.safeParse(raw)
+      return {
+        ...raw,
+        _valid: result.success,
+        _erreur: result.success ? undefined : result.error.errors[0]?.message,
       }
     })
 }

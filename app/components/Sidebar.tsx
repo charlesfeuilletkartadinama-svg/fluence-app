@@ -52,11 +52,17 @@ export default function Sidebar() {
     }
   }, [profil])
 
+  const lastSearchRef = useRef(0)
+
   function onSearch(q: string) {
     setSearchQuery(q)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     if (q.trim().length < 2) { setSearchResults([]); return }
+    // Rate limit: max 1 requête par 500ms
+    const now = Date.now()
+    const delay = Math.max(500, 500 - (now - lastSearchRef.current))
     debounceRef.current = setTimeout(async () => {
+      lastSearchRef.current = Date.now()
       setSearchLoading(true)
       let query = supabase
         .from('eleves')

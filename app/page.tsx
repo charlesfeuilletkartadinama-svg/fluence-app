@@ -46,15 +46,12 @@ export default function Home() {
     const { data: invitation, error: invErr } = await supabase
       .from('invitations').select('id, etablissement_id, role, actif')
       .eq('code', code.toUpperCase().trim()).single()
-    if (invErr || !invitation) {
-      setErreur('Code établissement invalide.'); setLoading(false); return
-    }
-    if (!invitation.actif) {
-      setErreur("Ce code n'est plus actif."); setLoading(false); return
+    if (invErr || !invitation || !invitation.actif) {
+      setErreur('Code invalide ou expiré. Contactez votre établissement.'); setLoading(false); return
     }
     const { data: authData, error: authErr } = await supabase.auth.signUp({ email, password })
     if (authErr || !authData.user) {
-      setErreur(authErr?.message || 'Erreur lors de la création du compte.'); setLoading(false); return
+      setErreur('Erreur lors de la création du compte. Vérifiez vos informations ou réessayez.'); setLoading(false); return
     }
     const { error: profErr } = await supabase.from('profils').insert({
       id: authData.user.id, nom: nom.toUpperCase(), prenom,
